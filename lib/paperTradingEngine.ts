@@ -102,41 +102,44 @@ export class PaperTradingEngine {
           const raw = fs.readFileSync(diskPath, "utf-8");
           const parsed = JSON.parse(raw);
           if (parsed) {
-            this.initialCapital = parsed.initialCapital || DEFAULT_INITIAL_CAPITAL;
-            this.cashBalance = parsed.cashBalance || DEFAULT_INITIAL_CAPITAL;
-            this.openPositions = parsed.openPositions || [];
-            this.closedTrades = parsed.closedTrades || [];
-            this.autoRiskGuardianActive = parsed.autoRiskGuardianActive !== undefined ? parsed.autoRiskGuardianActive : true;
+            this.applyParsedState(parsed);
             return;
           }
         }
       }
-    } catch (e) {
-      // Ignore Node fs check in browser environment
-    }
 
-    if (typeof window !== "undefined" && window.localStorage) {
-      try {
+      if (typeof window !== "undefined" && window.localStorage) {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed) {
-            this.initialCapital = typeof parsed.initialCapital === 'number' && parsed.initialCapital > 0 ? parsed.initialCapital : DEFAULT_INITIAL_CAPITAL;
-            this.cashBalance = typeof parsed.cashBalance === 'number' && !isNaN(parsed.cashBalance) ? parsed.cashBalance : DEFAULT_INITIAL_CAPITAL;
-            this.autoRiskGuardianActive = parsed.autoRiskGuardianActive !== undefined ? parsed.autoRiskGuardianActive : true;
-
-            if (Array.isArray(parsed.openPositions)) {
-              this.openPositions = parsed.openPositions;
-            }
-            if (Array.isArray(parsed.closedTrades)) {
-              this.closedTrades = parsed.closedTrades;
-            }
-            return;
-          }
+          this.applyParsedState(JSON.parse(raw));
         }
-      } catch (e) {
-        console.warn("[PaperTradingEngine] LocalStorage load warning:", e);
+
+        // Also hydrate from persistent server disk endpoint (.paper_trading_state.json)
+        fetch("/api/paper-trading/state")
+          .then(res => res.json())
+          .then(json => {
+            if (json?.success && json?.state) {
+              this.applyParsedState(json.state);
+            }
+          })
+          .catch(() => {});
       }
+    } catch (e) {
+      console.warn("[PaperTradingEngine] Storage load warning:", e);
+    }
+  }
+
+  private applyParsedState(parsed: any) {
+    if (!parsed) return;
+    this.initialCapital = typeof parsed.initialCapital === 'number' && parsed.initialCapital > 0 ? parsed.initialCapital : DEFAULT_INITIAL_CAPITAL;
+    this.cashBalance = typeof parsed.cashBalance === 'number' && !isNaN(parsed.cashBalance) ? parsed.cashBalance : DEFAULT_INITIAL_CAPITAL;
+    this.autoRiskGuardianActive = parsed.autoRiskGuardianActive !== undefined ? parsed.autoRiskGuardianActive : true;
+
+    if (Array.isArray(parsed.openPositions)) {
+      this.openPositions = parsed.openPositions;
+    }
+    if (Array.isArray(parsed.closedTrades)) {
+      this.closedTrades = parsed.closedTrades;
     }
   }
 
@@ -152,6 +155,12 @@ export class PaperTradingEngine {
     if (typeof window !== "undefined" && window.localStorage) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        // Push to server disk persistence (.paper_trading_state.json)
+        fetch("/api/paper-trading/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).catch(() => {});
       } catch (e) {
         console.warn("[PaperTradingEngine] LocalStorage save warning:", e);
       }

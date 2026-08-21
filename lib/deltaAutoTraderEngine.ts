@@ -214,26 +214,39 @@ export class DeltaAutoTraderEngine {
     return null;
   }
 
-  private loadFromStorage() {
+  private async loadFromStorage() {
     if (typeof window !== "undefined" && window.localStorage) {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed) {
-            if (parsed.settings) this.settings = { ...this.settings, ...parsed.settings };
-            if (Array.isArray(parsed.openPositions)) this.openPositions = parsed.openPositions;
-            if (Array.isArray(parsed.closedRecords)) this.closedRecords = parsed.closedRecords;
-            if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;
-            if (parsed.todayDateStr) this.todayDateStr = parsed.todayDateStr;
-            if (typeof parsed.tradesTakenTodayCount === "number") this.tradesTakenTodayCount = parsed.tradesTakenTodayCount;
-            if (typeof parsed.dailyStartCapitalUSD === "number") this.dailyStartCapitalUSD = parsed.dailyStartCapitalUSD;
-          }
+          this.applyParsedState(JSON.parse(raw));
         }
       } catch (e) {
         console.warn("[DeltaAutoTrader] LocalStorage load error:", e);
       }
+
+      // Also hydrate from persistent server disk endpoint (.delta_auto_trader_state.json)
+      try {
+        const res = await fetch("/api/autotrader/state");
+        const json = await res.json();
+        if (json?.success && json?.state) {
+          this.applyParsedState(json.state);
+        }
+      } catch (e) {
+        // Offline / server fetch fallback
+      }
     }
+  }
+
+  private applyParsedState(parsed: any) {
+    if (!parsed) return;
+    if (parsed.settings) this.settings = { ...this.settings, ...parsed.settings };
+    if (Array.isArray(parsed.openPositions)) this.openPositions = parsed.openPositions;
+    if (Array.isArray(parsed.closedRecords)) this.closedRecords = parsed.closedRecords;
+    if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;
+    if (parsed.todayDateStr) this.todayDateStr = parsed.todayDateStr;
+    if (typeof parsed.tradesTakenTodayCount === "number") this.tradesTakenTodayCount = parsed.tradesTakenTodayCount;
+    if (typeof parsed.dailyStartCapitalUSD === "number") this.dailyStartCapitalUSD = parsed.dailyStartCapitalUSD;
   }
 
   public saveToStorage() {
@@ -250,6 +263,12 @@ export class DeltaAutoTraderEngine {
     if (typeof window !== "undefined" && window.localStorage) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        // Push to server disk persistence (.delta_auto_trader_state.json)
+        fetch("/api/autotrader/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).catch(() => {});
       } catch (e) {
         console.warn("[DeltaAutoTrader] LocalStorage save error:", e);
       }

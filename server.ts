@@ -534,6 +534,62 @@ async function startServer() {
     res.status(400).json({ error: "Missing lead ID" });
   });
 
+  // ────────────────────────────────────────────
+  // Persistent Auto-Trader & Paper Trading State (Survives Server & PC Restarts)
+  // ────────────────────────────────────────────
+  const DELTA_STATE_FILE = path.join(process.cwd(), ".delta_auto_trader_state.json");
+  const PAPER_STATE_FILE = path.join(process.cwd(), ".paper_trading_state.json");
+
+  app.get("/api/autotrader/state", (req, res) => {
+    try {
+      if (fs.existsSync(DELTA_STATE_FILE)) {
+        const raw = fs.readFileSync(DELTA_STATE_FILE, "utf-8");
+        return res.json({ success: true, state: JSON.parse(raw) });
+      }
+      res.json({ success: true, state: null });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/state", (req, res) => {
+    try {
+      const state = req.body;
+      if (state) {
+        fs.writeFileSync(DELTA_STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+        return res.json({ success: true });
+      }
+      res.status(400).json({ success: false, error: "Empty payload" });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/paper-trading/state", (req, res) => {
+    try {
+      if (fs.existsSync(PAPER_STATE_FILE)) {
+        const raw = fs.readFileSync(PAPER_STATE_FILE, "utf-8");
+        return res.json({ success: true, state: JSON.parse(raw) });
+      }
+      res.json({ success: true, state: null });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/paper-trading/state", (req, res) => {
+    try {
+      const state = req.body;
+      if (state) {
+        fs.writeFileSync(PAPER_STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+        return res.json({ success: true });
+      }
+      res.status(400).json({ success: false, error: "Empty payload" });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   // WhatsApp CRM Integration Endpoints & Helpers
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_KEY;
