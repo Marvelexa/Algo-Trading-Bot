@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VARRAJA GALLERY - Premium Home</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-accent: #db2777;
+      --color-secondary: #1e293b;
+      --font-heading: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+    }
+    body {
+      font-family: var(--font-body);
+      background-color: #ffffff;
+      color: #111827;
+      scroll-behavior: smooth;
+    }
+    h1, h2, h3, h4, h5, h6, .font-heading { font-family: var(--font-heading) !important; }
+    
+    /* Animations */
+    .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+    .fade-up.visible { opacity: 1; transform: translateY(0); }
+    .stagger-1 { transition-delay: 100ms; }
+    .stagger-2 { transition-delay: 200ms; }
+    .stagger-3 { transition-delay: 300ms; }
+    
+    .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    .glass-dark { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.05); }
+    
+    .gradient-text { background: linear-gradient(135deg, var(--color-accent), var(--color-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .gradient-bg { background: linear-gradient(135deg, var(--color-accent), var(--color-secondary)); }
+    
+    /* Scroll Progress */
+    #scroll-progress { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--color-accent), var(--color-secondary)); z-index: 9999; transition: width 0.1s; }
+    
+    /* Image Loading Skeleton */
+    .img-wrapper { position: relative; background: rgba(255,255,255,0.05); overflow: hidden; display: block; border-radius: inherit; }
+    .img-wrapper::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); animation: shimmer 1.5s infinite; transform: skewX(-20deg); }
+    @keyframes shimmer { 0% { transform: translateX(-150%) skewX(-20deg); } 100% { transform: translateX(150%) skewX(-20deg); } }
+    img { opacity: 0; transition: opacity 0.5s ease-in-out, transform 0.7s ease; }
+    img.loaded { opacity: 1; }
+  </style>
+  <script>
+    class ImageManager {
+      static handleImageError(img, category, width, height) {
+        if (img.dataset.fallbackAttempt === "3") {
+          img.style.display = "none";
+          return;
+        }
+        
+        const attempt = parseInt(img.dataset.fallbackAttempt || "0") + 1;
+        img.dataset.fallbackAttempt = attempt.toString();
+        
+        console.warn("[ImageManager] Broken URL detected: " + img.src + ". Attempting fallback " + attempt + " for category: " + category);
+        
+        if (attempt === 1) {
+          // Attempt 1: LoremFlickr (Unsplash proxy fallback)
+          img.src = "https://loremflickr.com/" + width + "/" + height + "/" + encodeURIComponent(category) + "?random=" + Math.random();
+        } else if (attempt === 2) {
+          // Attempt 2: Picsum photos fallback
+          img.src = "https://picsum.photos/seed/" + encodeURIComponent(category + Math.random()) + "/" + width + "/" + height;
+        } else {
+          // Attempt 3: Local Fallback Asset (SVG)
+          img.src = "/assets/fallback/" + encodeURIComponent(category) + ".svg?w=" + width + "&h=" + height;
+        }
+      }
+    }
+  </script>
+</head>
+<body class="overflow-x-hidden antialiased">
+  <div id="scroll-progress" style="width: 0%"></div>
+
+  <!-- Personalized Preview Badge -->
+  <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 glass-dark text-white text-xs font-semibold px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-bounce cursor-pointer border border-[var(--color-accent)]/30 hover:scale-105 transition-transform" onclick="showToast('Contact us to launch this website!')">
+    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-[var(--color-accent)]"></i>
+    Personalized Preview Built for VARRAJA GALLERY
+  </div>
+
+  <!-- Sticky Navbar -->
+  <header class="fixed top-0 w-full z-40 glass border-b border-white/5 px-6 py-4 transition-all duration-300" id="navbar">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="font-heading font-extrabold text-xl tracking-tight flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center text-white text-xs shadow-lg shadow-[var(--color-accent)]/20">VA</div>
+        VARRAJA GALLERY
+      </div>
+      <nav class="hidden md:flex items-center gap-8 text-sm font-semibold opacity-80">
+        <a href="#about" class="hover:text-[var(--color-accent)] transition-colors">About</a>
+        <a href="#showcase" class="hover:text-[var(--color-accent)] transition-colors">Services</a>
+        <a href="#reviews" class="hover:text-[var(--color-accent)] transition-colors">Reviews</a>
+        <a href="#faq" class="hover:text-[var(--color-accent)] transition-colors">FAQ</a>
+      </nav>
+      <button onclick="showToast('Redirecting to booking...')" class="gradient-bg text-white text-xs font-bold px-5 py-2.5 rounded-full hover:scale-105 transition-transform shadow-lg shadow-[var(--color-accent)]/20">
+        Shop Now
+      </button>
+    </div>
+  </header>
+
+  <!-- 1. Hero Section -->
+  <section class="relative min-h-[90vh] flex items-center pt-24 pb-12 overflow-hidden">
+    <div class="absolute inset-0 z-0 img-wrapper">
+      <img src="https://image.pollinations.ai/prompt/retail?width=1920&height=1080&nologo=true&seed=944" onerror="ImageManager.handleImageError(this, 'hero background', 1920, 1080)" onload="this.classList.add('loaded')" class="w-full h-full object-cover opacity-30 scale-105 transform origin-center animate-[pulse_20s_ease-in-out_infinite_alternate]" alt="Hero Background">
+      <div class="absolute inset-0 bg-gradient-to-b from-#ffffff/80 via-#ffffff/90 to-#ffffff"></div>
+    </div>
+    
+    <!-- Floating Orbs -->
+    <div class="absolute top-1/4 -left-32 w-96 h-96 bg-[var(--color-accent)] rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-[spin_15s_linear_infinite]"></div>
+    <div class="absolute bottom-1/4 -right-32 w-96 h-96 bg-[var(--color-secondary)] rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-[spin_20s_linear_infinite_reverse]"></div>
+
+    <div class="max-w-7xl mx-auto px-6 relative z-10 grid lg:grid-cols-2 gap-12 items-center w-full">
+      <div class="flex flex-col gap-6 fade-up">
+        <div class="inline-flex items-center gap-2 glass px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase w-fit text-[var(--color-accent)]">
+          <i data-lucide="award" class="w-3.5 h-3.5"></i>
+          Premium Quality
+        </div>
+        <h1 class="text-5xl lg:text-7xl font-extrabold tracking-tighter leading-[1.1] font-heading">
+          Loved by Style Enthusiasts <br/>
+          <span class="gradient-text">4.9 ★ Community Rating</span>
+        </h1>
+        <p class="text-lg opacity-80 max-w-lg leading-relaxed">
+          Explore verified testimonials from our happy customers. Premium handcrafted quality and timeless elegance backed by real feedback at VARRAJA GALLERY.
+        </p>
+        <div class="flex flex-wrap items-center gap-4 mt-4">
+          <button onclick="showToast('Action triggered successfully!')" class="gradient-bg text-white text-base font-bold px-8 py-4 rounded-xl hover:-translate-y-1 hover:shadow-xl hover:shadow-[var(--color-accent)]/30 transition-all">
+            Shop Collection
+          </button>
+          <a href="#showcase" class="glass text-sm font-bold px-8 py-4 rounded-xl hover:bg-white/5 transition-all">
+            Read Reviews
+          </a>
+        </div>
+      </div>
+      
+      <div class="relative h-[500px] rounded-3xl overflow-hidden glass p-2 fade-up stagger-2 hidden lg:block">
+        <div class="img-wrapper w-full h-full rounded-2xl">
+          <img src="https://image.pollinations.ai/prompt/retail?width=800&height=1200&nologo=true&seed=332" loading="lazy" onerror="ImageManager.handleImageError(this, 'hero showcase', 800, 1200)" onload="this.classList.add('loaded')" class="w-full h-full object-cover" alt="Showcase">
+        </div>
+        <!-- Floating Rating Card -->
+        <div class="absolute bottom-8 left-[-20px] glass-dark p-4 rounded-2xl flex items-center gap-4 shadow-2xl animate-[bounce_4s_infinite]">
+          <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center text-amber-500">
+            <i data-lucide="star" class="w-6 h-6 fill-current"></i>
+          </div>
+          <div>
+            <div class="text-xs opacity-70 uppercase tracking-widest font-bold">Google Rating</div>
+            <div class="text-xl font-black">4.9 ★</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Trust Strip -->
+  <div class="w-full border-y border-white/5 bg-white/2 backdrop-blur-sm py-8 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-6 flex flex-wrap items-center justify-center sm:justify-between gap-8 text-center sm:text-left fade-up">
+      <div class="flex items-center gap-3">
+        <i data-lucide="star" class="text-amber-500 w-6 h-6 fill-current"></i>
+        <div>
+          <div class="font-black text-xl">4.9 Rating</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Verified Reviews</div>
+        </div>
+      </div>
+      <div class="w-px h-10 bg-white/10 hidden sm:block"></div>
+      <div class="flex items-center gap-3">
+        <i data-lucide="users" class="text-[var(--color-accent)] w-6 h-6"></i>
+        <div>
+          <div class="font-black text-xl">500+</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Happy Customers</div>
+        </div>
+      </div>
+      <div class="w-px h-10 bg-white/10 hidden sm:block"></div>
+      <div class="flex items-center gap-3">
+        <i data-lucide="calendar-check" class="text-[var(--color-secondary)] w-6 h-6"></i>
+        <div>
+          <div class="font-black text-xl">10</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Years Experience</div>
+        </div>
+      </div>
+      <div class="w-px h-10 bg-white/10 hidden sm:block"></div>
+      <div class="flex items-center gap-3">
+        <i data-lucide="shield-check" class="text-emerald-500 w-6 h-6"></i>
+        <div>
+          <div class="font-black text-xl">Certified</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Professionals</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. About Business -->
+  <section id="about" class="py-24 max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-16 items-center">
+    <div class="relative rounded-3xl overflow-hidden aspect-square md:aspect-auto md:h-[500px] fade-up img-wrapper">
+      <img src="https://image.pollinations.ai/prompt/retail?width=800&height=800&nologo=true&seed=379" loading="lazy" onerror="ImageManager.handleImageError(this, 'about us', 800, 800)" onload="this.classList.add('loaded')" class="w-full h-full object-cover transition-transform duration-1000 hover:scale-110" alt="About Us">
+      <div class="absolute inset-0 border-[8px] border-[var(--color-accent)]/20 rounded-3xl z-10 m-4 pointer-events-none"></div>
+    </div>
+    <div class="flex flex-col gap-6 text-left fade-up stagger-1">
+      <div class="text-[var(--color-accent)] font-bold tracking-widest uppercase text-sm flex items-center gap-2">
+        <span class="w-8 h-px bg-[var(--color-accent)]"></span> Our Story
+      </div>
+      <h2 class="text-4xl lg:text-5xl font-black font-heading leading-tight">Our Legacy of Excellence</h2>
+      <p class="text-lg opacity-70 leading-relaxed">Dedicated to providing the best experience.</p>
+      <button onclick="showToast('Learn more loaded!')" class="w-fit mt-4 border border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white px-8 py-3 rounded-full font-bold transition-colors">
+        Read Our Story
+      </button>
+    </div>
+  </section>
+
+  <!-- 4. Dynamic Showcase (Products/Services) -->
+  <section id="showcase" class="py-24 bg-white/2 relative">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16 fade-up">
+        <h2 class="text-4xl md:text-5xl font-black font-heading mb-4">Our Services</h2>
+        <p class="opacity-70 max-w-2xl mx-auto">Tailored for you.</p>
+      </div>
+
+      <!-- DYNAMIC CATALOG ITEMS WILL BE INJECTED HERE -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 fade-up stagger-1">
+        
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300 relative group">
+          <div class="img-wrapper w-full h-48">
+            <img src="https://image.pollinations.ai/prompt/luxury?width=400&height=300&nologo=true&seed=949" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 group-hover:opacity-0">
+            <img src="https://image.pollinations.ai/prompt/luxury%20detail?width=400&height=300&nologo=true&seed=350" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury%20detail', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 opacity-0 group-hover:opacity-100">
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <button class="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-colors"><i data-lucide="eye" class="w-5 h-5"></i></button>
+            </div>
+          </div>
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Premium Item</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">High quality service.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$99</span>
+              <button onclick="showToast('Explore successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Explore</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300 relative group">
+          <div class="img-wrapper w-full h-48">
+            <img src="https://image.pollinations.ai/prompt/luxury?width=400&height=300&nologo=true&seed=206" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 group-hover:opacity-0">
+            <img src="https://image.pollinations.ai/prompt/luxury%20detail?width=400&height=300&nologo=true&seed=281" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury%20detail', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 opacity-0 group-hover:opacity-100">
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <button class="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-colors"><i data-lucide="eye" class="w-5 h-5"></i></button>
+            </div>
+          </div>
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Premium Item</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">High quality service.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$99</span>
+              <button onclick="showToast('Explore successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Explore</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300 relative group">
+          <div class="img-wrapper w-full h-48">
+            <img src="https://image.pollinations.ai/prompt/luxury?width=400&height=300&nologo=true&seed=688" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 group-hover:opacity-0">
+            <img src="https://image.pollinations.ai/prompt/luxury%20detail?width=400&height=300&nologo=true&seed=510" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury%20detail', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 opacity-0 group-hover:opacity-100">
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <button class="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-colors"><i data-lucide="eye" class="w-5 h-5"></i></button>
+            </div>
+          </div>
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Premium Item</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">High quality service.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$99</span>
+              <button onclick="showToast('Explore successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Explore</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300 relative group">
+          <div class="img-wrapper w-full h-48">
+            <img src="https://image.pollinations.ai/prompt/luxury?width=400&height=300&nologo=true&seed=906" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 group-hover:opacity-0">
+            <img src="https://image.pollinations.ai/prompt/luxury%20detail?width=400&height=300&nologo=true&seed=88" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury%20detail', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 opacity-0 group-hover:opacity-100">
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <button class="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-colors"><i data-lucide="eye" class="w-5 h-5"></i></button>
+            </div>
+          </div>
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Premium Item</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">High quality service.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$99</span>
+              <button onclick="showToast('Explore successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Explore</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300 relative group">
+          <div class="img-wrapper w-full h-48">
+            <img src="https://image.pollinations.ai/prompt/luxury?width=400&height=300&nologo=true&seed=660" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 group-hover:opacity-0">
+            <img src="https://image.pollinations.ai/prompt/luxury%20detail?width=400&height=300&nologo=true&seed=591" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury%20detail', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 opacity-0 group-hover:opacity-100">
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <button class="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-colors"><i data-lucide="eye" class="w-5 h-5"></i></button>
+            </div>
+          </div>
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Premium Item</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">High quality service.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$99</span>
+              <button onclick="showToast('Explore successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Explore</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300 relative group">
+          <div class="img-wrapper w-full h-48">
+            <img src="https://image.pollinations.ai/prompt/luxury?width=400&height=300&nologo=true&seed=485" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 group-hover:opacity-0">
+            <img src="https://image.pollinations.ai/prompt/luxury%20detail?width=400&height=300&nologo=true&seed=111" loading="lazy" onerror="ImageManager.handleImageError(this, 'luxury%20detail', 400, 300)" onload="this.classList.add('loaded')" class="w-full h-full object-cover absolute inset-0 transition-opacity duration-500 opacity-0 group-hover:opacity-100">
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <button class="bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-md transition-colors"><i data-lucide="eye" class="w-5 h-5"></i></button>
+            </div>
+          </div>
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Premium Item</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">High quality service.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$99</span>
+              <button onclick="showToast('Explore successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Explore</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Why Choose Us -->
+  <section class="py-24 max-w-7xl mx-auto px-6">
+    <div class="grid lg:grid-cols-3 gap-12">
+      <div class="lg:col-span-1 fade-up">
+        <h2 class="text-4xl md:text-5xl font-black font-heading mb-6">Why Choose Us</h2>
+        <p class="opacity-70 mb-8">We are the best in the business.</p>
+        <button onclick="showToast('Contacting...')" class="gradient-bg text-white px-6 py-3 rounded-full font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2">
+          Work With Us <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="lg:col-span-2 grid sm:grid-cols-2 gap-6">
+        <!-- Will be populated dynamically based on AI JSON -->
+        
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="star" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Quality</h3>
+          <p class="opacity-70 text-sm">Best in class.</p>
+        </div>
+      
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="star" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Quality</h3>
+          <p class="opacity-70 text-sm">Best in class.</p>
+        </div>
+      
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="star" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Quality</h3>
+          <p class="opacity-70 text-sm">Best in class.</p>
+        </div>
+      
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="star" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Quality</h3>
+          <p class="opacity-70 text-sm">Best in class.</p>
+        </div>
+      
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Statistics (Counters) -->
+  <section class="py-20 gradient-bg text-white relative overflow-hidden">
+    <div class="absolute inset-0 bg-black/20"></div>
+    <div class="max-w-7xl mx-auto px-6 relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center fade-up">
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">500+</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Projects</div>
+      </div>
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">10+</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Years</div>
+      </div>
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">4.9</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Rating</div>
+      </div>
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">100%</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Satisfaction</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Gallery -->
+  <section class="py-24 max-w-7xl mx-auto px-6">
+    <div class="text-center mb-16 fade-up">
+      <h2 class="text-4xl font-black font-heading mb-4">Our Work & Atmosphere</h2>
+      <p class="opacity-70">A glimpse into the VARRAJA GALLERY experience.</p>
+    </div>
+    <div class="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4 fade-up stagger-1">
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=899" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=196" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=664" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=735" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=825" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=24" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=570" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+        <div class="rounded-2xl overflow-hidden relative group cursor-pointer img-wrapper break-inside-avoid shadow-lg shadow-black/20" onclick="showToast('Image opened in Lightbox')">
+          <img src="https://image.pollinations.ai/prompt/retail%20lifestyle?width=600&height=800&nologo=true&seed=793" loading="lazy" onerror="ImageManager.handleImageError(this, 'retail%20lifestyle', 600, 800)" onload="this.classList.add('loaded')" class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105">
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+        </div>
+      
+    </div>
+  </section>
+
+  <!-- 8. Reviews Slider -->
+  <section id="reviews" class="py-24 bg-white/2 border-y border-white/5 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-6 text-center fade-up">
+      <h2 class="text-4xl font-black font-heading mb-12">What Our Clients Say</h2>
+      <div class="flex gap-6 overflow-x-auto pb-8 snap-x hide-scrollbar" style="scrollbar-width: none;">
+        <!-- AI Reviews Injected Here -->
+        
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"Amazing experience!"</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">C</div>
+            <div class="font-bold">Customer</div>
+          </div>
+        </div>
+      
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"Amazing experience!"</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">C</div>
+            <div class="font-bold">Customer</div>
+          </div>
+        </div>
+      
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"Amazing experience!"</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">C</div>
+            <div class="font-bold">Customer</div>
+          </div>
+        </div>
+      
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"Amazing experience!"</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">C</div>
+            <div class="font-bold">Customer</div>
+          </div>
+        </div>
+      
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. Process Timeline -->
+  <section class="py-24 max-w-5xl mx-auto px-6 text-center">
+    <h2 class="text-4xl font-black font-heading mb-16 fade-up">How It Works</h2>
+    <div class="grid md:grid-cols-3 gap-8 relative fade-up stagger-1">
+      <div class="hidden md:block absolute top-12 left-[16.66%] right-[16.66%] h-0.5 bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-secondary)] opacity-30 z-0"></div>
+      
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-24 h-24 rounded-full glass border-2 border-[var(--color-accent)] flex items-center justify-center text-3xl font-black mb-6 shadow-xl shadow-[var(--color-accent)]/20 text-[var(--color-accent)]">1</div>
+        <h3 class="text-xl font-bold mb-2">Contact</h3>
+        <p class="opacity-70 text-sm">Reach out.</p>
+      </div>
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-24 h-24 rounded-full glass border-2 border-[var(--color-accent)] flex items-center justify-center text-3xl font-black mb-6 shadow-xl text-[var(--color-accent)]">2</div>
+        <h3 class="text-xl font-bold mb-2">Consult</h3>
+        <p class="opacity-70 text-sm">We plan.</p>
+      </div>
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-24 h-24 rounded-full glass border-2 border-[var(--color-secondary)] flex items-center justify-center text-3xl font-black mb-6 shadow-xl shadow-[var(--color-secondary)]/20 text-[var(--color-secondary)]">3</div>
+        <h3 class="text-xl font-bold mb-2">Enjoy</h3>
+        <p class="opacity-70 text-sm">Experience excellence.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. FAQ Accordion -->
+  <section id="faq" class="py-24 bg-white/2">
+    <div class="max-w-3xl mx-auto px-6 fade-up">
+      <h2 class="text-4xl font-black font-heading mb-12 text-center">Frequently Asked Questions</h2>
+      <div class="flex flex-col gap-4">
+        
+        <div class="glass rounded-2xl overflow-hidden cursor-pointer" onclick="toggleFaq(this)">
+          <div class="p-6 flex items-center justify-between font-bold text-lg">
+            Question?
+            <i data-lucide="chevron-down" class="w-5 h-5 transition-transform"></i>
+          </div>
+          <div class="px-6 pb-6 text-sm opacity-70 max-h-0 overflow-hidden transition-all duration-300 m-0">Answer.</div>
+        </div>
+      
+        <div class="glass rounded-2xl overflow-hidden cursor-pointer" onclick="toggleFaq(this)">
+          <div class="p-6 flex items-center justify-between font-bold text-lg">
+            Question?
+            <i data-lucide="chevron-down" class="w-5 h-5 transition-transform"></i>
+          </div>
+          <div class="px-6 pb-6 text-sm opacity-70 max-h-0 overflow-hidden transition-all duration-300 m-0">Answer.</div>
+        </div>
+      
+        <div class="glass rounded-2xl overflow-hidden cursor-pointer" onclick="toggleFaq(this)">
+          <div class="p-6 flex items-center justify-between font-bold text-lg">
+            Question?
+            <i data-lucide="chevron-down" class="w-5 h-5 transition-transform"></i>
+          </div>
+          <div class="px-6 pb-6 text-sm opacity-70 max-h-0 overflow-hidden transition-all duration-300 m-0">Answer.</div>
+        </div>
+      
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. Final CTA -->
+  <section class="py-32 relative overflow-hidden text-center text-white">
+    <div class="absolute inset-0 gradient-bg"></div>
+    <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+    <div class="relative z-10 max-w-4xl mx-auto px-6 fade-up">
+      <h2 class="text-5xl md:text-7xl font-black font-heading mb-8 leading-tight">Ready to begin?</h2>
+      <button onclick="showToast('Onboarding process initiated!')" class="bg-white text-[var(--color-accent)] px-10 py-5 rounded-full font-black text-lg hover:scale-110 transition-transform shadow-2xl">
+        Get Started
+      </button>
+    </div>
+  </section>
+
+  <!-- 12. Contact Footer Wrapper -->
+  <footer class="border-t border-white/10 pt-20 pb-8 bg-black/20">
+    <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-4 gap-12 mb-16 fade-up">
+      <div class="md:col-span-2">
+        <div class="font-heading font-extrabold text-2xl tracking-tight flex items-center gap-2 mb-6">
+          <div class="w-10 h-10 rounded-lg gradient-bg flex items-center justify-center text-white text-sm shadow-lg">VA</div>
+          VARRAJA GALLERY
+        </div>
+        <p class="opacity-70 mb-8 max-w-sm">Dedicated to providing the best experience.</p>
+        <div class="flex gap-4">
+          <a href="#" class="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-[var(--color-accent)] transition-colors"><i data-lucide="facebook" class="w-5 h-5"></i></a>
+          <a href="#" class="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-[var(--color-accent)] transition-colors"><i data-lucide="instagram" class="w-5 h-5"></i></a>
+          <a href="#" class="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-[var(--color-accent)] transition-colors"><i data-lucide="twitter" class="w-5 h-5"></i></a>
+        </div>
+      </div>
+      <div>
+        <h4 class="font-bold mb-6 uppercase tracking-wider text-sm opacity-50">Quick Links</h4>
+        <ul class="flex flex-col gap-4 opacity-80">
+          <li><a href="#about" class="hover:text-[var(--color-accent)]">About Us</a></li>
+          <li><a href="#showcase" class="hover:text-[var(--color-accent)]">Services</a></li>
+          <li><a href="#reviews" class="hover:text-[var(--color-accent)]">Reviews</a></li>
+          <li><a href="#faq" class="hover:text-[var(--color-accent)]">FAQ</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="font-bold mb-6 uppercase tracking-wider text-sm opacity-50">Contact</h4>
+        <ul class="flex flex-col gap-4 opacity-80">
+          <li class="flex items-center gap-3"><i data-lucide="map-pin" class="w-4 h-4 text-[var(--color-accent)]"></i> 123 Premium Street, City</li>
+          <li class="flex items-center gap-3"><i data-lucide="phone" class="w-4 h-4 text-[var(--color-accent)]"></i> +1 (555) 123-4567</li>
+          <li class="flex items-center gap-3"><i data-lucide="mail" class="w-4 h-4 text-[var(--color-accent)]"></i> hello@[sanitized_name].com</li>
+          <li class="flex items-center gap-3 mt-2">
+            <button onclick="showToast('Opening Maps...')" class="glass px-4 py-2 rounded-lg text-xs font-bold w-full hover:bg-white/10 transition-colors">View on Map</button>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="text-center opacity-40 text-xs border-t border-white/10 pt-8 max-w-7xl mx-auto px-6">
+      &copy; 2026 VARRAJA GALLERY. All rights reserved. Designed for excellence.
+    </div>
+  </footer>
+
+  <!-- Floating WhatsApp -->
+  <button onclick="showToast('Opening WhatsApp...')" class="fixed bottom-6 left-6 z-50 w-14 h-14 bg-[#25D366] text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform animate-[bounce_3s_infinite]">
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+  </button>
+
+  <!-- Back to Top -->
+  <button id="backToTop" onclick="window.scrollTo(0,0)" class="fixed bottom-6 right-6 z-50 w-12 h-12 glass border border-white/20 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform opacity-0 pointer-events-none group">
+    <i data-lucide="chevron-up" class="w-6 h-6 group-hover:-translate-y-1 transition-transform"></i>
+  </button>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-24 right-6 z-50 glass-dark border border-[var(--color-accent)]/50 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
+      <i data-lucide="check" class="w-5 h-5"></i>
+    </div>
+    <span id="toastMessage" class="font-bold text-sm">Action Successful ✓</span>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    
+    // Toast logic
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMessage').innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    // Scroll Logic
+    const navbar = document.getElementById('navbar');
+    const btt = document.getElementById('backToTop');
+    const progressBar = document.getElementById('scroll-progress');
+    
+    window.addEventListener('scroll', () => {
+      // Progress
+      const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = (winScroll / height) * 100;
+      progressBar.style.width = scrolled + "%";
+
+      // Navbar
+      if (window.scrollY > 50) {
+        navbar.classList.add('glass-dark', 'shadow-xl');
+        navbar.classList.remove('glass');
+      } else {
+        navbar.classList.remove('glass-dark', 'shadow-xl');
+        navbar.classList.add('glass');
+      }
+
+      // Back to top
+      if (window.scrollY > 500) {
+        btt.classList.remove('opacity-0', 'pointer-events-none');
+      } else {
+        btt.classList.add('opacity-0', 'pointer-events-none');
+      }
+    });
+
+    // Reveal Animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+    // Accordion Logic
+    function toggleFaq(el) {
+      const content = el.nextElementSibling;
+      const icon = el.querySelector('i');
+      if (content.style.maxHeight) {
+        content.style.maxHeight = null;
+        content.classList.remove('mt-4');
+        icon.style.transform = 'rotate(0deg)';
+      } else {
+        content.style.maxHeight = content.scrollHeight + "px";
+        content.classList.add('mt-4');
+        icon.style.transform = 'rotate(180deg)';
+      }
+    }
+    
+    // Playwright Auto-trigger (for video generation)
+    if (window.navigator.webdriver) {
+      setTimeout(() => {
+        showToast("AI Generated Demo Initialization Complete");
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

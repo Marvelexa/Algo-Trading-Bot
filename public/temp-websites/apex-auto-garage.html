@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apex Auto Garage - Auto Repair</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Instrument+Serif:ital,wght@0,400;1,400&family=Lora:ital,wght@0,400..700;1,400..700&family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&family=Outfit:wght@100..900&family=Inter:wght@100..900&family=Syne:wght@400..800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-accent: #10b981;
+      --color-secondary: #9ca3af;
+      --color-hex-accent-dark: #064e3b;
+      --color-background: #09090b;
+      --color-background-alt: #18181b;
+      
+      --font-heading: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+      --color-text: #ffffff;
+      --color-text-muted: #9ca3af;
+      
+      --card-bg: rgba(255, 255, 255, 0.03);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --orb-display: block;
+      --card-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.6);
+    }
+    body {
+      font-family: var(--font-body);
+      background-color: var(--color-background) !important;
+      color: var(--color-text) !important;
+    }
+    body.theme-cream {
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(139, 92, 26, 0.02) 0%, transparent 60%),
+        radial-gradient(circle at 0% 100%, rgba(0, 0, 0, 0.01) 0%, transparent 45%);
+    }
+    body.theme-clean-light {
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.02) 0%, transparent 60%),
+        radial-gradient(circle at 0% 100%, rgba(0, 0, 0, 0.01) 0%, transparent 45%);
+    }
+    body.theme-dark-tech {
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(255, 255, 255, 0.01) 0%, transparent 40%);
+    }
+    h1, h2, h3, h4, h5, h6, .serif-heading {
+      font-family: var(--font-heading) !important;
+    }
+    
+    /* Cosmic Glassmorphism & Accent Styles */
+    .theme-bg { background-color: var(--color-background) !important; }
+    .theme-bg-alt { background-color: var(--color-background-alt) !important; }
+    
+    .theme-accent-btn {
+      background: linear-gradient(135deg, var(--color-accent), var(--color-secondary)) !important;
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      box-shadow: 0 4px 15px -3px color-mix(in srgb, var(--color-accent) 20%, transparent) !important;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    .theme-accent-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px -5px color-mix(in srgb, var(--color-accent) 40%, transparent), 0 0 15px 0 color-mix(in srgb, var(--color-accent) 20%, transparent) !important;
+      border-color: rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    .theme-accent-text { color: var(--color-accent) !important; }
+    .theme-secondary-text { color: var(--color-secondary) !important; }
+    .theme-accent-border { border-color: var(--color-accent) !important; }
+    .theme-secondary-border { border-color: var(--color-secondary) !important; }
+    
+    .theme-card-bg { 
+      background-color: var(--card-bg) !important; 
+      border: 1px solid var(--card-border) !important; 
+      box-shadow: var(--card-shadow) !important;
+      backdrop-filter: blur(16px) !important;
+      -webkit-backdrop-filter: blur(16px) !important;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    .theme-card-bg:hover {
+      border-color: color-mix(in srgb, var(--color-accent) 25%, transparent) !important;
+      transform: translateY(-3px);
+      box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.6), 0 0 20px 0 color-mix(in srgb, var(--color-accent) 8%, transparent) !important;
+    }
+    
+    .theme-card-bg-alt { 
+      background-color: var(--color-background-alt) !important; 
+      border: 1px solid var(--card-border) !important;
+      backdrop-filter: blur(12px) !important;
+      -webkit-backdrop-filter: blur(12px) !important;
+    }
+    
+    .theme-header-bg {
+      background-color: rgba(3, 2, 7, 0.7) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+    
+    .theme-badge {
+      background-color: rgba(255, 255, 255, 0.03) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      color: #ffffff !important;
+      backdrop-filter: blur(8px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    .theme-accent-bg {
+      background-color: var(--color-accent) !important;
+    }
+    
+    .theme-gradient-glow {
+      background: linear-gradient(135deg, var(--color-accent), var(--color-secondary)) !important;
+      opacity: 0.12 !important;
+    }
+    
+    .theme-accent-icon-box {
+      background-color: rgba(255, 255, 255, 0.02) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      color: var(--color-accent) !important;
+      transition: all 0.3s ease !important;
+    }
+    .theme-card-bg:hover .theme-accent-icon-box {
+      background-color: color-mix(in srgb, var(--color-accent) 10%, transparent) !important;
+      border-color: color-mix(in srgb, var(--color-accent) 25%, transparent) !important;
+    }
+    
+    .theme-secondary-icon-box {
+      background-color: rgba(255, 255, 255, 0.02) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      color: var(--color-secondary) !important;
+      transition: all 0.3s ease !important;
+    }
+    .theme-card-bg:hover .theme-secondary-icon-box {
+      background-color: color-mix(in srgb, var(--color-secondary) 10%, transparent) !important;
+      border-color: color-mix(in srgb, var(--color-secondary) 25%, transparent) !important;
+    }
+    
+    .theme-success-icon-box {
+      background-color: rgba(16, 185, 129, 0.03) !important;
+      border: 1px solid rgba(16, 185, 129, 0.15) !important;
+      color: rgb(52, 211, 153) !important;
+    }
+    .theme-success-badge {
+      background-color: rgba(16, 185, 129, 0.05) !important;
+      border: 1px solid rgba(16, 185, 129, 0.15) !important;
+      color: rgb(52, 211, 153) !important;
+    }
+    
+    .theme-accent-avatar {
+      background-color: color-mix(in srgb, var(--color-accent) 12%, transparent) !important;
+      border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent) !important;
+      color: var(--color-accent) !important;
+    }
+    .theme-secondary-avatar {
+      background-color: color-mix(in srgb, var(--color-secondary) 12%, transparent) !important;
+      border: 1px solid color-mix(in srgb, var(--color-secondary) 20%, transparent) !important;
+      color: var(--color-secondary) !important;
+    }
+    
+    .theme-input-bg {
+      background-color: rgba(255, 255, 255, 0.01) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      color: #ffffff !important;
+      transition: all 0.3s ease !important;
+    }
+    .theme-input-bg:focus {
+      background-color: rgba(255, 255, 255, 0.02) !important;
+      border-color: var(--color-accent) !important;
+      box-shadow: 0 0 10px 0 color-mix(in srgb, var(--color-accent) 15%, transparent) !important;
+    }
+    
+    .glow-bg-accent {
+      background-color: var(--color-accent) !important;
+      opacity: 0.12 !important;
+    }
+    .glow-bg-secondary {
+      background-color: var(--color-secondary) !important;
+      opacity: 0.12 !important;
+    }
+    
+    .theme-gradient-text {
+      background: linear-gradient(to right, #ffffff, #9ca3af);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .theme-accent-gradient-text {
+      background: linear-gradient(135deg, var(--color-accent), var(--color-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-8px) rotate(0.5deg); }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.15; transform: scale(1); }
+      50% { opacity: 0.25; transform: scale(1.08); }
+    }
+    @keyframes shimmer {
+      100% { transform: translateX(100%); }
+    }
+    .animate-float {
+      animation: float 6s ease-in-out infinite;
+    }
+    .animate-float-delayed {
+      animation: float 6s ease-in-out infinite;
+      animation-delay: 3s;
+    }
+    .glow-bg {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+      animation: pulse-glow 10s ease-in-out infinite;
+      display: var(--orb-display);
+    }
+    /* Custom thin scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--color-background);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-hex-accent-dark);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-[#09090b] text-[var(--color-text)] overflow-x-hidden selection:bg-indigo-500 selection:text-white theme-bg theme-[dark-tech]">
+  <!-- Glowing Background Orbs -->
+  <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] glow-bg glow-bg-accent"></div>
+  <div class="absolute top-[30%] right-[-10%] w-[600px] h-[600px] glow-bg glow-bg-secondary"></div>
+  <div class="absolute bottom-[10%] left-[-20%] w-[500px] h-[500px] glow-bg glow-bg-accent"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 w-full backdrop-blur-md bg-[#09090b]/70 border-b border-white/5 px-6 lg:px-16 py-4 flex items-center justify-between theme-header-bg">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#10b981] to-[#9ca3af] flex items-center justify-center font-bold text-white shadow-lg shadow-[#10b981]/20 theme-accent-btn">
+        AP
+      </div>
+      <span class="font-extrabold text-lg tracking-tight text-[var(--color-text)] font-heading flex items-center gap-1.5">
+        Apex Auto Garage
+        <svg class="w-3.5 h-3.5 text-[#10b981] shrink-0 opacity-80" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z" />
+        </svg>
+      </span>
+    </div>
+    <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-[var(--color-text-muted)]">
+      <a href="#home" class="hover:text-[var(--color-accent)] transition-colors">Home</a>
+      <a href="#services" class="hover:text-[var(--color-accent)] transition-colors">Services</a>
+      <a href="#why-us" class="hover:text-[var(--color-accent)] transition-colors">Why Us</a>
+      <a href="#testimonials" class="hover:text-[var(--color-accent)] transition-colors">Reviews</a>
+    </nav>
+    <a href="#contact" class="bg-gradient-to-r from-[#10b981] to-[#9ca3af] text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all duration-300 hover:scale-[1.05] active:scale-[0.98] shadow-md shadow-[#10b981]/10 theme-accent-btn">
+      Book Appointment
+    </a>
+  </header>
+
+  <!-- Hero Section -->
+  <section id="home" class="relative min-h-[85vh] flex items-center px-6 lg:px-16 py-12 lg:py-24 max-w-7xl mx-auto">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center w-full">
+      <div class="lg:col-span-7 flex flex-col gap-6 text-left">
+        <div class="inline-flex items-center gap-2 bg-white/5 border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-semibold text-[var(--color-text)] w-fit theme-badge">
+          <svg class="w-3.5 h-3.5 text-[#10b981] shrink-0 animate-pulse" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z" />
+          </svg>
+          Auto Repair • AI Review Showcase
+        </div>
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--color-text)] leading-tight">
+          Loved by the Community <br/>
+          <span class="bg-clip-text text-transparent bg-gradient-to-r from-[#10b981] to-[#9ca3af] theme-accent-gradient-text">450+ Five-Star Reviews</span>
+        </h1>
+        <p class="text-base sm:text-lg text-[var(--color-text-muted)] max-w-xl leading-relaxed">
+          Drivers consistently rate Apex Auto Garage five stars for our trustworthy mechanics, fast turnaround, and transparent pricing. Our customers love the reliable expertise and friendly service that keep their vehicles performing at their best.
+        </p>
+        <div class="flex items-center gap-4 mt-2">
+          <a href="#contact" class="bg-gradient-to-r from-[#10b981] to-[#9ca3af] text-white text-sm font-bold px-8 py-3.5 rounded-xl transition-all duration-300 hover:scale-[1.05] shadow-lg shadow-[#10b981]/25 theme-accent-btn">
+            Book Appointment
+          </a>
+          <a href="#services" class="backdrop-blur-sm bg-[var(--card-bg)] border border-[var(--card-border)] hover:bg-[rgba(0,0,0,0.02)] text-[var(--color-text)] text-sm font-bold px-8 py-3.5 rounded-xl transition-all">
+            Read Reviews
+          </a>
+        </div>
+      </div>
+      
+      <!-- Right Side: Animated Mockup / Interactive Panel -->
+      <div class="lg:col-span-5 flex justify-center items-center relative animate-float">
+        <div class="absolute -inset-1 rounded-3xl bg-gradient-to-r from-[#10b981] to-[#9ca3af] opacity-30 blur-2xl theme-gradient-glow" style="display: var(--orb-display) !important;"></div>
+        
+      <div class="relative w-full max-w-lg h-[400px] flex items-center justify-center">
+        <!-- Glow Underlay -->
+        <div class="absolute -inset-1 rounded-3xl bg-gradient-to-r from-[#10b981] to-[#9ca3af] opacity-20 blur-3xl" style="display: block !important;"></div>
+        
+        <!-- Background Image Card (Floating & Tilted) -->
+        <div class="absolute right-0 top-4 w-[280px] h-[340px] rounded-3xl overflow-hidden border border-white/10 shadow-2xl transition-transform duration-700 hover:scale-105">
+          <img src="https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=600" class="w-full h-full object-cover brightness-75" alt="Business environment" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+          <div class="absolute bottom-4 left-4 right-4 text-left">
+            <span class="text-[9px] font-bold tracking-widest text-[#10b981] uppercase">Auto Repair</span>
+            <h4 class="text-sm font-extrabold text-white mt-1">Apex Auto Garage</h4>
+          </div>
+        </div>
+
+        <!-- Floating Gemini AI Chat Card -->
+        <div class="absolute left-0 bottom-4 w-[290px] sm:w-[320px] bg-zinc-950/85 border-white/10 text-white p-5 rounded-2xl shadow-2xl flex flex-col gap-3 text-left animate-float">
+          <!-- Header with Gemini Sparkle and Title -->
+          <div class="flex items-center justify-between border-b border-white/5 pb-2">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-[#10b981] to-[#9ca3af] flex items-center justify-center text-white">
+                <svg class="w-3.5 h-3.5 text-white animate-pulse" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z" />
+                </svg>
+              </div>
+              <span class="text-[11px] font-bold tracking-wide">Gemini AI Engine</span>
+            </div>
+            <span class="text-[9px] font-bold tracking-widest text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 uppercase">Analysis Active</span>
+          </div>
+
+          <!-- Chat thread -->
+          <div class="flex flex-col gap-3">
+            <!-- User Prompt -->
+            <div class="flex flex-col gap-1 items-end">
+              <div class="bg-white/5 border-white/10 text-zinc-100 px-3 py-1.5 rounded-2xl rounded-tr-sm text-[11px] max-w-[90%] font-medium">
+                Analyze Google reviews for Apex Auto Garage
+              </div>
+            </div>
+
+            <!-- Assistant Response -->
+            <div class="flex gap-2">
+              <div class="w-5 h-5 rounded-full bg-white/5 border-white/10 flex items-center justify-center shrink-0">
+                <svg class="w-3.5 h-3.5 text-[#10b981]" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z" />
+                </svg>
+              </div>
+              <div class="flex-1 flex flex-col gap-1.5">
+                <p class="text-[11px] text-zinc-300 leading-relaxed font-normal">
+                  Analyzing 150 verified reviews... Overall rating is <span class="text-amber-500 font-bold">4.9 ★</span>.
+                </p>
+                <p class="text-[10px] text-zinc-400 leading-relaxed italic border-l-2 border-[#10b981] pl-2 line-clamp-3">
+                  "The team at Apex Auto Garage fixed my brake issue quickly and professionally. I felt completely confident leaving my car with them. – Alex"
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prompt input/status box -->
+          <div class="mt-1 border-t border-white/5 pt-2 flex items-center justify-between text-[10px] text-zinc-400">
+            <span class="flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+              Emitting sales assets...
+            </span>
+            <span class="opacity-75">100% complete</span>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Services Bento Grid Section -->
+  <section id="services" class="py-24 px-6 lg:px-16 max-w-7xl mx-auto text-center relative">
+    <div class="flex flex-col items-center gap-4 mb-16">
+      <span class="text-xs font-bold text-[#10b981] uppercase tracking-widest bg-[#10b981]/10 border border-[#10b981]/25 px-3 py-1 rounded-full theme-badge">Review Highlights</span>
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--color-text)]">What Customers Praise Most</h2>
+      <p class="text-sm text-[var(--color-text-muted)] max-w-md">Discover the top qualities and feedback themes highlighted by customers in verified Google reviews.</p>
+    </div>
+    
+    <!-- Bento Grid -->
+    
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Card 1: Small -->
+        <div class="bg-[var(--card-bg)] border border-[var(--card-border)] p-8 rounded-3xl text-left flex flex-col justify-between gap-6 hover:-translate-y-1 hover:border-[#10b981]/45 transition-all group cursor-pointer shadow-[var(--card-shadow)] theme-card-bg hover:theme-accent-border/45">
+          <div class="flex items-center justify-between">
+            <div class="w-12 h-12 rounded-2xl bg-[#10b981]/10 border border-#10b981/25 flex items-center justify-center text-[#10b981] theme-accent-text">45+ Mentions</div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <h3 class="text-lg font-bold text-[var(--color-text)] group-hover:text-[#10b981] transition-colors group-hover:theme-accent-text font-heading">Expert Adjustments</h3>
+            <p class="text-xs text-[var(--color-text-muted)] leading-relaxed">Our certified mechanics deliver precise adjustments and reliable repairs, consistently earning praise for their expertise.</p>
+          </div>
+        </div>
+
+        <!-- Card 2: Small -->
+        <div class="bg-[var(--card-bg)] border border-[var(--card-border)] p-8 rounded-3xl text-left flex flex-col justify-between gap-6 hover:-translate-y-1 hover:border-[#9ca3af]/45 transition-all group cursor-pointer shadow-[var(--card-shadow)] theme-card-bg hover:theme-secondary-border/45">
+          <div class="flex items-center justify-between">
+            <div class="w-12 h-12 rounded-2xl bg-[#9ca3af]/10 border border-[#9ca3af]/25 flex items-center justify-center text-#9ca3af theme-secondary-icon-box">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <span class="text-lg font-black text-#9ca3af theme-secondary-text">32+ Mentions</span>
+          </div>
+          <div class="flex flex-col gap-2">
+            <h3 class="text-lg font-bold text-[var(--color-text)] group-hover:text-[#9ca3af] transition-colors group-hover:theme-secondary-text font-heading">Transparent Pricing</h3>
+            <p class="text-xs text-[var(--color-text-muted)] leading-relaxed">Customers love our clear, upfront pricing—no hidden fees, just honest service.</p>
+          </div>
+        </div>
+
+        <!-- Card 3: Small -->
+        <div class="bg-[var(--card-bg)] border border-[var(--card-border)] p-8 rounded-3xl text-left flex flex-col justify-between gap-6 hover:-translate-y-1 hover:border-[#10b981]/45 transition-all group cursor-pointer shadow-[var(--card-shadow)] theme-card-bg hover:theme-accent-border/45">
+          <div class="flex items-center justify-between">
+            <div class="w-12 h-12 rounded-2xl bg-[#10b981]/10 border border-#10b981/25 flex items-center justify-center text-[#10b981] theme-accent-icon-box">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <span class="text-lg font-black text-[#10b981] theme-accent-text">28+ Mentions</span>
+          </div>
+          <div class="flex flex-col gap-2">
+            <h3 class="text-lg font-bold text-[var(--color-text)] group-hover:text-[#10b981] transition-colors group-hover:theme-accent-text font-heading">Fast Turnaround</h3>
+            <p class="text-xs text-[var(--color-text-muted)] leading-relaxed">Swift repairs get you back on the road quickly, a highlight praised for its efficiency.</p>
+          </div>
+        </div>
+
+        <!-- Card 4: Wide Span 3 Landscape Image -->
+        <div class="md:col-span-3 bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl overflow-hidden hover:-translate-y-1 hover:border-[#9ca3af]/45 transition-all group cursor-pointer shadow-[var(--card-shadow)] theme-card-bg hover:theme-secondary-border/45 flex flex-col md:flex-row">
+          <div class="p-8 flex flex-col justify-between gap-6 flex-1 text-left">
+            <div class="flex items-center justify-between">
+              <div class="w-12 h-12 rounded-2xl bg-[#9ca3af]/10 border border-[#9ca3af]/25 flex items-center justify-center text-#9ca3af theme-secondary-icon-box">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-thumbs-up"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3l3.15-7.15a1 1 0 0 1 1.57.16l2.28 2.87Z"/></svg>
+              </div>
+              <span class="text-lg font-black text-#9ca3af theme-secondary-text">40+ Mentions</span>
+            </div>
+            <div class="flex flex-col gap-2">
+              <h3 class="text-xl font-bold text-[var(--color-text)] group-hover:text-[#9ca3af] transition-colors group-hover:theme-secondary-text font-heading">Friendly Service</h3>
+              <p class="text-sm text-[var(--color-text-muted)] leading-relaxed">Our welcoming team makes every visit comfortable, frequently mentioned for their kindness.</p>
+            </div>
+          </div>
+          <div class="w-full md:w-[400px] h-[220px] md:h-auto shrink-0 relative overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?auto=format&fit=crop&q=80&w=600" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 brightness-95"/>
+          </div>
+        </div>
+      </div>
+  </section>
+
+  <!-- Why Choose Us -->
+  <section id="why-us" class="py-24 bg-[#18181b] border-y border-white/5 relative theme-bg-alt">
+    <div class="max-w-7xl mx-auto px-6 lg:px-16 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+      <div class="flex flex-col gap-6 text-left">
+        <span class="text-xs font-bold text-[#10b981] uppercase tracking-widest bg-[#10b981]/10 border border-[#10b981]/25 px-3 py-1 rounded-full w-fit theme-badge">Experience Difference</span>
+        <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--color-text)]">Why Customers Choose Apex Auto Garage</h2>
+        <p class="text-sm text-[var(--color-text-muted)] leading-relaxed">At Apex Auto Garage we pride ourselves on turning everyday car care into a stress‑free experience. Our commitment to consistent quality, transparent communication, and genuine community connection is reflected in every verified Google review. Choosing us means partnering with a team that treats your vehicle like it’s their own and your concerns with the utmost respect.</p>
+        
+        <div class="flex flex-col gap-4 mt-2">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/35 flex items-center justify-center text-emerald-400 shrink-0 theme-success-icon-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div>
+              <h4 class="font-bold text-[var(--color-text)] text-base">Consistent Quality</h4>
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">Customers repeatedly highlight our consistent quality repairs that keep vehicles running like new.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/35 flex items-center justify-center text-emerald-400 shrink-0 theme-success-icon-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div>
+              <h4 class="font-bold text-[var(--color-text)] text-base">Transparent Communication</h4>
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">Clients appreciate the clear updates and honest advice they receive throughout the repair process.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-center items-center">
+        <!-- Floating Rating Box -->
+        <div class="relative w-full max-w-sm bg-[var(--card-bg)] border border-[var(--card-border)] p-8 rounded-3xl shadow-[var(--card-shadow)] flex flex-col gap-6 animate-float-delayed theme-card-bg">
+          <h3 class="font-bold text-[var(--color-text)] text-lg">Google Rating Details</h3>
+          <div class="flex items-center gap-6">
+            <span class="text-5xl font-black text-[var(--color-text)]">4.9</span>
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center text-amber-400 gap-0.5">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+              </div>
+              <span class="text-xs text-[var(--color-text-muted)] font-semibold">150 Verified Reviews</span>
+            </div>
+          </div>
+          <div class="h-px bg-white/5"></div>
+          <div class="flex items-center justify-between text-xs font-semibold text-[var(--color-text-muted)]">
+            <span>Status:</span>
+            <span class="text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full theme-success-badge">Top 5% in Region</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials Section -->
+  <section id="testimonials" class="py-24 px-6 lg:px-16 max-w-7xl mx-auto text-center">
+    <div class="flex flex-col items-center gap-4 mb-16">
+      <span class="text-xs font-bold text-[#10b981] uppercase tracking-widest bg-[#10b981]/10 border border-[#10b981]/25 px-3 py-1 rounded-full theme-badge">Testimonials</span>
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--color-text)]">What Our Guests Say</h2>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Testimonial 1 -->
+      <div class="bg-[var(--card-bg)] border border-[var(--card-border)] p-6 rounded-3xl text-left flex flex-col justify-between gap-6 hover:border-[#10b981]/35 transition-all shadow-[var(--card-shadow)] theme-card-bg hover:theme-accent-border/35">
+        <p class="text-sm text-[var(--color-text)] leading-relaxed italic">"The team at Apex Auto Garage fixed my brake issue quickly and professionally. I felt completely confident leaving my car with them. – Alex"</p>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-[#10b981]/20 flex items-center justify-center font-bold text-[#10b981] text-sm theme-accent-avatar">A</div>
+          <div class="flex flex-col">
+            <span class="font-bold text-[var(--color-text)] text-sm">Alex</span>
+            <span class="text-[10px] text-[var(--color-text-muted)]">Verified Google Reviewer</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Testimonial 2 -->
+      <div class="bg-[var(--card-bg)] border border-[var(--card-border)] p-6 rounded-3xl text-left flex flex-col justify-between gap-6 hover:border-[#9ca3af]/35 transition-all shadow-[var(--card-shadow)] theme-card-bg hover:theme-secondary-border/35">
+        <p class="text-sm text-[var(--color-text)] leading-relaxed italic">"My SUV needed a major engine repair, and Apex exceeded expectations. The price was fair, and the car performs better than before. – Maria"</p>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-[#9ca3af]/20 flex items-center justify-center font-bold text-#9ca3af text-sm theme-secondary-avatar">M</div>
+          <div class="flex flex-col">
+            <span class="font-bold text-[var(--color-text)] text-sm">Maria</span>
+            <span class="text-[10px] text-[var(--color-text-muted)]">Verified Google Reviewer</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Testimonial 3 -->
+      <div class="bg-[var(--card-bg)] border border-[var(--card-border)] p-6 rounded-3xl text-left flex flex-col justify-between gap-6 hover:border-[#10b981]/35 transition-all shadow-[var(--card-shadow)] theme-card-bg hover:theme-accent-border/35">
+        <p class="text-sm text-[var(--color-text)] leading-relaxed italic">"I always trust Apex for routine maintenance. Their friendly staff and punctual service make me feel valued as a customer. – Jenna"</p>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-[#10b981]/20 flex items-center justify-center font-bold text-[#10b981] text-sm theme-accent-avatar">J</div>
+          <div class="flex flex-col">
+            <span class="font-bold text-[var(--color-text)] text-sm">Jenna</span>
+            <span class="text-[10px] text-[var(--color-text-muted)]">Verified Google Reviewer</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact Form Section -->
+  <section id="contact" class="py-24 px-6 lg:px-16 max-w-4xl mx-auto text-center">
+    <div class="bg-[var(--card-bg)] border border-[var(--card-border)] p-8 sm:p-12 rounded-[2.5rem] shadow-[var(--card-shadow)] relative overflow-hidden theme-card-bg">
+      <div class="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-[#10b981]/25 blur-3xl glow-bg-accent/25 glow-bg glow-bg-accent"></div>
+      
+      <div class="flex flex-col items-center gap-4 mb-8 relative z-10">
+        <span class="text-xs font-bold text-[#10b981] uppercase tracking-widest bg-[#10b981]/10 border border-[#10b981]/25 px-3 py-1 rounded-full theme-badge">Get In Touch</span>
+        <h2 class="text-3xl font-extrabold tracking-tight text-[var(--color-text)]">Schedule a Service</h2>
+        <p class="text-xs text-[var(--color-text-muted)]">Need a repair, maintenance check, or diagnostics? Drop us a line today.</p>
+      </div>
+      
+      <form class="grid grid-cols-1 sm:grid-cols-2 gap-5 text-left relative z-10" onsubmit="event.preventDefault();">
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">Name</label>
+          <input type="text" required placeholder="Your Name" class="w-full bg-[var(--color-background-alt)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-text)] focus:outline-none focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] transition-all theme-input-bg focus:theme-accent-border"/>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">Email Address</label>
+          <input type="email" required placeholder="you@domain.com" class="w-full bg-[var(--color-background-alt)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-text)] focus:outline-none focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] transition-all theme-input-bg focus:theme-accent-border"/>
+        </div>
+        <div class="sm:col-span-2 flex flex-col gap-1.5">
+          <label class="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">Your Message</label>
+          <textarea required rows="4" placeholder="How can we help you?" class="w-full bg-[var(--color-background-alt)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-text)] focus:outline-none focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] transition-all resize-none theme-input-bg focus:theme-accent-border"></textarea>
+        </div>
+        
+        <button type="submit" class="sm:col-span-2 mt-2 bg-gradient-to-r from-[#10b981] to-[#9ca3af] text-white text-sm font-bold py-4 rounded-xl transition-all duration-300 hover:scale-[1.02] shadow-lg shadow-[#10b981]/25 cursor-pointer theme-accent-btn">
+          Send Message
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 border-t border-white/5 px-6 lg:px-16 text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-between max-w-7xl mx-auto gap-4">
+    <div class="flex items-center gap-2">
+      <span class="font-extrabold text-[var(--color-text)] tracking-tight text-sm">Apex Auto Garage</span>
+    </div>
+    <span>&copy; 2026 Apex Auto Garage. All rights reserved. Created for demonstration.</span>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>[BUSINESS_NAME] - Premium E-Commerce Store</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Instrument+Serif:ital,wght@0,400;1,400&family=Lora:ital,wght@0,400..700;1,400..700&family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&family=Outfit:wght@100..900&family=Inter:wght@100..900&family=Syne:wght@400..800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-accent: __COLOR_ACCENT__;
+      --color-secondary: __COLOR_SECONDARY__;
+      --color-hex-accent-dark: __COLOR_HEX_ACCENT_DARK__;
+      --color-background: __COLOR_BACKGROUND__;
+      --color-background-alt: __COLOR_BACKGROUND_ALT__;
+      
+      --font-heading: __FONT_HEADING__;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+      --color-text: __COLOR_TEXT__;
+      --color-text-muted: __COLOR_TEXT_MUTED__;
+      
+      --card-bg: __CARD_BG__;
+      --card-border: __CARD_BORDER__;
+      --orb-display: __ORB_DISPLAY__;
+      --card-shadow: __CARD_SHADOW__;
+    }
+    body {
+      font-family: var(--font-body);
+      background-color: var(--color-background) !important;
+      color: var(--color-text) !important;
+    }
+    h1, h2, h3, h4, h5, h6, .font-heading {
+      font-family: var(--font-heading) !important;
+    }
+    .theme-accent-gradient-text {
+      background: linear-gradient(135deg, var(--color-accent), var(--color-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .glow-bg {
+      filter: blur(140px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .glow-bg-accent {
+      background: radial-gradient(circle, var(--color-accent) 0%, transparent 70%);
+      opacity: 0.12;
+    }
+    .glow-bg-secondary {
+      background: radial-gradient(circle, var(--color-secondary) 0%, transparent 70%);
+      opacity: 0.08;
+    }
+    .confetti-piece {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: fall 3s linear infinite;
+    }
+    @keyframes fall {
+      0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(300px) rotate(360deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-[__COLOR_BACKGROUND__] text-[var(--color-text)] overflow-x-hidden selection:bg-indigo-500 selection:text-white theme-[__THEME_STYLE__]">
+  <!-- Glowing Background Orbs -->
+  <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] glow-bg glow-bg-accent"></div>
+  <div class="absolute top-[30%] right-[-10%] w-[600px] h-[600px] glow-bg glow-bg-secondary"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 w-full backdrop-blur-md bg-[__COLOR_BACKGROUND__]/70 border-b border-white/5 px-6 lg:px-16 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[__COLOR_ACCENT__] to-[__COLOR_SECONDARY__] flex items-center justify-center font-bold text-white shadow-lg shadow-[__COLOR_ACCENT__]/20">
+        [LOGO_INITIALS]
+      </div>
+      <span class="font-extrabold text-lg tracking-tight text-[var(--color-text)] font-heading flex items-center gap-1.5">
+        [BUSINESS_NAME]
+        <svg class="w-3.5 h-3.5 text-[__COLOR_ACCENT__]" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z" />
+        </svg>
+      </span>
+    </div>
+    <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-[var(--color-text-muted)]">
+      <a href="#home" class="hover:text-[var(--color-accent)] transition-colors">Home</a>
+      <a href="#shop" class="hover:text-[var(--color-accent)] transition-colors">Shop</a>
+      <a href="#reviews" class="hover:text-[var(--color-accent)] transition-colors">Reviews</a>
+      <a href="#contact" class="hover:text-[var(--color-accent)] transition-colors">Contact</a>
+    </nav>
+    <div class="flex items-center gap-4">
+      <!-- Cart Icon button -->
+      <button onclick="toggleCart(true)" class="relative p-2 text-[var(--color-text)] hover:text-[__COLOR_ACCENT__] transition-colors cursor-pointer" aria-label="Open Shopping Cart">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shopping-bag"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span id="cart-badge" class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-bold">0</span>
+      </button>
+      <a href="#shop" class="hidden sm:inline-block bg-gradient-to-r from-[__COLOR_ACCENT__] to-[__COLOR_SECONDARY__] text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all duration-300 hover:scale-[1.05] active:scale-[0.98] shadow-md shadow-[__COLOR_ACCENT__]/10">
+        [HEADER_CTA]
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section id="home" class="relative min-h-[85vh] flex items-center px-6 lg:px-16 py-12 lg:py-24 max-w-7xl mx-auto">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center w-full">
+      <div class="lg:col-span-7 flex flex-col gap-6 text-left">
+        <div class="inline-flex items-center gap-2 bg-white/5 border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-semibold text-[var(--color-text)] w-fit">
+          <svg class="w-3.5 h-3.5 text-[__COLOR_ACCENT__] shrink-0 animate-pulse" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z" />
+          </svg>
+          [CATEGORY] • Verified Storefront
+        </div>
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--color-text)] leading-tight">
+          [HERO_TITLE_LINE1] <br/>
+          <span class="bg-clip-text text-transparent bg-gradient-to-r from-[__COLOR_ACCENT__] to-[__COLOR_SECONDARY__] theme-accent-gradient-text">[HERO_TITLE_ACCENT]</span>
+        </h1>
+        <p class="text-base sm:text-lg text-[var(--color-text-muted)] max-w-xl leading-relaxed">
+          [HERO_SUBTITLE]
+        </p>
+        <div class="flex flex-wrap items-center gap-4 mt-2">
+          <a href="#shop" class="bg-gradient-to-r from-[__COLOR_ACCENT__] to-[__COLOR_SECONDARY__] text-white text-sm font-bold px-8 py-4 rounded-xl transition-all duration-300 hover:scale-[1.03] shadow-lg shadow-[__COLOR_ACCENT__]/20 cursor-pointer">
+            [HERO_CTA_PRIMARY]
+          </a>
+          <a href="#reviews" class="bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--color-text)] text-sm font-bold px-8 py-4 rounded-xl transition-all duration-300 hover:scale-[1.03] cursor-pointer">
+            [HERO_CTA_SECONDARY]
+          </a>
+        </div>
+      </div>
+
+      <div class="lg:col-span-5 flex items-center justify-center">
+        [HERO_MOCKUP_CONTENT]
+      </div>
+    </div>
+  </section>
+
+  <!-- Capsule Collection / Shop Products -->
+  <section id="shop" class="py-20 border-t border-white/5 px-6 lg:px-16 max-w-7xl mx-auto scroll-mt-20">
+    <div class="text-center max-w-2xl mx-auto mb-16">
+      <span class="text-xs font-bold uppercase tracking-widest text-[__COLOR_ACCENT__]">Featured Capsule</span>
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-[var(--color-text)] mt-2 font-heading">The Customer-Favorite Fit</h2>
+      <p class="text-sm text-[var(--color-text-muted)] mt-4">These selected items are highlighted most in our verified reviews for their premium quality, flawless fabrics, and perfect fit.</p>
+    </div>
+
+    <!-- Product Grid (Populated dynamically) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8" id="product-grid">
+      <!-- Injected by JavaScript -->
+    </div>
+  </section>
+
+  <!-- Verified Google Reviews -->
+  <section id="reviews" class="py-20 bg-[var(--color-background-alt)] border-t border-b border-white/5 scroll-mt-20">
+    <div class="max-w-7xl mx-auto px-6 lg:px-16">
+      <div class="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 mb-16">
+        <div class="text-left max-w-xl">
+          <span class="text-xs font-bold uppercase tracking-widest text-[__COLOR_ACCENT__]">Verified Feedback</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-[var(--color-text)] mt-2 font-heading">What Fashion Enthusiasts Say</h2>
+          <p class="text-sm text-[var(--color-text-muted)] mt-4">We are committed to quality and speed. Read authentic reviews directly pulled from our Google profile.</p>
+        </div>
+        
+        <!-- Ratings Overview Card -->
+        <div class="flex items-center gap-4 bg-[__CARD_BG__] border border-[__CARD_BORDER__] rounded-2xl p-5 shadow-lg">
+          <div class="flex flex-col text-left">
+            <span class="text-3xl font-extrabold text-[var(--color-text)]">[RATING_FLOAT] ★</span>
+            <span class="text-xs text-[var(--color-text-muted)] mt-1">[REVIEWS_COUNT] Google Reviews</span>
+          </div>
+          <div class="w-px h-12 bg-white/10"></div>
+          <div class="flex gap-1 text-[__COLOR_ACCENT__]">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-5 h-5 fill-current opacity-50" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Testimonials grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- Card 1 -->
+        <div class="bg-[__CARD_BG__] border border-[__CARD_BORDER__] rounded-3xl p-8 flex flex-col justify-between gap-6 shadow-xl text-left">
+          <div class="flex flex-col gap-4">
+            <div class="flex items-center gap-0.5 text-[__COLOR_ACCENT__]">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            </div>
+            <p class="text-sm italic text-[var(--color-text)] leading-relaxed font-medium">"[REVIEW_1_TEXT]"</p>
+          </div>
+          <div class="flex items-center gap-3 border-t border-white/5 pt-4">
+            <div class="w-8 h-8 rounded-full bg-[__COLOR_ACCENT__]/20 border border-[__COLOR_ACCENT__]/30 flex items-center justify-center font-bold text-xs text-[var(--color-text)]">[REVIEW_1_INIT]</div>
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-[var(--color-text)]">[REVIEW_1_NAME]</span>
+              <span class="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider">Verified Buyer</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="bg-[__CARD_BG__] border border-[__CARD_BORDER__] rounded-3xl p-8 flex flex-col justify-between gap-6 shadow-xl text-left">
+          <div class="flex flex-col gap-4">
+            <div class="flex items-center gap-0.5 text-[__COLOR_ACCENT__]">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            </div>
+            <p class="text-sm italic text-[var(--color-text)] leading-relaxed font-medium">"[REVIEW_2_TEXT]"</p>
+          </div>
+          <div class="flex items-center gap-3 border-t border-white/5 pt-4">
+            <div class="w-8 h-8 rounded-full bg-[__COLOR_ACCENT__]/20 border border-[__COLOR_ACCENT__]/30 flex items-center justify-center font-bold text-xs text-[var(--color-text)]">[REVIEW_2_INIT]</div>
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-[var(--color-text)]">[REVIEW_2_NAME]</span>
+              <span class="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider">Verified Buyer</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="bg-[__CARD_BG__] border border-[__CARD_BORDER__] rounded-3xl p-8 flex flex-col justify-between gap-6 shadow-xl text-left">
+          <div class="flex flex-col gap-4">
+            <div class="flex items-center gap-0.5 text-[__COLOR_ACCENT__]">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            </div>
+            <p class="text-sm italic text-[var(--color-text)] leading-relaxed font-medium">"[REVIEW_3_TEXT]"</p>
+          </div>
+          <div class="flex items-center gap-3 border-t border-white/5 pt-4">
+            <div class="w-8 h-8 rounded-full bg-[__COLOR_ACCENT__]/20 border border-[__COLOR_ACCENT__]/30 flex items-center justify-center font-bold text-xs text-[var(--color-text)]">[REVIEW_3_INIT]</div>
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-[var(--color-text)]">[REVIEW_3_NAME]</span>
+              <span class="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider">Verified Buyer</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why Choose Us -->
+  <section id="why-us" class="py-20 px-6 lg:px-16 max-w-7xl mx-auto text-left scroll-mt-20">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+      <div class="lg:col-span-5 flex flex-col gap-6">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-widest text-[__COLOR_ACCENT__]">Uncompromising Quality</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-[var(--color-text)] mt-2 font-heading">Why Style Seekers Love Us</h2>
+        </div>
+        <p class="text-sm text-[var(--color-text-muted)] leading-relaxed">
+          [WHY_CHOOSE_US_DESCRIPTION]
+        </p>
+        <div class="h-px bg-white/5 w-full"></div>
+        <div class="flex flex-col gap-6">
+          <div class="flex gap-4">
+            <div class="w-10 h-10 rounded-xl bg-[__COLOR_ACCENT__]/10 border border-[__COLOR_ACCENT__]/25 flex items-center justify-center shrink-0 text-[__COLOR_ACCENT__]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div>
+              <h4 class="text-base font-bold text-[var(--color-text)] font-heading">[WHY_POINT_1_TITLE]</h4>
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">[WHY_POINT_1_TEXT]</p>
+            </div>
+          </div>
+          <div class="flex gap-4">
+            <div class="w-10 h-10 rounded-xl bg-[__COLOR_SECONDARY__]/10 border border-[__COLOR_SECONDARY__]/25 flex items-center justify-center shrink-0 text-[__COLOR_SECONDARY__]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+            </div>
+            <div>
+              <h4 class="text-base font-bold text-[var(--color-text)] font-heading">[WHY_POINT_2_TITLE]</h4>
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">[WHY_POINT_2_TEXT]</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Split-screen dynamic grid -->
+      <div class="lg:col-span-7 grid grid-cols-2 gap-4 sm:gap-6">
+        <div class="rounded-3xl overflow-hidden h-[300px] border border-white/5 shadow-2xl hover:scale-[1.01] transition-transform duration-500">
+          <img src="[GRID_IMAGE_1]" class="w-full h-full object-cover" alt="Fashion detail 1"/>
+        </div>
+        <div class="rounded-3xl overflow-hidden h-[300px] mt-8 border border-white/5 shadow-2xl hover:scale-[1.01] transition-transform duration-500">
+          <img src="[GRID_IMAGE_2]" class="w-full h-full object-cover" alt="Fashion detail 2"/>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact Section -->
+  <section id="contact" class="py-20 px-6 lg:px-16 max-w-7xl mx-auto scroll-mt-20">
+    <div class="bg-[__CARD_BG__] border border-[__CARD_BORDER__] rounded-3xl p-8 sm:p-12 lg:p-16 text-center relative overflow-hidden shadow-2xl">
+      <div class="absolute top-[-50%] left-[-50%] w-[300px] h-[300px] bg-[__COLOR_ACCENT__] opacity-10 rounded-full blur-3xl"></div>
+      
+      <div class="max-w-2xl mx-auto flex flex-col gap-6 relative z-10">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-widest text-[__COLOR_ACCENT__]">Get in Touch</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-[var(--color-text)] mt-2 font-heading">[CONTACT_HEADING]</h2>
+          <p class="text-sm text-[var(--color-text-muted)] mt-3">[CONTACT_SUBTITLE]</p>
+        </div>
+
+        <form class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8" onsubmit="event.preventDefault(); alert('Message sent successfully!'); this.reset();">
+          <div class="flex flex-col gap-1.5 text-left">
+            <label class="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">Full Name</label>
+            <input type="text" required placeholder="John Doe" class="w-full bg-[var(--color-background-alt)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-text)] focus:outline-none focus:border-[__COLOR_ACCENT__] focus:ring-1 focus:ring-[__COLOR_ACCENT__] transition-all"/>
+          </div>
+          <div class="flex flex-col gap-1.5 text-left">
+            <label class="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">Email Address</label>
+            <input type="email" required placeholder="you@domain.com" class="w-full bg-[var(--color-background-alt)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-text)] focus:outline-none focus:border-[__COLOR_ACCENT__] focus:ring-1 focus:ring-[__COLOR_ACCENT__] transition-all"/>
+          </div>
+          <div class="sm:col-span-2 flex flex-col gap-1.5 text-left">
+            <label class="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">Your Message</label>
+            <textarea required rows="4" placeholder="How can we help you?" class="w-full bg-[var(--color-background-alt)] border border-[var(--card-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-text)] focus:outline-none focus:border-[__COLOR_ACCENT__] focus:ring-1 focus:ring-[__COLOR_ACCENT__] transition-all resize-none"></textarea>
+          </div>
+          
+          <button type="submit" class="sm:col-span-2 mt-2 bg-gradient-to-r from-[__COLOR_ACCENT__] to-[__COLOR_SECONDARY__] text-white text-sm font-bold py-4 rounded-xl transition-all duration-300 hover:scale-[1.02] shadow-lg shadow-[__COLOR_ACCENT__]/25 cursor-pointer">
+            Send Message
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 border-t border-white/5 px-6 lg:px-16 text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-between max-w-7xl mx-auto gap-4">
+    <div class="flex items-center gap-2">
+      <span class="font-extrabold text-[var(--color-text)] tracking-tight text-sm">[BUSINESS_NAME] Store</span>
+    </div>
+    <span>&copy; 2026 [BUSINESS_NAME]. All rights reserved. Created for demonstration.</span>
+  </footer>
+
+  <!-- Shopping Cart Sidebar Drawer Overlay -->
+  <div id="cart-drawer" class="fixed inset-0 z-50 overflow-hidden pointer-events-none transition-opacity duration-300 opacity-0 bg-black/40">
+    <div class="absolute inset-0 overflow-hidden" onclick="toggleCart(false)">
+      <div class="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10">
+        <div id="cart-panel" class="pointer-events-auto w-screen max-w-md transform translate-x-full transition-transform duration-500 bg-[var(--color-background)] border-l border-white/10 shadow-2xl flex flex-col">
+          <!-- Cart Header -->
+          <div class="px-6 py-6 bg-[var(--color-background-alt)] border-b border-white/5 flex items-center justify-between">
+            <h2 class="text-lg font-extrabold text-[var(--color-text)] font-heading">Shopping Bag</h2>
+            <button onclick="toggleCart(false)" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] p-2 rounded-lg cursor-pointer">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <!-- Cart Items Container -->
+          <div class="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-6" id="cart-items">
+            <!-- Empty state (default) -->
+            <div id="cart-empty" class="flex flex-col items-center justify-center h-64 text-[var(--color-text-muted)] gap-4">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+              <span class="text-sm font-semibold">Your shopping bag is empty</span>
+            </div>
+            <div id="cart-list" class="hidden flex flex-col gap-6"></div>
+          </div>
+
+          <!-- Cart Subtotal / Checkout Footer -->
+          <div id="cart-summary" class="hidden px-6 py-6 bg-[var(--color-background-alt)] border-t border-white/5 flex flex-col gap-4">
+            <div class="flex justify-between text-sm text-[var(--color-text)] font-semibold">
+              <span>Subtotal</span>
+              <span id="cart-subtotal">₹0</span>
+            </div>
+            <p class="text-[10px] text-[var(--color-text-muted)] text-left">Shipping and taxes calculated at checkout.</p>
+            <button onclick="startCheckout()" class="w-full bg-gradient-to-r from-[__COLOR_ACCENT__] to-[__COLOR_SECONDARY__] text-white text-sm font-bold py-4 rounded-xl cursor-pointer shadow-lg shadow-[__COLOR_ACCENT__]/20 hover:scale-[1.01] active:scale-[0.99] transition-transform">
+              Proceed to Checkout
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout Flow Overlay Modal -->
+  <div id="checkout-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+    <div class="bg-[var(--color-background-alt)] border border-[var(--card-border)] max-w-md w-full rounded-3xl p-8 shadow-2xl relative text-center flex flex-col gap-6 overflow-hidden">
+      <!-- Confetti container -->
+      <div id="confetti-container" class="absolute inset-0 overflow-hidden pointer-events-none"></div>
+
+      <!-- Processing state -->
+      <div id="checkout-processing" class="flex flex-col items-center justify-center gap-6 py-8">
+        <div class="relative w-16 h-16">
+          <div class="absolute inset-0 rounded-full border-4 border-white/5"></div>
+          <div class="absolute inset-0 rounded-full border-4 border-t-[__COLOR_ACCENT__] animate-spin"></div>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-[var(--color-text)] font-heading" id="checkout-status-title">Securing your order...</h3>
+          <p class="text-xs text-[var(--color-text-muted)] mt-1.5" id="checkout-status-desc">Verifying checkout credentials</p>
+        </div>
+      </div>
+
+      <!-- Success state -->
+      <div id="checkout-success" class="hidden flex flex-col items-center justify-center gap-6 py-6">
+        <div class="w-16 h-16 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-500 shadow-xl shadow-green-500/10">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <h3 class="text-2xl font-black text-white font-heading">Order Placed Successfully!</h3>
+          <p class="text-xs text-[var(--color-text-muted)] mt-2">Thank you for shopping with us. Order #NV-2026-894 has been confirmed. A receipt and tracking details have been sent to your email.</p>
+        </div>
+        <div class="w-full bg-[var(--color-background)] border border-[var(--card-border)] rounded-2xl p-4 flex flex-col gap-2.5 text-left text-xs">
+          <div class="flex justify-between font-bold">
+            <span class="text-[var(--color-text-muted)]">Order ID</span>
+            <span>#NV-2026-894</span>
+          </div>
+          <div class="flex justify-between font-bold">
+            <span class="text-[var(--color-text-muted)]">Delivery Est.</span>
+            <span>2-3 Business Days</span>
+          </div>
+          <div class="h-px bg-white/5 my-1"></div>
+          <div class="flex justify-between font-black text-sm text-[__COLOR_ACCENT__]">
+            <span>Total Paid</span>
+            <span id="checkout-total-paid">₹2,499</span>
+          </div>
+        </div>
+        <button onclick="closeCheckout()" class="w-full bg-white/5 border border-white/10 text-[var(--color-text)] hover:bg-white/10 text-xs font-bold py-3.5 rounded-xl cursor-pointer">
+          Continue Shopping
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script id="catalog-data" type="application/json">
+[CATALOG_JSON_DATA]
+  </script>
+
+  <!-- JavaScript App Logic -->
+  <script>
+    // State management
+    let cart = [];
+    let selectedColor = {};
+    let selectedSizes = {};
+
+    // Render Products Dynamically
+    window.addEventListener('DOMContentLoaded', () => {
+      const catalog = JSON.parse(document.getElementById('catalog-data').textContent || '[]');
+      const gridContainer = document.getElementById('product-grid');
+      gridContainer.innerHTML = '';
+
+      catalog.forEach(item => {
+        // Initialize state for this product
+        selectedColor[item.id] = item.colors[0];
+        selectedSizes[item.id] = item.sizes[1] || item.sizes[0] || 'M';
+
+        const card = document.createElement('div');
+        card.id = `prod-${item.id}`;
+        card.className = "group relative flex flex-col bg-[__CARD_BG__] border border-[__CARD_BORDER__] rounded-3xl overflow-hidden transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl hover:shadow-[__COLOR_ACCENT__]/5 text-left";
+        
+        let swatchesHtml = '';
+        item.colors.forEach((color, idx) => {
+          const hexMap = {
+            red: '#ef4444', blue: '#3b82f6', green: '#10b981', black: '#09090b', white: '#ffffff',
+            beige: '#e6dfd3', gray: '#9ca3af', pink: '#ec4899', purple: '#8b5cf6', yellow: '#f59e0b',
+            navy: '#1e3a8a', indigo: '#4338ca', gold: '#d97706', orange: '#f97316', violet: '#7c3aed'
+          };
+          const colorLower = color.toLowerCase();
+          let bgHex = '#888888';
+          for (const [name, hex] of Object.entries(hexMap)) {
+            if (colorLower.includes(name)) {
+              bgHex = hex;
+              break;
+            }
+          }
+          
+          swatchesHtml += `
+            <button onclick="changeColor(${item.id}, '${color}', '${item.image}')" 
+                    class="w-4.5 h-4.5 rounded-full border border-white/20 focus:outline-none focus:ring-1 focus:ring-offset-2 ${idx === 0 ? 'active-swatch ring-1 ring-offset-2' : ''}" 
+                    style="background-color: ${bgHex};" 
+                    title="${color}"></button>
+          `;
+        });
+
+        let sizesHtml = '';
+        item.sizes.forEach((size, idx) => {
+          sizesHtml += `
+            <button onclick="selectSize(${item.id}, '${size}')" 
+                    class="size-btn-${item.id} border ${idx === 1 ? 'border-[__COLOR_ACCENT__] bg-[__COLOR_ACCENT__]/10 active-size' : 'border-[__CARD_BORDER__]'} rounded-lg px-2.5 py-1 text-xs text-[var(--color-text)] hover:border-[__COLOR_ACCENT__] transition-colors focus:outline-none">
+              ${size}
+            </button>
+          `;
+        });
+
+        card.innerHTML = `
+          <div class="h-[300px] w-full relative overflow-hidden bg-zinc-900">
+            <img id="img-${item.id}" src="${item.image}" alt="${item.title}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+            <span class="absolute top-4 left-4 bg-[__COLOR_ACCENT__] text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-full">Verfied Pick</span>
+          </div>
+          <div class="p-6 flex flex-col gap-4 flex-grow">
+            <div>
+              <h3 class="text-lg font-bold text-[var(--color-text)] font-heading" id="title-${item.id}">${item.title}</h3>
+              <p class="text-[var(--color-text-muted)] text-xs line-clamp-1 mt-0.5">${item.description}</p>
+              <p class="text-sm font-extrabold text-[var(--color-text)] mt-2">₹${item.price.toLocaleString()}</p>
+            </div>
+            <!-- Color swatches -->
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider font-bold">Color:</span>
+              <span id="color-label-${item.id}" class="text-[10px] text-[var(--color-text)] font-bold mr-1 truncate max-w-[70px]">${item.colors[0]}</span>
+              <div class="flex gap-1.5">${swatchesHtml}</div>
+            </div>
+            <!-- Size selectors -->
+            <div class="flex flex-col gap-1.5">
+              <span class="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider font-bold">Size:</span>
+              <div class="flex gap-1.5">${sizesHtml}</div>
+            </div>
+            <!-- Add to Cart button -->
+            <button onclick="addToCart(${item.id}, '${item.title.replace(/'/g, "\\'")}', ${item.price})" class="mt-auto w-full bg-[__COLOR_ACCENT__] hover:bg-[__COLOR_SECONDARY__] text-white text-xs font-bold py-3.5 rounded-xl transition-all duration-300 cursor-pointer shadow-md shadow-[__COLOR_ACCENT__]/10 flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+              Add to Cart
+            </button>
+          </div>
+        `;
+        gridContainer.appendChild(card);
+      });
+      
+      // Run autoplay if in automated context
+      if (window.navigator.webdriver || window.location.search.includes('autoplay=true')) {
+        console.log('[Auto-Store] Playwright environment detected. Initiating automated storefront purchase walk-through.');
+        
+        setTimeout(() => {
+          // Highlight Product 1 & Pick size
+          const sizeButtons = document.querySelectorAll('.size-btn-1');
+          if (sizeButtons.length > 1) {
+            sizeButtons[1].click(); // click size M
+          }
+          console.log('[Auto-Store] Size selected: M');
+          
+          setTimeout(() => {
+            // Select second color swatch
+            const colorButtons = document.getElementById('prod-1').querySelectorAll('.flex.items-center.gap-2 button');
+            if (colorButtons.length > 1) {
+              colorButtons[1].click();
+            }
+            console.log('[Auto-Store] Color swatch selected');
+            
+            setTimeout(() => {
+              // Click Add to Cart
+              const addBtn = document.getElementById('prod-1').querySelector('button[onclick*="addToCart"]');
+              if (addBtn) addBtn.click();
+              console.log('[Auto-Store] Product added to shopping cart');
+              
+              setTimeout(() => {
+                // Click Checkout inside Cart Drawer
+                const checkoutBtn = document.querySelector('button[onclick="startCheckout()"]');
+                if (checkoutBtn) checkoutBtn.click();
+                console.log('[Auto-Store] Initiated checkout processing flow');
+              }, 1200);
+              
+            }, 1000);
+            
+          }, 1000);
+          
+        }, 1500);
+      }
+    });
+
+    // Toggle Cart Drawer
+    function toggleCart(open) {
+      const drawer = document.getElementById('cart-drawer');
+      const panel = document.getElementById('cart-panel');
+      if (open) {
+        drawer.classList.remove('pointer-events-none', 'opacity-0');
+        drawer.classList.add('opacity-100');
+        panel.classList.remove('translate-x-full');
+        panel.classList.add('translate-x-0');
+      } else {
+        panel.classList.remove('translate-x-0');
+        panel.classList.add('translate-x-full');
+        setTimeout(() => {
+          drawer.classList.remove('opacity-100');
+          drawer.classList.add('opacity-0', 'pointer-events-none');
+        }, 300);
+      }
+    }
+
+    // Color swatches selection
+    function changeColor(productId, colorName, imageUrl) {
+      selectedColor[productId] = colorName;
+      const label = document.getElementById(`color-label-${productId}`);
+      if (label) label.textContent = colorName;
+      
+      // Update active swatch styling
+      const buttons = document.getElementById(`prod-${productId}`).querySelectorAll('.flex.items-center.gap-2 button');
+      buttons.forEach(btn => btn.classList.remove('active-swatch', 'ring-1', 'ring-offset-2'));
+      event.target.classList.add('active-swatch', 'ring-1', 'ring-offset-2');
+    }
+
+    // Size selection
+    function selectSize(productId, sizeVal) {
+      selectedSizes[productId] = sizeVal;
+      
+      const buttons = document.querySelectorAll(`.size-btn-${productId}`);
+      buttons.forEach(btn => {
+        btn.classList.remove('bg-[__COLOR_ACCENT__]/10', 'border-[__COLOR_ACCENT__]', 'active-size');
+        btn.classList.add('border-[__CARD_BORDER__]');
+      });
+      event.target.classList.remove('border-[__CARD_BORDER__]');
+      event.target.classList.add('bg-[__COLOR_ACCENT__]/10', 'border-[__COLOR_ACCENT__]', 'active-size');
+    }
+
+    // Add to Cart
+    function addToCart(productId, title, price) {
+      const size = selectedSizes[productId] || 'M';
+      const color = selectedColor[productId] || 'Beige';
+      
+      const existingIndex = cart.findIndex(item => item.id === productId && item.size === size && item.color === color);
+      if (existingIndex > -1) {
+        cart[existingIndex].qty += 1;
+      } else {
+        cart.push({ id: productId, title, price, size, color, qty: 1 });
+      }
+      
+      updateCartUI();
+      toggleCart(true);
+    }
+
+    // Remove from cart
+    function removeFromCart(index) {
+      cart.splice(index, 1);
+      updateCartUI();
+    }
+
+    // Adjust Quantity
+    function adjustQty(index, amt) {
+      cart[index].qty += amt;
+      if (cart[index].qty <= 0) {
+        cart.splice(index, 1);
+      }
+      updateCartUI();
+    }
+
+    // Update Cart Badge and Drawer List
+    function updateCartUI() {
+      const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+      document.getElementById('cart-badge').textContent = totalItems;
+      
+      const emptyState = document.getElementById('cart-empty');
+      const listState = document.getElementById('cart-list');
+      const summaryState = document.getElementById('cart-summary');
+      
+      if (cart.length === 0) {
+        emptyState.classList.remove('hidden');
+        listState.classList.add('hidden');
+        summaryState.classList.add('hidden');
+      } else {
+        emptyState.classList.add('hidden');
+        listState.classList.remove('hidden');
+        summaryState.classList.remove('hidden');
+        
+        const listContainer = document.getElementById('cart-items');
+        listState.innerHTML = '';
+        
+        let subtotal = 0;
+        cart.forEach((item, index) => {
+          subtotal += item.price * item.qty;
+          
+          // Get image from parent product in page state
+          const prodCard = document.getElementById(`prod-${item.id}`);
+          const productImg = prodCard ? prodCard.querySelector('img').src : '';
+          
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'flex items-center gap-4 bg-white/5 border border-white/5 p-3.5 rounded-2xl text-left';
+          itemDiv.innerHTML = `
+            <img src="${productImg}" class="w-14 h-18 object-cover rounded-xl bg-zinc-900 border border-white/10" alt="${item.title}" />
+            <div class="flex-grow flex flex-col gap-1 min-w-0">
+              <span class="text-sm font-bold text-white truncate font-heading">${item.title}</span>
+              <span class="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase">Size: ${item.size} • Color: ${item.color}</span>
+              <div class="flex items-center gap-2 mt-1">
+                <button onclick="adjustQty(${index}, -1)" class="w-5 h-5 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-center text-xs text-white cursor-pointer font-bold">-</button>
+                <span class="text-xs font-semibold px-1">${item.qty}</span>
+                <button onclick="adjustQty(${index}, 1)" class="w-5 h-5 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-center text-xs text-white cursor-pointer font-bold">+</button>
+              </div>
+            </div>
+            <div class="text-right flex flex-col gap-2 shrink-0">
+              <span class="text-xs font-bold text-white">₹${(item.price * item.qty).toLocaleString()}</span>
+              <button onclick="removeFromCart(${index})" class="text-[var(--color-text-muted)] hover:text-red-400 text-[10px] uppercase font-black tracking-wider cursor-pointer">Remove</button>
+            </div>
+          `;
+          listState.appendChild(itemDiv);
+        });
+        
+        document.getElementById('cart-subtotal').textContent = `₹${subtotal.toLocaleString()}`;
+        document.getElementById('checkout-total-paid').textContent = `₹${subtotal.toLocaleString()}`;
+      }
+    }
+
+    // Checkout Modal simulation
+    function startCheckout() {
+      toggleCart(false);
+      
+      const modal = document.getElementById('checkout-modal');
+      const procState = document.getElementById('checkout-processing');
+      const succState = document.getElementById('checkout-success');
+      
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      procState.classList.remove('hidden');
+      succState.classList.add('hidden');
+      
+      const stages = [
+        { title: "Verifying payment details...", desc: "Securing connection gateway" },
+        { title: "Processing payment...", desc: "Authorizing order value total" },
+        { title: "Finalizing invoice...", desc: "Syncing with warehouse shipping" }
+      ];
+      
+      let step = 0;
+      const statusTitle = document.getElementById('checkout-status-title');
+      const statusDesc = document.getElementById('checkout-status-desc');
+      
+      const interval = setInterval(() => {
+        if (step < stages.length) {
+          statusTitle.textContent = stages[step].title;
+          statusDesc.textContent = stages[step].desc;
+          step++;
+        } else {
+          clearInterval(interval);
+          procState.classList.add('hidden');
+          succState.classList.remove('hidden');
+          triggerConfetti();
+        }
+      }, 900);
+    }
+
+    function closeCheckout() {
+      document.getElementById('checkout-modal').classList.remove('flex');
+      document.getElementById('checkout-modal').classList.add('hidden');
+      cart = [];
+      updateCartUI();
+    }
+
+    // Falling Confetti Animation
+    function triggerConfetti() {
+      const container = document.getElementById('confetti-container');
+      container.innerHTML = '';
+      const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6'];
+      
+      for (let i = 0; i < 40; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        piece.style.left = `${Math.random() * 100}%`;
+        piece.style.width = `${Math.random() * 6 + 6}px`;
+        piece.style.height = piece.style.width;
+        piece.style.animationDelay = `${Math.random() * 1.5}s`;
+        piece.style.animationDuration = `${Math.random() * 2 + 1.5}s`;
+        container.appendChild(piece);
+      }
+    }
+  </script>
+</body>
+</html>

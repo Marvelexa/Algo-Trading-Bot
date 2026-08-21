@@ -1,0 +1,34 @@
+{
+  "India": [
+    "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", 
+    "Kolkata", "Surat", "Pune", "Ahmedabad", "Jaipur", 
+    "Lucknow", "Kanpur", "Nagpur", "Indore", "Thane", 
+    "Bhopal", "Visakhapatnam", "Pimpri-Chinchwad", "Patna", "Vadodara"
+  ],
+  "USA": [
+    "New York", "Los Angeles", "Chicago", "Houston", "Phoenix", 
+    "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", 
+    "Austin", "Jacksonville", "Fort Worth", "Columbus", "Charlotte", 
+    "San Francisco", "Indianapolis", "Seattle", "Denver", "Washington"
+  ],
+  "UK": [
+    "London", "Birmingham", "Manchester", "Glasgow", "Liverpool", 
+    "Newcastle", "Sheffield", "Leeds", "Bristol", "Nottingham", 
+    "Southampton", "Leicester", "Coventry", "Belfast", "Reading", 
+    "Cardiff", "Edinburgh", "Bournemouth", "Middlesbrough", "Stoke-on-Trent"
+  ],
+  "UAE": [
+    "Dubai", "Abu Dhabi", "Sharjah", "Al Ain", "Ajman", 
+    "Ras Al Khaimah", "Fujairah", "Umm Al Quwain", "Khor Fakkan", "Dibba"
+  ],
+  "Canada": [
+    "Toronto", "Montreal", "Vancouver", "Calgary", "Edmonton", 
+    "Ottawa", "Winnipeg", "Quebec City", "Hamilton", "Kitchener", 
+    "London", "Victoria", "Halifax", "Oshawa", "Windsor"
+  ],
+  "Australia": [
+    "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", 
+    "Gold Coast", "Newcastle", "Canberra", "Sunshine Coast", "Wollongong", 
+    "Geelong", "Hobart", "Townsville", "Cairns", "Darwin"
+  ]
+}

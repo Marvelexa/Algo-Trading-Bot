@@ -1,0 +1,15 @@
+{
+  "id": "job_1784648738467",
+  "country": "Kuwait",
+  "category": "clothing store",
+  "maxLeads": 5,
+  "currentCityIndex": 1,
+  "cities": [
+    "Kuwait"
+  ],
+  "leadsCollected": 69,
+  "duplicateCount": 0,
+  "failedCities": [],
+  "status": "completed",
+  "lastUpdated": "2026-07-21T16:41:34.148Z"
+}

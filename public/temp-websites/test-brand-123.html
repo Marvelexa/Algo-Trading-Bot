@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Urban Threads - Premium Home</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-accent: undefined;
+      --color-secondary: #4B5563;
+      --font-heading: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+    }
+    body {
+      font-family: var(--font-body);
+      background-color: #ffffff;
+      color: #111827;
+      scroll-behavior: smooth;
+    }
+    h1, h2, h3, h4, h5, h6, .font-heading { font-family: var(--font-heading) !important; }
+    
+    /* Animations */
+    .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+    .fade-up.visible { opacity: 1; transform: translateY(0); }
+    .stagger-1 { transition-delay: 100ms; }
+    .stagger-2 { transition-delay: 200ms; }
+    .stagger-3 { transition-delay: 300ms; }
+    
+    .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    .glass-dark { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.05); }
+    
+    .gradient-text { background: linear-gradient(135deg, var(--color-accent), var(--color-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .gradient-bg { background: linear-gradient(135deg, var(--color-accent), var(--color-secondary)); }
+    
+    /* Scroll Progress */
+    #scroll-progress { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--color-accent), var(--color-secondary)); z-index: 9999; transition: width 0.1s; }
+  </style>
+</head>
+<body class="overflow-x-hidden antialiased">
+  <div id="scroll-progress" style="width: 0%"></div>
+
+  <!-- Personalized Preview Badge -->
+  <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 glass-dark text-white text-xs font-semibold px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-bounce cursor-pointer border border-[var(--color-accent)]/30 hover:scale-105 transition-transform" onclick="showToast('Contact us to launch this website!')">
+    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-[var(--color-accent)]"></i>
+    Personalized Preview Built for Urban Threads
+  </div>
+
+  <!-- Sticky Navbar -->
+  <header class="fixed top-0 w-full z-40 glass border-b border-white/5 px-6 py-4 transition-all duration-300" id="navbar">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="font-heading font-extrabold text-xl tracking-tight flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center text-white text-xs shadow-lg shadow-[var(--color-accent)]/20">UR</div>
+        Urban Threads
+      </div>
+      <nav class="hidden md:flex items-center gap-8 text-sm font-semibold opacity-80">
+        <a href="#about" class="hover:text-[var(--color-accent)] transition-colors">About</a>
+        <a href="#showcase" class="hover:text-[var(--color-accent)] transition-colors">Services</a>
+        <a href="#reviews" class="hover:text-[var(--color-accent)] transition-colors">Reviews</a>
+        <a href="#faq" class="hover:text-[var(--color-accent)] transition-colors">FAQ</a>
+      </nav>
+      <button onclick="showToast('Redirecting to booking...')" class="gradient-bg text-white text-xs font-bold px-5 py-2.5 rounded-full hover:scale-105 transition-transform shadow-lg shadow-[var(--color-accent)]/20">
+        Shop Now
+      </button>
+    </div>
+  </header>
+
+  <!-- 1. Hero Section -->
+  <section class="relative min-h-[90vh] flex items-center pt-24 pb-12 overflow-hidden">
+    <div class="absolute inset-0 z-0">
+      <img src="https://image.pollinations.ai/prompt/urban%20fashion%20model?width=1920&height=1080&nologo=true" class="w-full h-full object-cover opacity-30 scale-105 transform origin-center animate-[pulse_20s_ease-in-out_infinite_alternate]" alt="Hero Background">
+      <div class="absolute inset-0 bg-gradient-to-b from-#ffffff/80 via-#ffffff/90 to-#ffffff"></div>
+    </div>
+    
+    <!-- Floating Orbs -->
+    <div class="absolute top-1/4 -left-32 w-96 h-96 bg-[var(--color-accent)] rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-[spin_15s_linear_infinite]"></div>
+    <div class="absolute bottom-1/4 -right-32 w-96 h-96 bg-[var(--color-secondary)] rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-[spin_20s_linear_infinite_reverse]"></div>
+
+    <div class="max-w-7xl mx-auto px-6 relative z-10 grid lg:grid-cols-2 gap-12 items-center w-full">
+      <div class="flex flex-col gap-6 fade-up">
+        <div class="inline-flex items-center gap-2 glass px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase w-fit text-[var(--color-accent)]">
+          <i data-lucide="award" class="w-3.5 h-3.5"></i>
+          Premium Quality
+        </div>
+        <h1 class="text-5xl lg:text-7xl font-extrabold tracking-tighter leading-[1.1] font-heading">
+          Define Your <br/>
+          <span class="gradient-text">Style</span>
+        </h1>
+        <p class="text-lg opacity-80 max-w-lg leading-relaxed">
+          At Urban Threads, we believe style is a form of expression. Discover curated pieces that speak to your individuality.
+        </p>
+        <div class="flex flex-wrap items-center gap-4 mt-4">
+          <button onclick="showToast('Action triggered successfully!')" class="gradient-bg text-white text-base font-bold px-8 py-4 rounded-xl hover:-translate-y-1 hover:shadow-xl hover:shadow-[var(--color-accent)]/30 transition-all">
+            Shop Now
+          </button>
+          <a href="#showcase" class="glass text-sm font-bold px-8 py-4 rounded-xl hover:bg-white/5 transition-all">
+            See Lookbook
+          </a>
+        </div>
+      </div>
+      
+      <div class="relative h-[500px] rounded-3xl overflow-hidden glass p-2 fade-up stagger-2 hidden lg:block">
+        <img src="https://image.pollinations.ai/prompt/fashion%20detail?width=800&height=1200&nologo=true" class="w-full h-full object-cover rounded-2xl" alt="Showcase">
+        <!-- Floating Rating Card -->
+        <div class="absolute bottom-8 left-[-20px] glass-dark p-4 rounded-2xl flex items-center gap-4 shadow-2xl animate-[bounce_4s_infinite]">
+          <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center text-amber-500">
+            <i data-lucide="star" class="w-6 h-6 fill-current"></i>
+          </div>
+          <div>
+            <div class="text-xs opacity-70 uppercase tracking-widest font-bold">Google Rating</div>
+            <div class="text-xl font-black">4.9 ★</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Trust Strip -->
+  <div class="w-full border-y border-white/5 bg-white/2 backdrop-blur-sm py-8 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-6 flex flex-wrap items-center justify-center sm:justify-between gap-8 text-center sm:text-left fade-up">
+      <div class="flex items-center gap-3">
+        <i data-lucide="star" class="text-amber-500 w-6 h-6 fill-current"></i>
+        <div>
+          <div class="font-black text-xl">4.9 Rating</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Verified Reviews</div>
+        </div>
+      </div>
+      <div class="w-px h-10 bg-white/10 hidden sm:block"></div>
+      <div class="flex items-center gap-3">
+        <i data-lucide="users" class="text-[var(--color-accent)] w-6 h-6"></i>
+        <div>
+          <div class="font-black text-xl">10k+</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Happy Customers</div>
+        </div>
+      </div>
+      <div class="w-px h-10 bg-white/10 hidden sm:block"></div>
+      <div class="flex items-center gap-3">
+        <i data-lucide="calendar-check" class="text-[var(--color-secondary)] w-6 h-6"></i>
+        <div>
+          <div class="font-black text-xl">10</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Years Experience</div>
+        </div>
+      </div>
+      <div class="w-px h-10 bg-white/10 hidden sm:block"></div>
+      <div class="flex items-center gap-3">
+        <i data-lucide="shield-check" class="text-emerald-500 w-6 h-6"></i>
+        <div>
+          <div class="font-black text-xl">Certified</div>
+          <div class="text-xs opacity-60 uppercase tracking-wider font-bold">Professionals</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. About Business -->
+  <section id="about" class="py-24 max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-16 items-center">
+    <div class="relative rounded-3xl overflow-hidden aspect-square md:aspect-auto md:h-[500px] fade-up">
+      <img src="https://image.pollinations.ai/prompt/fashion%20studio?width=800&height=800&nologo=true" class="w-full h-full object-cover transition-transform duration-1000 hover:scale-110" alt="About Us">
+      <div class="absolute inset-0 border-[8px] border-[var(--color-accent)]/20 rounded-3xl z-10 m-4 pointer-events-none"></div>
+    </div>
+    <div class="flex flex-col gap-6 text-left fade-up stagger-1">
+      <div class="text-[var(--color-accent)] font-bold tracking-widest uppercase text-sm flex items-center gap-2">
+        <span class="w-8 h-px bg-[var(--color-accent)]"></span> Our Story
+      </div>
+      <h2 class="text-4xl lg:text-5xl font-black font-heading leading-tight">Where Style Meets Substance</h2>
+      <p class="text-lg opacity-70 leading-relaxed">Founded in 2014, Urban Threads began as a vision to redefine modern fashion. Each piece is crafted with meticulous attention to detail, blending urban aesthetics with premium comfort. Today, we're proud to dress the trendsetters of tomorrow.</p>
+      <button onclick="showToast('Learn more loaded!')" class="w-fit mt-4 border border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white px-8 py-3 rounded-full font-bold transition-colors">
+        Read Our Story
+      </button>
+    </div>
+  </section>
+
+  <!-- 4. Dynamic Showcase (Products/Services) -->
+  <section id="showcase" class="py-24 bg-white/2 relative">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16 fade-up">
+        <h2 class="text-4xl md:text-5xl font-black font-heading mb-4">Featured Collection</h2>
+        <p class="opacity-70 max-w-2xl mx-auto">Curated pieces for the modern wardrobe.</p>
+      </div>
+
+      <!-- DYNAMIC CATALOG ITEMS WILL BE INJECTED HERE -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 fade-up stagger-1">
+        
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300">
+          <img src="https://image.pollinations.ai/prompt/denim%20jacket?width=400&height=300&nologo=true&sig=0.418833406245943" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Urban Denim Jacket</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">A timeless layer with a modern fit. Made from premium stretch denim.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$89</span>
+              <button onclick="showToast('Add to Cart successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300">
+          <img src="https://image.pollinations.ai/prompt/cashmere%20sweater?width=400&height=300&nologo=true&sig=0.2780161592245365" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Cashmere Blend Sweater</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">Luxuriously soft and warm. Perfect for elevated comfort.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$129</span>
+              <button onclick="showToast('Add to Cart successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300">
+          <img src="https://image.pollinations.ai/prompt/chinos?width=400&height=300&nologo=true&sig=0.8250232930878686" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Tailored Chinos</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">Sharp and versatile. A wardrobe essential for any occasion.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$79</span>
+              <button onclick="showToast('Add to Cart successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300">
+          <img src="https://image.pollinations.ai/prompt/silk%20blouse?width=400&height=300&nologo=true&sig=0.435029623693446" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Silk Blouse</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">Effortlessly elegant. A smooth finish that commands attention.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$149</span>
+              <button onclick="showToast('Add to Cart successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300">
+          <img src="https://image.pollinations.ai/prompt/leather%20bag?width=400&height=300&nologo=true&sig=0.3336465251689301" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Leather Crossbody</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">Sleek and practical. The perfect accessory to complete any look.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$59</span>
+              <button onclick="showToast('Add to Cart successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="glass-dark rounded-2xl overflow-hidden hover:-translate-y-2 transition-transform duration-300">
+          <img src="https://image.pollinations.ai/prompt/sneakers?width=400&height=300&nologo=true&sig=0.14103223298558787" class="w-full h-48 object-cover">
+          <div class="p-6">
+            <h3 class="text-xl font-bold mb-2">Sneaker Collection</h3>
+            <p class="text-sm opacity-70 mb-4 h-10 overflow-hidden">Street-ready style meets premium comfort. A must-have for every closet.</p>
+            <div class="flex items-center justify-between">
+              <span class="font-black text-lg">$199</span>
+              <button onclick="showToast('Add to Cart successful!')" class="text-xs font-bold px-4 py-2 bg-white/10 hover:bg-[var(--color-accent)] rounded-lg transition-colors">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Why Choose Us -->
+  <section class="py-24 max-w-7xl mx-auto px-6">
+    <div class="grid lg:grid-cols-3 gap-12">
+      <div class="lg:col-span-1 fade-up">
+        <h2 class="text-4xl md:text-5xl font-black font-heading mb-6">Why Choose Urban Threads?</h2>
+        <p class="opacity-70 mb-8">We combine contemporary design with uncompromising quality. Our garments are made to last and built to impress.</p>
+        <button onclick="showToast('Contacting...')" class="gradient-bg text-white px-6 py-3 rounded-full font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2">
+          Work With Us <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="lg:col-span-2 grid sm:grid-cols-2 gap-6">
+        <!-- Will be populated dynamically based on AI JSON -->
+        
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="shield" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Premium Materials</h3>
+          <p class="opacity-70 text-sm">Only the finest fabrics sourced globally.</p>
+        </div>
+      
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="award" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Expert Craftsmanship</h3>
+          <p class="opacity-70 text-sm">Meticulous attention to every stitch.</p>
+        </div>
+      
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="zap" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Fast & Free Shipping</h3>
+          <p class="opacity-70 text-sm">Get your style delivered in days.</p>
+        </div>
+      
+        <div class="glass p-6 rounded-2xl hover:border-[var(--color-accent)]/50 transition-colors fade-up">
+          <div class="w-12 h-12 rounded-xl bg-[var(--color-accent)]/20 text-[var(--color-accent)] flex items-center justify-center mb-4"><i data-lucide="heart" class="w-6 h-6"></i></div>
+          <h3 class="text-xl font-bold mb-2">Easy Returns</h3>
+          <p class="opacity-70 text-sm">Love it or send it back, hassle-free.</p>
+        </div>
+      
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Statistics (Counters) -->
+  <section class="py-20 gradient-bg text-white relative overflow-hidden">
+    <div class="absolute inset-0 bg-black/20"></div>
+    <div class="max-w-7xl mx-auto px-6 relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center fade-up">
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">10k+</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Happy Customers</div>
+      </div>
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">500+</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Unique Designs</div>
+      </div>
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">4.9</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Average Rating</div>
+      </div>
+      <div>
+        <div class="text-4xl md:text-6xl font-black font-heading mb-2">50+</div>
+        <div class="text-sm font-bold uppercase tracking-wider opacity-80">Industry Awards</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Gallery -->
+  <section class="py-24 max-w-7xl mx-auto px-6">
+    <div class="text-center mb-16 fade-up">
+      <h2 class="text-4xl font-black font-heading mb-4">Our Work & Atmosphere</h2>
+      <p class="opacity-70">A glimpse into the Urban Threads experience.</p>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-[200px] fade-up stagger-1">
+      <div class="col-span-2 row-span-2 rounded-2xl overflow-hidden relative group cursor-pointer" onclick="showToast('Image opened in Lightbox')">
+        <img src="https://image.pollinations.ai/prompt/fashion%20runway?width=800&height=600&nologo=true" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><i data-lucide="zoom-in" class="w-8 h-8 text-white"></i></div>
+      </div>
+      <div class="rounded-2xl overflow-hidden relative group cursor-pointer" onclick="showToast('Image opened in Lightbox')">
+        <img src="https://image.pollinations.ai/prompt/street%20style%20inspiration?width=400&height=400&nologo=true" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+      </div>
+      <div class="rounded-2xl overflow-hidden relative group cursor-pointer" onclick="showToast('Image opened in Lightbox')">
+        <img src="https://image.pollinations.ai/prompt/model%20portrait?width=400&height=400&nologo=true" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+      </div>
+      <div class="col-span-2 rounded-2xl overflow-hidden relative group cursor-pointer" onclick="showToast('Image opened in Lightbox')">
+        <img src="https://image.pollinations.ai/prompt/clothing%20detail?width=800&height=400&nologo=true" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. Reviews Slider -->
+  <section id="reviews" class="py-24 bg-white/2 border-y border-white/5 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-6 text-center fade-up">
+      <h2 class="text-4xl font-black font-heading mb-12">What Our Clients Say</h2>
+      <div class="flex gap-6 overflow-x-auto pb-8 snap-x hide-scrollbar" style="scrollbar-width: none;">
+        <!-- AI Reviews Injected Here -->
+        
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"Absolutely love my new jacket! The quality is incredible and the fit is perfect. Will definitely be ordering again."</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">A</div>
+            <div class="font-bold">Alex R.</div>
+          </div>
+        </div>
+      
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"Urban Threads has completely transformed my wardrobe. The style and comfort are unmatched."</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">S</div>
+            <div class="font-bold">Sam T.</div>
+          </div>
+        </div>
+      
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"I was blown away by the craftsmanship. Every piece feels like it was made just for me."</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">J</div>
+            <div class="font-bold">Jordan M.</div>
+          </div>
+        </div>
+      
+        <div class="min-w-[300px] w-[300px] glass p-6 rounded-2xl snap-center shrink-0 hover:scale-105 transition-transform duration-300">
+          <div class="flex text-amber-500 mb-4"><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i><i data-lucide="star" class="w-4 h-4 fill-current"></i></div>
+          <p class="opacity-80 italic mb-6 text-sm">"Fast shipping and beautiful packaging. The silk blouse is a dream come true. Highly recommend!"</p>
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">C</div>
+            <div class="font-bold">Casey L.</div>
+          </div>
+        </div>
+      
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. Process Timeline -->
+  <section class="py-24 max-w-5xl mx-auto px-6 text-center">
+    <h2 class="text-4xl font-black font-heading mb-16 fade-up">How It Works</h2>
+    <div class="grid md:grid-cols-3 gap-8 relative fade-up stagger-1">
+      <div class="hidden md:block absolute top-12 left-[16.66%] right-[16.66%] h-0.5 bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-secondary)] opacity-30 z-0"></div>
+      
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-24 h-24 rounded-full glass border-2 border-[var(--color-accent)] flex items-center justify-center text-3xl font-black mb-6 shadow-xl shadow-[var(--color-accent)]/20 text-[var(--color-accent)]">1</div>
+        <h3 class="text-xl font-bold mb-2">Conception</h3>
+        <p class="opacity-70 text-sm">We sketch and refine every design with passion.</p>
+      </div>
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-24 h-24 rounded-full glass border-2 border-[var(--color-accent)] flex items-center justify-center text-3xl font-black mb-6 shadow-xl text-[var(--color-accent)]">2</div>
+        <h3 class="text-xl font-bold mb-2">Creation</h3>
+        <p class="opacity-70 text-sm">Expert artisans bring our visions to life.</p>
+      </div>
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-24 h-24 rounded-full glass border-2 border-[var(--color-secondary)] flex items-center justify-center text-3xl font-black mb-6 shadow-xl shadow-[var(--color-secondary)]/20 text-[var(--color-secondary)]">3</div>
+        <h3 class="text-xl font-bold mb-2">Delivery</h3>
+        <p class="opacity-70 text-sm">Your look arrives ready to impress.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. FAQ Accordion -->
+  <section id="faq" class="py-24 bg-white/2">
+    <div class="max-w-3xl mx-auto px-6 fade-up">
+      <h2 class="text-4xl font-black font-heading mb-12 text-center">Frequently Asked Questions</h2>
+      <div class="flex flex-col gap-4">
+        
+        <div class="glass rounded-2xl overflow-hidden cursor-pointer" onclick="toggleFaq(this)">
+          <div class="p-6 flex items-center justify-between font-bold text-lg">
+            What sizes do you offer?
+            <i data-lucide="chevron-down" class="w-5 h-5 transition-transform"></i>
+          </div>
+          <div class="px-6 pb-6 text-sm opacity-70 max-h-0 overflow-hidden transition-all duration-300 m-0">We offer sizes XS through 3XL. Our size guide is available on every product page to help you find the perfect fit.</div>
+        </div>
+      
+        <div class="glass rounded-2xl overflow-hidden cursor-pointer" onclick="toggleFaq(this)">
+          <div class="p-6 flex items-center justify-between font-bold text-lg">
+            What is your return policy?
+            <i data-lucide="chevron-down" class="w-5 h-5 transition-transform"></i>
+          </div>
+          <div class="px-6 pb-6 text-sm opacity-70 max-h-0 overflow-hidden transition-all duration-300 m-0">You have 30 days to return any unworn item for a full refund. We also provide free return shipping for exchanges.</div>
+        </div>
+      
+        <div class="glass rounded-2xl overflow-hidden cursor-pointer" onclick="toggleFaq(this)">
+          <div class="p-6 flex items-center justify-between font-bold text-lg">
+            Are your materials sustainable?
+            <i data-lucide="chevron-down" class="w-5 h-5 transition-transform"></i>
+          </div>
+          <div class="px-6 pb-6 text-sm opacity-70 max-h-0 overflow-hidden transition-all duration-300 m-0">We prioritize eco-friendly fabrics and ethical production. Many of our pieces use organic cotton, recycled materials, or low-impact dyes.</div>
+        </div>
+      
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. Final CTA -->
+  <section class="py-32 relative overflow-hidden text-center text-white">
+    <div class="absolute inset-0 gradient-bg"></div>
+    <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+    <div class="relative z-10 max-w-4xl mx-auto px-6 fade-up">
+      <h2 class="text-5xl md:text-7xl font-black font-heading mb-8 leading-tight">Ready to Elevate Your Wardrobe?</h2>
+      <button onclick="showToast('Onboarding process initiated!')" class="bg-white text-[var(--color-accent)] px-10 py-5 rounded-full font-black text-lg hover:scale-110 transition-transform shadow-2xl">
+        Shop the Collection
+      </button>
+    </div>
+  </section>
+
+  <!-- 12. Contact Footer Wrapper -->
+  <footer class="border-t border-white/10 pt-20 pb-8 bg-black/20">
+    <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-4 gap-12 mb-16 fade-up">
+      <div class="md:col-span-2">
+        <div class="font-heading font-extrabold text-2xl tracking-tight flex items-center gap-2 mb-6">
+          <div class="w-10 h-10 rounded-lg gradient-bg flex items-center justify-center text-white text-sm shadow-lg">UR</div>
+          Urban Threads
+        </div>
+        <p class="opacity-70 mb-8 max-w-sm">Founded in 2014, Urban Threads began as a vision to redefine modern fashion. Each piece is crafted with meticulous attention to detail, blending urban aesthetics with premium comfort. Today, we're proud to dress the trendsetters of tomorrow.</p>
+        <div class="flex gap-4">
+          <a href="#" class="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-[var(--color-accent)] transition-colors"><i data-lucide="facebook" class="w-5 h-5"></i></a>
+          <a href="#" class="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-[var(--color-accent)] transition-colors"><i data-lucide="instagram" class="w-5 h-5"></i></a>
+          <a href="#" class="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-[var(--color-accent)] transition-colors"><i data-lucide="twitter" class="w-5 h-5"></i></a>
+        </div>
+      </div>
+      <div>
+        <h4 class="font-bold mb-6 uppercase tracking-wider text-sm opacity-50">Quick Links</h4>
+        <ul class="flex flex-col gap-4 opacity-80">
+          <li><a href="#about" class="hover:text-[var(--color-accent)]">About Us</a></li>
+          <li><a href="#showcase" class="hover:text-[var(--color-accent)]">Services</a></li>
+          <li><a href="#reviews" class="hover:text-[var(--color-accent)]">Reviews</a></li>
+          <li><a href="#faq" class="hover:text-[var(--color-accent)]">FAQ</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="font-bold mb-6 uppercase tracking-wider text-sm opacity-50">Contact</h4>
+        <ul class="flex flex-col gap-4 opacity-80">
+          <li class="flex items-center gap-3"><i data-lucide="map-pin" class="w-4 h-4 text-[var(--color-accent)]"></i> 123 Premium Street, City</li>
+          <li class="flex items-center gap-3"><i data-lucide="phone" class="w-4 h-4 text-[var(--color-accent)]"></i> +1 (555) 123-4567</li>
+          <li class="flex items-center gap-3"><i data-lucide="mail" class="w-4 h-4 text-[var(--color-accent)]"></i> hello@[sanitized_name].com</li>
+          <li class="flex items-center gap-3 mt-2">
+            <button onclick="showToast('Opening Maps...')" class="glass px-4 py-2 rounded-lg text-xs font-bold w-full hover:bg-white/10 transition-colors">View on Map</button>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="text-center opacity-40 text-xs border-t border-white/10 pt-8 max-w-7xl mx-auto px-6">
+      &copy; 2026 Urban Threads. All rights reserved. Designed for excellence.
+    </div>
+  </footer>
+
+  <!-- Floating WhatsApp -->
+  <button onclick="showToast('Opening WhatsApp...')" class="fixed bottom-6 left-6 z-50 w-14 h-14 bg-[#25D366] text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform animate-[bounce_3s_infinite]">
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+  </button>
+
+  <!-- Back to Top -->
+  <button id="backToTop" onclick="window.scrollTo(0,0)" class="fixed bottom-6 right-6 z-50 w-12 h-12 glass border border-white/20 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform opacity-0 pointer-events-none group">
+    <i data-lucide="chevron-up" class="w-6 h-6 group-hover:-translate-y-1 transition-transform"></i>
+  </button>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-24 right-6 z-50 glass-dark border border-[var(--color-accent)]/50 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
+      <i data-lucide="check" class="w-5 h-5"></i>
+    </div>
+    <span id="toastMessage" class="font-bold text-sm">Action Successful ✓</span>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    
+    // Toast logic
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMessage').innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    // Scroll Logic
+    const navbar = document.getElementById('navbar');
+    const btt = document.getElementById('backToTop');
+    const progressBar = document.getElementById('scroll-progress');
+    
+    window.addEventListener('scroll', () => {
+      // Progress
+      const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = (winScroll / height) * 100;
+      progressBar.style.width = scrolled + "%";
+
+      // Navbar
+      if (window.scrollY > 50) {
+        navbar.classList.add('glass-dark', 'shadow-xl');
+        navbar.classList.remove('glass');
+      } else {
+        navbar.classList.remove('glass-dark', 'shadow-xl');
+        navbar.classList.add('glass');
+      }
+
+      // Back to top
+      if (window.scrollY > 500) {
+        btt.classList.remove('opacity-0', 'pointer-events-none');
+      } else {
+        btt.classList.add('opacity-0', 'pointer-events-none');
+      }
+    });
+
+    // Reveal Animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+    // Accordion Logic
+    function toggleFaq(el) {
+      const content = el.nextElementSibling;
+      const icon = el.querySelector('i');
+      if (content.style.maxHeight) {
+        content.style.maxHeight = null;
+        content.classList.remove('mt-4');
+        icon.style.transform = 'rotate(0deg)';
+      } else {
+        content.style.maxHeight = content.scrollHeight + "px";
+        content.classList.add('mt-4');
+        icon.style.transform = 'rotate(180deg)';
+      }
+    }
+    
+    // Playwright Auto-trigger (for video generation)
+    if (window.navigator.webdriver) {
+      setTimeout(() => {
+        showToast("AI Generated Demo Initialization Complete");
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

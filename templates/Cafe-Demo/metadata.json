@@ -1,0 +1,6 @@
+{
+  "name": "The Artisan Roastery",
+  "description": "A demo cafe website featuring a responsive menu, online ordering capabilities, integrated reservation system, and local SEO optimization for the USA market. Styled with a custom color palette.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

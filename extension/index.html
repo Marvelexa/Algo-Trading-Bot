@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <title>Nexvora Lead Finder - Premium Browser Preview</title>
+  </head>
+  <body class="bg-[#030303] min-h-screen text-slate-100 overflow-hidden relative">
+    <!-- 
+      Faux Maps Canvas Background for Standalone Browser Preview.
+      This simulates a darkened viewport layout, keeping visual design elements premium.
+    -->
+    <div class="absolute inset-0 bg-[#07070a] -z-20"></div>
+    <div class="absolute inset-0 opacity-15 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.12)_0%,transparent_70%)] -z-10"></div>
+    
+    <div class="p-8 select-none">
+      <h1 class="text-xs font-black text-slate-600 tracking-[0.2em] uppercase">Development Environment</h1>
+      <p class="text-[10px] text-slate-500 font-semibold mt-1">Nexvora Lead Finder • Shadow DOM Sandbox Preview</p>
+    </div>
+
+    <!-- The React context mounts inside entry.tsx bootstrap appending host to body -->
+    <script type="module" src="/src/entry.tsx"></script>
+  </body>
+</html>

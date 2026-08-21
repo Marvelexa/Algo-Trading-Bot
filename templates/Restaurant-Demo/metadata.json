@@ -1,0 +1,6 @@
+{
+  "name": "Étoile Gastronomie",
+  "description": "A modern restaurant website with simple and clear English menu, reservations, and more.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f3f6fa;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f8fafc;
+  --color-primary-text: #0f172a;
+  --color-secondary-text: #64748b;
+  --color-accent-gold: #2563eb; /* Map gold token to blue for styling continuity */
+  --color-accent-blue: #2563eb;
+  --color-success: #10b981;
+
+  --font-serif: "Cormorant Garamond", serif;
+  --font-sans: "Inter", sans-serif;
+  --font-jakarta: "Plus Jakarta Sans", sans-serif;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f3f6fa;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
+}
+
+body {
+  background-color: #f3f6fa;
+  color: #0f172a;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Stylized Logo mark */
+.stylized-a {
+  display: inline-block;
+  transform: translateY(-0.02em);
+  font-weight: 300;
+}
+
+/* Custom horizontal scroll hiding */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.glassmorphism {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.glassmorphism-light {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.blue-glow {
+  box-shadow: 0 0 50px -10px rgba(37, 99, 235, 0.15);
+}

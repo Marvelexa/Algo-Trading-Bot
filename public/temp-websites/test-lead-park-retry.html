@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Park Cafe - Your Daily Escape</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2310B981' d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15H9v-2h2v2zm0-4H9v-2h2v2zm0-4H9V7h2v2zm4 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z'/%3E%3C/svg%3E" type="image/svg+xml">
+    <meta name="description" content="Park Cafe - Your daily escape for freshly brewed coffee, delicious pastries, and delightful meals in a welcoming atmosphere.">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome CDN for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKx3hvmHE+z0lPzXgKkXGUMQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        /* Optional: Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+        /* Hero section specific animation */
+        .animate-fade-in-up {
+            animation: fade-in-up 1s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        @keyframes fade-in-up {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body class="font-sans text-gray-800 antialiased">
+
+    <!-- Header / Navigation -->
+    <header class="bg-white shadow-sm py-4 sticky top-0 z-50">
+        <nav class="container mx-auto px-4 flex justify-between items-center">
+            <a href="#hero" class="text-3xl font-bold text-emerald-600">Park Cafe</a>
+            <div class="space-x-6 hidden md:block">
+                <a href="#menu" class="text-gray-600 hover:text-emerald-600 transition duration-300">Menu</a>
+                <a href="#testimonials" class="text-gray-600 hover:text-emerald-600 transition duration-300">Testimonials</a>
+                <a href="#contact" class="text-gray-600 hover:text-emerald-600 transition duration-300">Contact</a>
+            </div>
+            <!-- Mobile menu button (can be implemented with JS if needed) -->
+        </nav>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section id="hero" class="relative bg-gradient-to-r from-emerald-600 to-emerald-800 text-white min-h-screen flex items-center justify-center p-4">
+            <!-- Background Decoration: Subtle geometric pattern -->
+            <div class="absolute inset-0 z-0 opacity-10" style="background-image: url('data:image/svg+xml,%3Csvg width=\'20\' height=\'20\' viewBox=\'0 0 20 20\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.2\' fill-rule=\'evenodd\'%3E%3Ccircle cx=\'3\' cy=\'3\' r=\'3\'/%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'3\'/%3E%3C/g%3E%3C/svg%3E');"></div>
+
+            <div class="relative z-10 text-center max-w-3xl mx-auto">
+                <h1 class="text-6xl md:text-7xl font-extrabold mb-4 animate-fade-in-up">Park Cafe</h1>
+                <p class="text-xl md:text-3xl font-light mb-8 italic">Your Daily Escape. Freshly Brewed, Delightfully Crafted.</p>
+                <a href="#menu" class="bg-amber-400 hover:bg-amber-500 text-stone-900 font-bold py-4 px-8 rounded-full text-lg shadow-lg transform transition duration-300 hover:scale-105">Explore Our Menu</a>
+            </div>
+        </section>
+
+        <!-- Services/Products Section (Menu) -->
+        <section id="menu" class="py-16 bg-white">
+            <div class="container mx-auto px-4">
+                <h2 class="text-5xl font-extrabold text-center text-emerald-700 mb-12">Our Delicious Offerings</h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Menu Item 1 -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-6 transform transition duration-300 hover:scale-105 hover:shadow-xl">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-3">Signature Espresso</h3>
+                        <p class="text-gray-700 leading-relaxed mb-4">A rich, aromatic espresso shot, expertly pulled from our finest blend of ethically sourced beans. Perfect for a quick pick-me-up.</p>
+                        <div class="flex justify-between items-center border-t pt-4 mt-4 border-gray-200">
+                            <span class="text-2xl font-bold text-stone-800">$3.50</span>
+                            <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2 px-5 rounded-full text-sm">Order Now</button>
+                        </div>
+                    </div>
+
+                    <!-- Menu Item 2 -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-6 transform transition duration-300 hover:scale-105 hover:shadow-xl">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-3">Artisan Avocado Toast</h3>
+                        <p class="text-gray-700 leading-relaxed mb-4">Fresh avocado, heirloom tomatoes, and a sprinkle of chili flakes on toasted sourdough. A healthy and flavorful start to your day.</p>
+                        <div class="flex justify-between items-center border-t pt-4 mt-4 border-gray-200">
+                            <span class="text-2xl font-bold text-stone-800">$9.00</span>
+                            <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2 px-5 rounded-full text-sm">Order Now</button>
+                        </div>
+                    </div>
+
+                    <!-- Menu Item 3 -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-6 transform transition duration-300 hover:scale-105 hover:shadow-xl">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-3">Decadent Chocolate Croissant</h3>
+                        <p class="text-gray-700 leading-relaxed mb-4">Buttery, flaky croissant filled with rich dark chocolate, baked fresh daily. The perfect treat with your coffee.</p>
+                        <div class="flex justify-between items-center border-t pt-4 mt-4 border-gray-200">
+                            <span class="text-2xl font-bold text-stone-800">$4.75</span>
+                            <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2 px-5 rounded-full text-sm">Order Now</button>
+                        </div>
+                    </div>
+
+                    <!-- Menu Item 4 -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-6 transform transition duration-300 hover:scale-105 hover:shadow-xl">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-3">Lavender Honey Latte</h3>
+                        <p class="text-gray-700 leading-relaxed mb-4">A soothing blend of espresso, steamed milk, delicate lavender syrup, and a drizzle of local honey. A serene experience in a cup.</p>
+                        <div class="flex justify-between items-center border-t pt-4 mt-4 border-gray-200">
+                            <span class="text-2xl font-bold text-stone-800">$5.50</span>
+                            <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2 px-5 rounded-full text-sm">Order Now</button>
+                        </div>
+                    </div>
+
+                    <!-- Menu Item 5 -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-6 transform transition duration-300 hover:scale-105 hover:shadow-xl">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-3">Fresh Berry Scone</h3>
+                        <p class="text-gray-700 leading-relaxed mb-4">Light and fluffy scone bursting with seasonal berries, served with clotted cream and homemade jam. A delightful afternoon treat.</p>
+                        <div class="flex justify-between items-center border-t pt-4 mt-4 border-gray-200">
+                            <span class="text-2xl font-bold text-stone-800">$4.00</span>
+                            <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2 px-5 rounded-full text-sm">Order Now</button>
+                        </div>
+                    </div>
+
+                    <!-- Menu Item 6 -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-6 transform transition duration-300 hover:scale-105 hover:shadow-xl">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-3">Classic Iced Tea</h3>
+                        <p class="text-gray-700 leading-relaxed mb-4">Refreshing black iced tea, brewed to perfection and served over ice with a lemon wedge. A timeless choice to cool down.</p>
+                        <div class="flex justify-between items-center border-t pt-4 mt-4 border-gray-200">
+                            <span class="text-2xl font-bold text-stone-800">$3.00</span>
+                            <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2 px-5 rounded-full text-sm">Order Now</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Why Choose Us / Testimonials Section -->
+        <section id="testimonials" class="py-16 bg-emerald-50">
+            <div class="container mx-auto px-4">
+                <h2 class="text-5xl font-extrabold text-center text-emerald-700 mb-12">What Our Customers Say</h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Testimonial 1 -->
+                    <div class="bg-white rounded-lg shadow-md p-6 flex flex-col items-center text-center">
+                        <img src="https://via.placeholder.com/80/FBBF24/FFFFFF?text=JP" alt="Customer Avatar" class="w-20 h-20 rounded-full mb-4 object-cover border-4 border-emerald-400">
+                        <p class="text-lg italic text-gray-700 mb-4">"Park Cafe is my favorite spot! The coffee is always perfect, and their avocado toast is simply divine. The atmosphere is so welcoming, it's truly a hidden gem."</p>
+                        <p class="font-semibold text-emerald-600 text-xl">- Jessica P.</p>
+                    </div>
+
+                    <!-- Testimonial 2 -->
+                    <div class="bg-white rounded-lg shadow-md p-6 flex flex-col items-center text-center">
+                        <img src="https://via.placeholder.com/80/10B981/FFFFFF?text=MA" alt="Customer Avatar" class="w-20 h-20 rounded-full mb-4 object-cover border-4 border-emerald-400">
+                        <p class="text-lg italic text-gray-700 mb-4">"I love working from Park Cafe. Great Wi-Fi, delicious pastries, and the staff are incredibly friendly. It feels like a second home, a true community cafe."</p>
+                        <p class="font-semibold text-emerald-600 text-xl">- Michael A.</p>
+                    </div>
+
+                    <!-- Testimonial 3 -->
+                    <div class="bg-white rounded-lg shadow-md p-6 flex flex-col items-center text-center">
+                        <img src="https://via.placeholder.com/80/EF4444/FFFFFF?text=SM" alt="Customer Avatar" class="w-20 h-20 rounded-full mb-4 object-cover border-4 border-emerald-400">
+                        <p class="text-lg italic text-gray-700 mb-4">"Their lavender honey latte is an absolute dream! Such a unique and calming flavor. Park Cafe never disappoints with their creative menu and quality ingredients."</p>
+                        <p class="font-semibold text-emerald-600 text-xl">- Sarah M.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Contact Section -->
+        <section id="contact" class="py-16 bg-white">
+            <div class="container mx-auto px-4">
+                <h2 class="text-5xl font-extrabold text-center text-emerald-700 mb-12">Get In Touch</h2>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+                    <!-- Contact Details -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-8">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-6">Visit Us or Reach Out</h3>
+                        <p class="text-lg text-gray-700 mb-4 flex items-center"><i class="fas fa-map-marker-alt text-emerald-500 mr-3"></i> 123 Cafe Street, Parkville, CA 90210</p>
+                        <p class="text-lg text-gray-700 mb-4 flex items-center"><i class="fas fa-phone-alt text-emerald-500 mr-3"></i> (555) 123-4567</p>
+                        <p class="text-lg text-gray-700 mb-4 flex items-center"><i class="fas fa-envelope text-emerald-500 mr-3"></i> info@parkcafe.com</p>
+                        <p class="text-lg text-gray-700 mb-6 flex items-center"><i class="fas fa-clock text-emerald-500 mr-3"></i> Mon - Fri: 7 AM - 6 PM | Sat - Sun: 8 AM - 5 PM</p>
+                        <!-- Google Maps iframe -->
+                        <div class="h-64 mt-6 rounded-lg overflow-hidden">
+                            <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3153.2541467474775!2d-122.41941568468165!3d37.77492957975823!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x80858087961b0a79%3A0x6a00f8c8b41f7e34!2sSan%20Francisco%2C%20CA%2C%20USA!5e0!3m2!1sen!2sus!4v1678888888888!5m2!1sen!2sus" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy"></iframe>
+                        </div>
+                    </div>
+
+                    <!-- Contact Form -->
+                    <div class="bg-gray-50 rounded-lg shadow-md p-8">
+                        <h3 class="text-3xl font-semibold text-emerald-600 mb-6">Send Us a Message</h3>
+                        <form action="#" method="POST" class="space-y-6">
+                            <div>
+                                <label for="name" class="block text-gray-700 text-lg font-medium mb-2">Name</label>
+                                <input type="text" id="name" name="name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-300" placeholder="Your Name" required>
+                            </div>
+                            <div>
+                                <label for="email" class="block text-gray-700 text-lg font-medium mb-2">Email</label>
+                                <input type="email" id="email" name="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-300" placeholder="your@email.com" required>
+                            </div>
+                            <div>
+                                <label for="message" class="block text-gray-700 text-lg font-medium mb-2">Message</label>
+                                <textarea id="message" name="message" rows="6" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-300" placeholder="Your message..." required></textarea>
+                            </div>
+                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-full text-lg transition duration-300 transform hover:scale-105">Send Message</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-stone-800 text-white py-8">
+        <div class="container mx-auto px-4 text-center">
+            <p class="text-gray-300">&copy; 2023 Park Cafe. All rights reserved.</p>
+            <div class="flex justify-center space-x-4 mt-4">
+                <a href="#" aria-label="Facebook" class="text-gray-400 hover:text-white transition duration-300"><i class="fab fa-facebook-f text-xl"></i></a>
+                <a href="#" aria-label="Instagram" class="text-gray-400 hover:text-white transition duration-300"><i class="fab fa-instagram text-xl"></i></a>
+                <a href="#" aria-label="Twitter" class="text-gray-400 hover:text-white transition duration-300"><i class="fab fa-twitter text-xl"></i></a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

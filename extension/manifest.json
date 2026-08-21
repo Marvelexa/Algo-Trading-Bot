@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "Nexvora Lead Finder",
+  "version": "1.0.0",
+  "description": "Premium Flagship Lead Intelligence and Scraper HUD for Google Maps.",
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.google.com/maps*",
+        "https://*.google.com/maps/*",
+        "https://*.google.co.in/maps*",
+        "https://*.google.co.in/maps/*",
+        "https://*.google.com/*",
+        "https://*.google.co.in/*",
+        "https://*.google.co.uk/maps*",
+        "https://*.google.ca/maps*",
+        "https://*.google.com.au/maps*",
+        "https://*.google.de/maps*",
+        "https://*.google.fr/maps*",
+        "https://*.google.com.br/maps*",
+        "https://*.google.co.jp/maps*",
+        "https://*.google.com.sg/maps*",
+        "https://*.google.ae/maps*"
+      ],
+      "js": [
+        "dist/assets/content.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "https://*.google.com/maps*",
+        "https://*.google.com/maps/*",
+        "https://*.google.co.in/maps*",
+        "https://*.google.co.in/maps/*",
+        "https://*.google.com/*",
+        "https://*.google.co.in/*",
+        "https://*.google.co.uk/maps*",
+        "https://*.google.ca/maps*",
+        "https://*.google.com.au/maps*",
+        "https://*.google.de/maps*",
+        "https://*.google.fr/maps*",
+        "https://*.google.com.br/maps*",
+        "https://*.google.co.jp/maps*",
+        "https://*.google.com.sg/maps*",
+        "https://*.google.ae/maps*"
+      ],
+      "js": [
+        "dist/assets/interceptor.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

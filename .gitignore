@@ -1,0 +1,26 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.whatsapp_session/
+public/videos/
+public/screenshots/
+*.png
+*.txt
+*.webm
+
+# Session, Credential & State Files
+.angelone_session.json
+.delta_auto_trader_state.json
+.delta_session.json
+.paper_trading_state.json
+.trade_outcomes_state.json
+*.session.json
+*_state.json
+firebase-applet-config.json
+.scrip_master.json
+
