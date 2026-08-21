@@ -45,6 +45,28 @@ export interface AutoTraderClosedRecord {
   exitTimestamp: string;
 }
 
+export interface CuratedAsset {
+  symbol: string;
+  name: string;
+  tag: string;
+  minLot: number;
+  decimals: number;
+  description: string;
+}
+
+export const CURATED_AUTO_TRADER_ASSETS: CuratedAsset[] = [
+  { symbol: "BTCUSD", name: "Bitcoin", tag: "BTC", minLot: 0.001, decimals: 3, description: "Macro Leader" },
+  { symbol: "ETHUSD", name: "Ethereum", tag: "ETH", minLot: 0.01, decimals: 2, description: "Layer 1 Ecosystem" },
+  { symbol: "SOLUSD", name: "Solana", tag: "SOL", minLot: 0.1, decimals: 1, description: "High Momentum Beta" },
+  { symbol: "XRPUSD", name: "Ripple", tag: "XRP", minLot: 5, decimals: 0, description: "Payment Liquidity" },
+  { symbol: "BNBUSD", name: "Binance Coin", tag: "BNB", minLot: 0.05, decimals: 2, description: "Exchange Tier 1" },
+  { symbol: "DOGEUSD", name: "Dogecoin", tag: "DOGE", minLot: 50, decimals: 0, description: "High Volatility Meme" },
+  { symbol: "AVAXUSD", name: "Avalanche", tag: "AVAX", minLot: 0.2, decimals: 1, description: "Layer 1 Subnet" },
+  { symbol: "LINKUSD", name: "Chainlink", tag: "LINK", minLot: 0.5, decimals: 1, description: "Oracle Infrastructure" },
+  { symbol: "ADAUSD", name: "Cardano", tag: "ADA", minLot: 10, decimals: 0, description: "Layer 1 Smart Contracts" },
+  { symbol: "SUIUSD", name: "Sui", tag: "SUI", minLot: 5, decimals: 0, description: "Next-Gen Move L1" }
+];
+
 export interface AutoTraderSettings {
   mode: "PAPER" | "LIVE";
   isEnabled: boolean;
@@ -448,13 +470,10 @@ export class DeltaAutoTraderEngine {
     const stopLossPrice = analysis.direction === "BUY" ? Number((price - slDistance).toFixed(2)) : Number((price + slDistance).toFixed(2));
     const targetPrice = analysis.direction === "BUY" ? Number((price + tpDistance).toFixed(2)) : Number((price - tpDistance).toFixed(2));
 
-    // Dynamic Position Sizing (Fixed 1.5% capital risked)
-    const accountEquity = this.settings.currentCapitalUSD;
-    const dollarRiskAllowed = accountEquity * (this.settings.riskPerTradePct / 100);
-    let quantity = Number((dollarRiskAllowed / slDistance).toFixed(symbol.includes("BTC") ? 4 : 2));
-    if (quantity <= 0) quantity = symbol.includes("BTC") ? 0.005 : 0.5;
-
-    const initialRiskUSD = Number((slDistance * quantity).toFixed(2));
+    // 🎯 DYNAMIC LOT SIZING BASED ON LIVE ACCOUNT BALANCE (1.5% Risk)
+    const lotInfo = this.calculateDynamicLotSize(symbol, price, slDistance);
+    const quantity = lotInfo.quantity;
+    const initialRiskUSD = lotInfo.initialRiskUSD;
     const now = Date.now();
 
     const position: AutoTraderPosition = {
@@ -740,6 +759,36 @@ export class DeltaAutoTraderEngine {
     return [...this.cryptoNewsList];
   }
 
+  public calculateDynamicLotSize(symbol: string, currentPrice: number, stopLossDistance: number): { quantity: number; initialRiskUSD: number; accountEquity: number } {
+    const liveDeltaBalance = deltaExchangeEngine.getAccountSummary()?.netEquityUSD;
+    const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : this.settings.currentCapitalUSD;
+    
+    // 🎯 Exact 1.5% Risk of live account balance (e.g. $2.87 on $191.25 USD)
+    const dollarRiskAllowed = accountEquity * (this.settings.riskPerTradePct / 100);
+    
+    const sym = symbol.toUpperCase().trim();
+    const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
+      symbol: sym, minLot: 0.01, decimals: 2
+    };
+
+    let rawQty = dollarRiskAllowed / Math.max(0.01, stopLossDistance);
+    let quantity = Number(rawQty.toFixed(asset.decimals));
+    if (quantity < asset.minLot) {
+      quantity = asset.minLot;
+    }
+
+    const initialRiskUSD = Number((stopLossDistance * quantity).toFixed(2));
+    return {
+      quantity,
+      initialRiskUSD,
+      accountEquity
+    };
+  }
+
+  public getCuratedAssets(): CuratedAsset[] {
+    return [...CURATED_AUTO_TRADER_ASSETS];
+  }
+
   public startAutonomousBackgroundDaemon() {
     if (this.isScanningLoopActive) return;
     this.isScanningLoopActive = true;
@@ -747,7 +796,7 @@ export class DeltaAutoTraderEngine {
     setInterval(async () => {
       if (!this.settings.isEnabled) return;
       try {
-        const trackedSymbols = ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "DOGEUSD", "BNBUSD", "ADAUSD", "AVAXUSD", "DOTUSD", "LINKUSD"];
+        const trackedSymbols = CURATED_AUTO_TRADER_ASSETS.map(a => a.symbol);
         for (const sym of trackedSymbols) {
           if (this.openPositions.length >= this.settings.maxConcurrentPositions) break;
           const livePriceObj = deltaExchangeEngine.getLivePrice(sym);

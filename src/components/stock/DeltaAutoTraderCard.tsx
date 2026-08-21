@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { deltaAutoTraderEngine, AutoTraderPosition, AutoTraderClosedRecord, AutoTraderSettings, AutoTraderStatus, MultiTimeframeAnalysis, CryptoNewsItem } from "../../../lib/deltaAutoTraderEngine";
+import { deltaAutoTraderEngine, AutoTraderPosition, AutoTraderClosedRecord, AutoTraderSettings, AutoTraderStatus, MultiTimeframeAnalysis, CryptoNewsItem, CURATED_AUTO_TRADER_ASSETS, CuratedAsset } from "../../../lib/deltaAutoTraderEngine";
 import { brokerTickEngine } from "../../../lib/brokerTickEngine";
-import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award } from "lucide-react";
+import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2 } from "lucide-react";
 
 interface DeltaAutoTraderCardProps {
   ticker?: string;
@@ -24,7 +24,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const [records, setRecords] = useState<AutoTraderClosedRecord[]>(deltaAutoTraderEngine.getClosedRecords());
   const [analysis, setAnalysis] = useState<MultiTimeframeAnalysis | null>(null);
   const [news, setNews] = useState<CryptoNewsItem[]>(deltaAutoTraderEngine.getCryptoNews());
-  const [activeTab, setActiveTab] = useState<"OVERVIEW" | "JOURNAL" | "NEWS" | "SETTINGS">("OVERVIEW");
+  const [activeTab, setActiveTab] = useState<"OVERVIEW" | "CURATED_ASSETS" | "JOURNAL" | "NEWS" | "SETTINGS">("OVERVIEW");
   const [notification, setNotification] = useState<string | null>(null);
 
   const USD_TO_INR = 83.50;
@@ -249,6 +249,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           }`}
         >
           📊 Active Positions & Timeframe Brain
+        </button>
+        <button
+          onClick={() => setActiveTab("CURATED_ASSETS")}
+          className={`px-4 py-2 rounded-t-xl font-bold transition border-t border-x shrink-0 ${
+            activeTab === "CURATED_ASSETS" ? "bg-slate-950 text-teal-300 border-slate-800" : "text-slate-400 border-transparent hover:text-slate-200"
+          }`}
+        >
+          🎯 10 Curated Assets & Auto-Lots ({CURATED_AUTO_TRADER_ASSETS.length})
         </button>
         <button
           onClick={() => setActiveTab("JOURNAL")}
@@ -529,7 +537,80 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         </div>
       )}
 
-      {/* TAB CONTENT 3: NEWS & SENTIMENT PANEL (Layer 3) */}
+      {/* TAB CONTENT 2: 10 CURATED ASSETS & AUTO-LOT SIZING MATRIX */}
+      {activeTab === "CURATED_ASSETS" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800">
+            <div className="flex items-center gap-3">
+              <span className="p-2.5 rounded-xl bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                <Coins className="w-5 h-5" />
+              </span>
+              <div>
+                <h4 className="font-bold text-white text-xs">Curated 10 Assets Whitelist & Auto-Lot Sizing Engine</h4>
+                <p className="text-[11px] text-slate-400 font-sans">
+                  The bot exclusively trades these 10 high-liquidity assets. Lots are mathematically computed from your live balance at strict 1.5% risk.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-right shrink-0">
+              <span className="text-[10px] text-slate-400 block">Live Capital / 1.5% Risk:</span>
+              <strong className="text-emerald-400 text-xs font-mono">
+                ${settings.currentCapitalUSD.toFixed(2)} USD · Risk: ${(settings.currentCapitalUSD * 0.015).toFixed(2)}/Trade
+              </strong>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {CURATED_AUTO_TRADER_ASSETS.map((ast, idx) => {
+              const liveP = brokerTickEngine.getLivePrice(ast.symbol) || 100;
+              const approxSLDist = Math.max(liveP * 0.008, 0.05);
+              const lotSizing = deltaAutoTraderEngine.calculateDynamicLotSize(ast.symbol, liveP, approxSLDist);
+              const isCurrent = (ticker || "").toUpperCase().includes(ast.tag);
+
+              return (
+                <div
+                  key={ast.symbol}
+                  className={`p-3.5 rounded-2xl border transition shadow-lg space-y-2 flex flex-col justify-between ${
+                    isCurrent
+                      ? "bg-indigo-950/40 border-indigo-500/50 shadow-indigo-950/40"
+                      : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-sm text-white flex items-center gap-1.5">
+                      <span className="text-xs text-indigo-400 font-mono">#{idx + 1}</span> {ast.tag}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/20">
+                      WHITELISTED
+                    </span>
+                  </div>
+
+                  <div className="text-[11px] text-slate-300 font-sans">
+                    <span className="text-slate-400 block text-[10px]">{ast.name}</span>
+                    <span className="text-slate-400 text-[10px] italic">{ast.description}</span>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 space-y-1 text-xs font-mono">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Live Price:</span>
+                      <strong className="text-slate-200">${liveP.toLocaleString()}</strong>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Auto Lot Size:</span>
+                      <strong className="text-teal-300 font-bold">{lotSizing.quantity} {ast.tag}</strong>
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Max 1.5% Risk:</span>
+                      <span className="text-amber-300 font-bold">${lotSizing.initialRiskUSD} USD</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {activeTab === "NEWS" && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
