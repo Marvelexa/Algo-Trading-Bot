@@ -49,7 +49,7 @@ import { AngelOneChartWorkstation } from "../components/stock/AngelOneChartWorks
 import { StockChatbot } from "../components/stock/StockChatbot";
 import { PreAnalysisContextModal } from "../components/stock/PreAnalysisContextModal";
 import { DematAccountModal } from "../components/stock/DematAccountModal";
-import { stockResearchEngine, type StockRecommendation, type OHLCVBar } from "../../lib/stockEngine";
+import { stockResearchEngine, safeFetchJson, type StockRecommendation, type OHLCVBar } from "../../lib/stockEngine";
 import { stockSymbolResolver, SearchResultItem } from "../../lib/stockSymbolResolver";
 import { auditJournalEngine, AuditLogEntry, PositionSizingResult } from "../../lib/auditJournalEngine";
 import { personalProfileEngine, PersonalProfile, PreAnalysisContext } from "../../lib/personalProfileEngine";
@@ -193,19 +193,16 @@ export const StockAnalysis: React.FC = () => {
 
     const fetchRealPrice = async () => {
       try {
-        const res = await fetch(`/api/stock/${encodeURIComponent(data.ticker)}/live-quote`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.quote && json.quote.price > 0 && isMounted) {
-            setData((prevData) => {
-              if (!prevData) return prevData;
-              return {
-                ...prevData,
-                currentPrice: json.quote.price,
-                isRealData: true
-              };
-            });
-          }
+        const { success, data: json } = await safeFetchJson(`/api/stock/${encodeURIComponent(data.ticker)}/live-quote`);
+        if (success && json?.success && json?.quote && json?.quote?.price > 0 && isMounted) {
+          setData((prevData) => {
+            if (!prevData) return prevData;
+            return {
+              ...prevData,
+              currentPrice: json.quote.price,
+              isRealData: true
+            };
+          });
         }
       } catch (err) {
         // Silent catch — zero synthetic noise or random steps applied!
@@ -296,11 +293,17 @@ export const StockAnalysis: React.FC = () => {
     const timer = setTimeout(async () => {
       if (searchInput.trim().length >= 2 && searchInput !== currentTicker) {
         try {
-          const res = await fetch(`/api/stock/search?q=${encodeURIComponent(searchInput)}`);
-          const json = await res.json();
-          if (json?.success && Array.isArray(json?.results)) {
+          const { success, data: json } = await safeFetchJson(`/api/stock/search?q=${encodeURIComponent(searchInput)}`);
+          if (success && json?.success && Array.isArray(json?.results)) {
             setSearchResults(json.results);
             setShowDropdown(true);
+          } else {
+            // Local client-side fallback resolver
+            const localResults = stockSymbolResolver.searchStocks(searchInput);
+            if (localResults && localResults.length > 0) {
+              setSearchResults(localResults);
+              setShowDropdown(true);
+            }
           }
         } catch (err) {
           console.warn("Search fetch error:", err);

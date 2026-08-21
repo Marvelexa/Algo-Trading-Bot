@@ -13,6 +13,25 @@ import { candlestickPatternEngine } from "./candlestickPatternEngine";
 
 dotenv.config();
 
+export async function safeFetchJson<T = any>(url: string, options?: RequestInit): Promise<{ success: boolean; data: T | null }> {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) return { success: false, data: null };
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      return { success: false, data: null };
+    }
+    const text = await res.text();
+    if (!text || text.trim().startsWith("<") || text.trim().startsWith("The page")) {
+      return { success: false, data: null };
+    }
+    const data = JSON.parse(text);
+    return { success: true, data };
+  } catch {
+    return { success: false, data: null };
+  }
+}
+
 export interface ModuleSignal {
   name: "technical" | "fundamental" | "sentiment" | "macro";
   signal: "bullish" | "bearish" | "neutral";

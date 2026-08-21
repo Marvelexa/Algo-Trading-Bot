@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 import { Activity, ShieldCheck, Zap, RefreshCw, Layers, CheckCircle2, TrendingUp, TrendingDown, Clock, Calendar } from 'lucide-react';
-import { OHLCVBar } from '../../../lib/stockEngine';
+import { OHLCVBar, safeFetchJson } from '../../../lib/stockEngine';
 import { candlestickPatternEngine } from '../../../lib/candlestickPatternEngine';
 import { paperTradingEngine } from '../../../lib/paperTradingEngine';
 
@@ -183,14 +183,11 @@ export const AngelOneChartWorkstation: React.FC<AngelOneChartWorkstationProps> =
       try {
         const isCommodity = ["CRUDE", "GOLD", "SILVER", "NATURAL", "COPPER", "CL=", "GC=", "SI=", "NG="].some(c => cleanSymbol.includes(c));
         if (isCommodity) {
-          const res = await fetch(`/api/broker/angelone/expiries?symbol=${encodeURIComponent(cleanSymbol)}`);
-          if (res.ok) {
-            const json = await res.json();
-            if (json.success && Array.isArray(json.contracts) && active) {
-              setExpiryContracts(json.contracts);
-              if (json.contracts.length > 0) {
-                setSelectedContract(json.contracts[0].symbol);
-              }
+          const { success, data: json } = await safeFetchJson(`/api/broker/angelone/expiries?symbol=${encodeURIComponent(cleanSymbol)}`);
+          if (success && json?.success && Array.isArray(json.contracts) && active) {
+            setExpiryContracts(json.contracts);
+            if (json.contracts.length > 0) {
+              setSelectedContract(json.contracts[0].symbol);
             }
           }
         } else {
@@ -543,20 +540,17 @@ export const AngelOneChartWorkstation: React.FC<AngelOneChartWorkstationProps> =
       try {
         setIsFetchingAngelOne(true);
         const querySym = selectedContract || cleanSymbol;
-        const quoteRes = await fetch(`/api/stock/${encodeURIComponent(querySym)}/live-quote`);
-        if (quoteRes.ok) {
-          const qJson = await quoteRes.json();
-          if (qJson.success && qJson.quote?.price > 0 && isMounted) {
-            const rawTime = qJson.quote.timestamp ? new Date(qJson.quote.timestamp).getTime() : Date.now();
-            const tickTimeMs = rawTime < 10000000000 ? rawTime * 1000 : rawTime;
-            if (tickTimeMs >= lastAppliedTimestampRef.current) {
-              lastAppliedTimestampRef.current = tickTimeMs;
-              setLivePrice(qJson.quote.price);
-              onPriceUpdate?.(qJson.quote.price);
-              setAngelOneSessionActive(true);
-              updateFormingOrRolloverCandle(qJson.quote.price);
-              paperTradingEngine.updateLivePrice(cleanSymbol, qJson.quote.price);
-            }
+        const { success, data: qJson } = await safeFetchJson(`/api/stock/${encodeURIComponent(querySym)}/live-quote`);
+        if (success && qJson?.success && qJson.quote?.price > 0 && isMounted) {
+          const rawTime = qJson.quote.timestamp ? new Date(qJson.quote.timestamp).getTime() : Date.now();
+          const tickTimeMs = rawTime < 10000000000 ? rawTime * 1000 : rawTime;
+          if (tickTimeMs >= lastAppliedTimestampRef.current) {
+            lastAppliedTimestampRef.current = tickTimeMs;
+            setLivePrice(qJson.quote.price);
+            onPriceUpdate?.(qJson.quote.price);
+            setAngelOneSessionActive(true);
+            updateFormingOrRolloverCandle(qJson.quote.price);
+            paperTradingEngine.updateLivePrice(cleanSymbol, qJson.quote.price);
           }
         }
       } catch (err) {

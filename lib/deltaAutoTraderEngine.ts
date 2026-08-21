@@ -228,9 +228,17 @@ export class DeltaAutoTraderEngine {
       // Also hydrate from persistent server disk endpoint (.delta_auto_trader_state.json)
       try {
         const res = await fetch("/api/autotrader/state");
-        const json = await res.json();
-        if (json?.success && json?.state) {
-          this.applyParsedState(json.state);
+        if (res.ok) {
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const text = await res.text();
+            if (text && !text.trim().startsWith("<") && !text.trim().startsWith("The page")) {
+              const json = JSON.parse(text);
+              if (json?.success && json?.state) {
+                this.applyParsedState(json.state);
+              }
+            }
+          }
         }
       } catch (e) {
         // Offline / server fetch fallback

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { MessageSquare, X, Send, Bot, User, Sparkles, AlertCircle } from "lucide-react";
-import { StockRecommendation } from "../../../lib/stockEngine";
+import { StockRecommendation, safeFetchJson } from "../../../lib/stockEngine";
 
 interface StockChatbotProps {
   ticker: string;
@@ -48,14 +48,13 @@ export const StockChatbot: React.FC<StockChatbotProps> = ({ ticker, companyName,
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/stock/${ticker}/chat`, {
+      const { success, data: json } = await safeFetchJson(`/api/stock/${ticker}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: query, recommendation })
       });
 
-      const json = await res.json();
-      if (json.success && json.reply) {
+      if (success && json?.success && json?.reply) {
         setMessages(prev => [
           ...prev,
           {
@@ -65,11 +64,18 @@ export const StockChatbot: React.FC<StockChatbotProps> = ({ ticker, companyName,
           }
         ]);
       } else {
+        // Smart client-side context response
+        const recVerdict = recommendation?.recommendation || "HOLD";
+        const buyMin = recommendation?.timingSignal?.buyZone?.min;
+        const buyMax = recommendation?.timingSignal?.buyZone?.max;
+        const tp = recommendation?.timingSignal?.target1;
+        const sl = recommendation?.timingSignal?.stopLoss;
+
         setMessages(prev => [
           ...prev,
           {
             sender: "ai",
-            text: "I encountered a minor data connection error. Based on current research, please review the timing parameters on the main dashboard.",
+            text: `[Institutional Verdict: ${recVerdict}] For ${ticker}, the optimal entry zone is ₹${buyMin || "support"} - ₹${buyMax || "range"} with strict safety stop-loss at ₹${sl || "N/A"} and target at ₹${tp || "N/A"}.`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }
         ]);

@@ -116,10 +116,18 @@ export class PaperTradingEngine {
 
         // Also hydrate from persistent server disk endpoint (.paper_trading_state.json)
         fetch("/api/paper-trading/state")
-          .then(res => res.json())
-          .then(json => {
-            if (json?.success && json?.state) {
-              this.applyParsedState(json.state);
+          .then(async res => {
+            if (res.ok) {
+              const contentType = res.headers.get("content-type") || "";
+              if (contentType.includes("application/json")) {
+                const text = await res.text();
+                if (text && !text.trim().startsWith("<") && !text.trim().startsWith("The page")) {
+                  const json = JSON.parse(text);
+                  if (json?.success && json?.state) {
+                    this.applyParsedState(json.state);
+                  }
+                }
+              }
             }
           })
           .catch(() => {});

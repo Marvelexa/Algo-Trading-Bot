@@ -6,6 +6,8 @@ import {
   Building2, ArrowUpRight, ArrowDownRight, Minus, 
   CheckCircle2, Circle, Loader2
 } from 'lucide-react';
+import { autonomousDecisionEngine } from '../../../lib/autonomousDecisionEngine';
+import { safeFetchJson } from '../../../lib/stockEngine';
 
 export interface AutonomousDecisionCardProps {
   ticker: string;
@@ -103,29 +105,35 @@ export const AutonomousDecisionCard: React.FC<AutonomousDecisionCardProps> = ({
     setStatus('loading');
     setErrorMsg('');
     try {
-      const response = await fetch(`/api/stock/${ticker}/autonomous-analysis`, {
+      const { success, data } = await safeFetchJson<DecisionEngineResult>(`/api/stock/${ticker}/autonomous-analysis`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tradingCategory })
       });
       
-      if (!response.ok) {
-        throw new Error('Analysis request failed');
+      let finalData = data;
+      if (!success || !finalData) {
+        // Run client-side analysis fallback
+        finalData = await autonomousDecisionEngine.analyze(ticker, tradingCategory);
       }
-      
-      const data: DecisionEngineResult = await response.json();
       
       // Ensure we hold loading until at least last step is reached
       setTimeout(() => {
-        setResult(data);
+        setResult(finalData);
         setStatus('success');
-      }, Math.max(0, 5000 - currentStep * 1000));
+      }, Math.max(0, 3000 - currentStep * 1000));
       
     } catch (error) {
-      setTimeout(() => {
-        setStatus('error');
-        setErrorMsg(error instanceof Error ? error.message : 'Unknown error occurred');
-      }, 1000);
+      try {
+        const fallbackData = await autonomousDecisionEngine.analyze(ticker, tradingCategory);
+        setResult(fallbackData);
+        setStatus('success');
+      } catch {
+        setTimeout(() => {
+          setStatus('error');
+          setErrorMsg(error instanceof Error ? error.message : 'Unknown error occurred');
+        }, 1000);
+      }
     }
   };
 
