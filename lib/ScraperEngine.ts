@@ -1,4 +1,4 @@
-import { chromium, Browser, Page } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 
@@ -145,6 +145,7 @@ export class ScraperEngine {
 
   async init() {
     this.log('Initializing Playwright Browser...');
+    const { chromium } = await import('playwright');
     this.browser = await chromium.launch({
       headless: false, // Set to false so you can see it open
       args: ['--no-sandbox', '--disable-setuid-sandbox']

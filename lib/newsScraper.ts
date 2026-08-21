@@ -1,5 +1,3 @@
-import { chromium, Browser } from "playwright";
-
 export interface ScrapedNewsItem {
   title: string;
   source: string;
@@ -120,8 +118,10 @@ export class NewsScraperEngine {
   }
 
   private async fetchViaPlaywrightScraper(companyName: string, ticker: string): Promise<ScrapedNewsItem[]> {
-    let browser: Browser | null = null;
+    if (typeof window !== "undefined") return []; // Skip in browser
+    let browser: any = null;
     try {
+      const { chromium } = await import("playwright");
       browser = await chromium.launch({ headless: true });
       const context = await browser.newContext({
         userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

@@ -49,7 +49,7 @@ import { AngelOneChartWorkstation } from "../components/stock/AngelOneChartWorks
 import { StockChatbot } from "../components/stock/StockChatbot";
 import { PreAnalysisContextModal } from "../components/stock/PreAnalysisContextModal";
 import { DematAccountModal } from "../components/stock/DematAccountModal";
-import type { StockRecommendation, OHLCVBar } from "../../lib/stockEngine";
+import { stockResearchEngine, type StockRecommendation, type OHLCVBar } from "../../lib/stockEngine";
 import { stockSymbolResolver, SearchResultItem } from "../../lib/stockSymbolResolver";
 import { auditJournalEngine, AuditLogEntry, PositionSizingResult } from "../../lib/auditJournalEngine";
 import { personalProfileEngine, PersonalProfile, PreAnalysisContext } from "../../lib/personalProfileEngine";
@@ -326,25 +326,73 @@ export const StockAnalysis: React.FC = () => {
     setShowDropdown(false);
 
     try {
-      const cacheBuster = Date.now();
-      const [recRes, histRes] = await Promise.all([
-        fetch(`/api/stock/${tickerSymbol}/recommendation?force=true&category=${category}&t=${cacheBuster}`),
-        fetch(`/api/stock/${tickerSymbol}/price-history?days=90&t=${cacheBuster}`)
-      ]);
+      let loadedRec: StockRecommendation | null = null;
+      let loadedHistory: OHLCVBar[] = [];
 
-      const recJson = await recRes.json();
-      const histJson = await histRes.json();
+      // 1. Attempt Backend API fetch first
+      try {
+        const cacheBuster = Date.now();
+        const [recRes, histRes] = await Promise.all([
+          fetch(`/api/stock/${encodeURIComponent(tickerSymbol)}/recommendation?force=true&category=${category}&t=${cacheBuster}`),
+          fetch(`/api/stock/${encodeURIComponent(tickerSymbol)}/price-history?days=90&t=${cacheBuster}`)
+        ]);
 
-      if (recJson?.success && recJson?.recommendation) {
-        setData(recJson.recommendation);
-      } else {
-        setError(recJson?.error || "Failed to load stock recommendation.");
+        if (recRes.ok) {
+          const contentType = recRes.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const recJson = await recRes.json();
+            if (recJson?.success && recJson?.recommendation) {
+              loadedRec = recJson.recommendation;
+            }
+          }
+        }
+
+        if (histRes.ok) {
+          const contentType = histRes.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const histJson = await histRes.json();
+            if (histJson?.success && Array.isArray(histJson?.history)) {
+              loadedHistory = histJson.history;
+            }
+          }
+        }
+      } catch (networkErr) {
+        console.warn("[StockAnalysis] Backend API unreachable or static Vercel host, falling back to local analysis engine:", networkErr);
       }
 
-      if (histJson?.success && Array.isArray(histJson?.history)) {
-        setChartHistory(histJson.history);
+      // 2. Client-Side Resilience Engine: If Backend API returned non-JSON / 404 on Vercel, run directly in browser!
+      if (!loadedRec) {
+        console.log(`[StockAnalysis] 🧠 Running client-side analysis engine for ${tickerSymbol}...`);
+        loadedRec = await stockResearchEngine.analyzeStock(tickerSymbol, true, category);
+      }
+
+      if (!loadedHistory || loadedHistory.length === 0) {
+        const histResult = await stockResearchEngine.fetchRealOHLCV(tickerSymbol, 90);
+        if (histResult?.bars && histResult.bars.length > 0) {
+          loadedHistory = histResult.bars;
+        } else {
+          loadedHistory = await stockResearchEngine.generateOHLCVHistory(tickerSymbol, 90);
+        }
+      }
+
+      if (loadedRec) {
+        setData(loadedRec);
+      } else {
+        setError("Unable to generate stock recommendation. Please try another symbol.");
+      }
+
+      if (loadedHistory && loadedHistory.length > 0) {
+        setChartHistory(loadedHistory);
       }
     } catch (err: any) {
+      console.error("[StockAnalysis] Analysis error:", err);
+      try {
+        const fallbackRec = await stockResearchEngine.analyzeStock(tickerSymbol, true, category);
+        if (fallbackRec) {
+          setData(fallbackRec);
+          return;
+        }
+      } catch (e) {}
       setError(err?.message || "Failed to fetch stock research data.");
     } finally {
       setLoading(false);
