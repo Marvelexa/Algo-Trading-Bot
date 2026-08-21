@@ -12,7 +12,7 @@ import { paperTradingEngine } from '../../../lib/paperTradingEngine';
 import { brokerTickEngine } from '../../../lib/brokerTickEngine';
 import { 
   Brain, Sparkles, TrendingUp, TrendingDown, Target, 
-  ShieldAlert, Award, CheckCircle2, AlertTriangle, Play, Wallet, Activity, Sliders, ShieldCheck, Zap
+  ShieldAlert, Award, CheckCircle2, AlertTriangle, Play, Wallet, Activity, Sliders, ShieldCheck, Zap, Bot
 } from 'lucide-react';
 
 interface AITradingBrainCardProps {
@@ -704,21 +704,27 @@ export const AITradingBrainCard: React.FC<AITradingBrainCardProps> = ({
           </div>
         </div>
 
-        {/* Action Button */}
+        {/* 🤖 100% AUTONOMOUS AI EXECUTION ENGINE BEACON (ZERO MANUAL BUTTONS) */}
         <div className="pt-2">
-          <button
-            onClick={() => handleExecuteTrade(isBuy ? "BUY" : "SELL")}
-            className={`w-full py-4 px-4 rounded-2xl font-bold text-xs shadow-2xl transition flex items-center justify-center gap-2 cursor-pointer ${
+          <div
+            className={`w-full py-3.5 px-4 rounded-2xl font-mono font-bold text-xs shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border ${
               isBuy
-                ? "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-emerald-950/60 animate-pulse"
+                ? "bg-emerald-950/40 text-emerald-300 border-emerald-500/40"
                 : isSell
-                ? "bg-gradient-to-r from-rose-600 via-red-600 to-rose-500 hover:from-rose-500 hover:to-red-400 text-white shadow-rose-950/60 animate-pulse"
-                : "bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40"
+                ? "bg-rose-950/40 text-rose-300 border-rose-500/40"
+                : "bg-slate-900/80 text-amber-300 border-slate-700"
             }`}
           >
-            <Play className="w-4 h-4" />
-            ⚡ AUTO-EXECUTE LIVE AI VERDICT ({(result?.action || "HOLD").replace("_", " ")}) NOW — REALTIME AUTO-DETECTED
-          </button>
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
+              <span>
+                🤖 100% Autonomous AI Execution Active · Auto-Managing ({result?.action ? result.action.replace("_", " ") : "HOLD"})
+              </span>
+            </div>
+            <span className="text-[10px] px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider shrink-0">
+              HANDS-FREE AUTOMATED
+            </span>
+          </div>
         </div>
 
       </div>
