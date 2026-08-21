@@ -1,5 +1,4 @@
 import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
 import { knowledgeBaseEngine, StrategyRuleResult } from "./knowledgeBase";
 import { newsScraperEngine, ScrapedNewsItem } from "./newsScraper";
 import { stockSymbolResolver, SearchResultItem } from "./stockSymbolResolver";
@@ -10,8 +9,6 @@ import { indianTechnicalIndicatorsEngine } from "./indianTechnicalIndicatorsEngi
 import { nexvoraCryptoMasterIndicator } from "./nexvoraCryptoMasterIndicator";
 import { aiTradingBrainEngine } from "./aiTradingBrainV1";
 import { candlestickPatternEngine } from "./candlestickPatternEngine";
-
-dotenv.config();
 
 export async function safeFetchJson<T = any>(url: string, options?: RequestInit): Promise<{ success: boolean; data: T | null }> {
   try {
@@ -167,12 +164,13 @@ export class StockResearchEngine {
   }> = new Map();
 
   constructor() {
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      } catch (err) {
-        console.warn("[StockEngine] Gemini API init warning:", err);
+    try {
+      const apiKey = typeof process !== "undefined" ? process.env?.GEMINI_API_KEY : undefined;
+      if (apiKey && typeof window === "undefined") {
+        this.ai = new GoogleGenAI({ apiKey });
       }
+    } catch (err) {
+      // Browser or missing key
     }
   }
 

@@ -57,9 +57,9 @@ export class NemtronEngine {
   private modelName: string;
 
   constructor() {
-    this.apiKey = process.env.OPENCODE_API_KEY || "sk-KEvoHidhhboDWx4PLLDzXTiABSEJlghBoeWs4WP4A8O9hTVpXHy7cu7yUf11KByX";
-    this.baseUrl = process.env.OPENCODE_API_BASE_URL || "https://opencode.ai/zen/v1";
-    this.modelName = process.env.OPENCODE_MODEL_NAME || "nemtron-3-ultra";
+    this.apiKey = (typeof process !== "undefined" && process.env?.OPENCODE_API_KEY) || "sk-KEvoHidhhboDWx4PLLDzXTiABSEJlghBoeWs4WP4A8O9hTVpXHy7cu7yUf11KByX";
+    this.baseUrl = (typeof process !== "undefined" && process.env?.OPENCODE_API_BASE_URL) || "https://opencode.ai/zen/v1";
+    this.modelName = (typeof process !== "undefined" && process.env?.OPENCODE_MODEL_NAME) || "nemtron-3-ultra";
   }
 
   /**
