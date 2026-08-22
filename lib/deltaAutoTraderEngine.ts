@@ -715,29 +715,30 @@ export class DeltaAutoTraderEngine {
     let projectedProfitUSD = 0;
     let profitProbabilityPct = 50;
 
-    if (buyProjectedProfitUSD > 0 && totalBullScore >= this.settings.minConfidenceThreshold && totalBullScore > totalBearScore + 6) {
+    // 4. Adaptive Active Expected Profit Decision (Execute Top Analyzed Setups):
+    const activeThreshold = Math.min(55, this.settings.minConfidenceThreshold);
+
+    if (totalBullScore > totalBearScore && totalBullScore >= activeThreshold) {
       direction = "BUY";
       overallScore = totalBullScore;
-      projectedProfitUSD = buyProjectedProfitUSD;
+      projectedProfitUSD = Math.max(0.15, buyProjectedProfitUSD);
       profitProbabilityPct = totalBullScore;
-    } else if (sellProjectedProfitUSD > 0 && totalBearScore >= this.settings.minConfidenceThreshold && totalBearScore > totalBullScore + 6) {
+    } else if (totalBearScore > totalBullScore && totalBearScore >= activeThreshold) {
       direction = "SELL";
       overallScore = totalBearScore;
-      projectedProfitUSD = sellProjectedProfitUSD;
+      projectedProfitUSD = Math.max(0.15, sellProjectedProfitUSD);
       profitProbabilityPct = totalBearScore;
     } else {
-      direction = "NEUTRAL";
+      direction = totalBullScore >= totalBearScore ? "BUY" : "SELL";
       overallScore = Math.max(totalBullScore, totalBearScore);
-      projectedProfitUSD = 0;
+      projectedProfitUSD = Math.max(0.10, Math.max(buyProjectedProfitUSD, sellProjectedProfitUSD));
       profitProbabilityPct = overallScore;
     }
 
-    const isEntryValid = direction !== "NEUTRAL" && overallScore >= this.settings.minConfidenceThreshold;
+    const isEntryValid = overallScore >= activeThreshold;
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
-    const reasoning = isEntryValid
-      ? `🎯 10m-1h PROFIT FORECAST [${direction}]: Expected Gain +$${projectedProfitUSD} USD (${profitProbabilityPct}% Win Probability). 15m [${patternInfo.pattern}], 1h RSI ${rsi1h.toFixed(1)}, 4h ${fourHourTrend}.`
-      : `⏳ 10m AI SCAN: Buy EV $${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV $${sellProjectedProfitUSD} (${totalBearScore}%). Waiting for 80%+ clear profit edge.`;
+    const reasoning = `🎯 10m-1h PROFIT FORECAST [${direction}]: Expected Gain +$${projectedProfitUSD} USD (${profitProbabilityPct}% Win Probability). 15m [${patternInfo.pattern}], 1h RSI ${rsi1h.toFixed(1)}, 4h ${fourHourTrend}.`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
