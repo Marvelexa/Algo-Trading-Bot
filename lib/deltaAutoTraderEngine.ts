@@ -943,10 +943,10 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⏳ WAIT MODE: ${analysis.reasoning}` };
     }
 
-    // Directional Correlation Check (Max 3 positions in the same direction)
+    // Directional Capacity Check (Up to maxConcurrentPositions in any valid direction)
     const sameDirectionCount = this.openPositions.filter(p => p.type === analysis.direction).length;
-    if (sameDirectionCount >= 3) {
-      return { success: false, message: `⚠️ Correlation Cap: Already holding ${sameDirectionCount} ${analysis.direction} positions. Skipping to maintain portfolio balance.` };
+    if (sameDirectionCount >= this.settings.maxConcurrentPositions) {
+      return { success: false, message: `⚠️ Capacity Limit: Already holding ${sameDirectionCount} ${analysis.direction} positions. All slots full.` };
     }
 
     const baseline = this.getAssetBaselinePrice(symbol);
