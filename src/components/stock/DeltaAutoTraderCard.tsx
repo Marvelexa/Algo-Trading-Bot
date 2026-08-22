@@ -339,19 +339,27 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
       const res = await fetch("/api/autotrader/reset", { method: "POST" });
       if (res.ok) {
         const data = await res.json();
-        setNotification(data?.message || "Trades reset successfully.");
-      } else {
-        deltaAutoTraderEngine.resetDailyCounters();
-        setNotification("Trades reset successfully.");
+        setNotification(data?.message || "🧹 Trades reset successfully & Bot set to OFF.");
       }
-      fetchServerState();
-      setTimeout(() => setNotification(null), 5000);
-    } catch (e) {
-      deltaAutoTraderEngine.resetDailyCounters();
-      fetchServerState();
-      setNotification("Trades reset successfully.");
-      setTimeout(() => setNotification(null), 5000);
-    }
+    } catch (e) {}
+
+    try {
+      deltaAutoTraderEngine.resetSystemCleanly();
+      const local = deltaAutoTraderEngine.getLiveFullState();
+      if (local) {
+        setSettings(local.settings);
+        setPositions(local.openPositions);
+        setRecords(local.closedRecords);
+        setStatus(local.status);
+      }
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.removeItem("delta_autotrader_state_v3");
+      }
+      setNotification("🧹 Trades reset successfully & Bot set to OFF.");
+    } catch (err) {}
+
+    fetchServerState();
+    setTimeout(() => setNotification(null), 5000);
   };
 
   const handleClosePosition = async (positionId: string, currentPrice: number) => {

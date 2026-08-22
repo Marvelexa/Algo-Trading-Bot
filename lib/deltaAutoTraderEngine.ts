@@ -459,6 +459,10 @@ export class DeltaAutoTraderEngine {
     return { success: true, message: "🧹 System reset: All P&L, trade records & open positions cleared. Bot is PAUSED (OFF). Ready for fresh start!" };
   }
 
+  public resetDailyCounters() {
+    return this.resetSystemCleanly();
+  }
+
   public skipBatchCooldown(): void {
     this.slotReentryCooldownExpiry = 0;
     this.saveToStorage();
