@@ -41,7 +41,7 @@ export interface AutoTraderClosedRecord {
   realizedPnLPct: number;
   confidenceScore: number;
   outcome: "WIN" | "LOSS" | "BREAKEVEN";
-  exitReason: "STOP_LOSS_HIT" | "TARGET_HIT" | "TRAILING_STOP_HIT" | "TRAILING_PROFIT_LOCKED" | "PEAK_RETRACEMENT_EXIT" | "TIME_STALL_EXIT" | "MAX_TIME_60M" | "MAX_TIME_24H" | "DAILY_CIRCUIT_BREAKER" | "NEWS_FREEZE_EXIT" | "MANUAL_EXIT";
+  exitReason: "STOP_LOSS_HIT" | "TARGET_HIT" | "TRAILING_STOP_HIT" | "TRAILING_PROFIT_LOCKED" | "PEAK_RETRACEMENT_EXIT" | "EARLY_MOMENTUM_REVERSAL" | "TIME_STALL_EXIT" | "MAX_TIME_60M" | "MAX_TIME_24H" | "DAILY_CIRCUIT_BREAKER" | "NEWS_FREEZE_EXIT" | "MANUAL_EXIT";
   entryTimestamp: string;
   exitTimestamp: string;
 }
@@ -885,33 +885,37 @@ export class DeltaAutoTraderEngine {
         }
 
         // ────────────────────────────────────────────
-        // 🛡️ 5-TIER LOGICAL EXIT ENGINE
+        // 🛡️ DYNAMIC PROFIT PROTECTION & PEAK-TRAILED AUTO-EXIT ENGINE
         // ────────────────────────────────────────────
 
-        // Tier 1: Micro Trailing Stop Activation (+0.4% / 0.5x ATR gain)
-        // Move SL to Breakeven + small profit buffer to make trade 100% risk-free
-        if (pnlUSD >= (pos.atrValue * 0.4 * pos.quantity) && !pos.trailingStopActive) {
+        // Tier 1: Instant Breakeven Risk-Free Lock (+$0.25 USD gain or +0.20%)
+        // Move SL to Breakeven (+20% of price move buffer) so trade is 100% risk-free
+        if (pnlUSD >= 0.25 && !pos.trailingStopActive) {
           pos.trailingStopActive = true;
-          pos.stopLossPrice = this.roundPrice(pos.type === "BUY"
-            ? pos.entryPrice + pos.atrValue * 0.15
-            : pos.entryPrice - pos.atrValue * 0.15);
-          triggeredLogs.push(`🔒 Tier 1 Trailing Stop Activated for ${pos.symbol}: SL moved to breakeven/profit @ $${pos.stopLossPrice}!`);
+          const priceMoved = Math.abs(pos.currentPrice - pos.entryPrice);
+          const beBuffer = Math.max(0.0001, priceMoved * 0.2);
+          const newSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + beBuffer : pos.entryPrice - beBuffer);
+          if ((pos.type === "BUY" && newSL < pos.currentPrice) || (pos.type === "SELL" && newSL > pos.currentPrice)) {
+            pos.stopLossPrice = newSL;
+            triggeredLogs.push(`🔒 Tier 1 Risk-Free Lock for ${pos.symbol}: SL moved to breakeven/profit @ $${pos.stopLossPrice}!`);
+          }
         }
 
-        // Tier 2: Dynamic Profit Lock Escalation (+0.9% / 1.0x ATR gain)
-        // Escalate SL to lock in +0.5x ATR of guaranteed profit
-        if (pnlUSD >= (pos.atrValue * 0.9 * pos.quantity)) {
-          const escalatedSL = this.roundPrice(pos.type === "BUY"
-            ? pos.entryPrice + pos.atrValue * 0.5
-            : pos.entryPrice - pos.atrValue * 0.5);
+        // Tier 2: Dynamic Profit Lock Escalation (+$0.60 USD gain or +0.50%)
+        // Escalate SL to lock in 50% of the movement
+        if (pnlUSD >= 0.60) {
+          const priceMoved = Math.abs(pos.currentPrice - pos.entryPrice);
+          const lockBuffer = priceMoved * 0.50;
+          const escalatedSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + lockBuffer : pos.entryPrice - lockBuffer);
 
-          if ((pos.type === "BUY" && escalatedSL > pos.stopLossPrice) || (pos.type === "SELL" && escalatedSL < pos.stopLossPrice)) {
+          if ((pos.type === "BUY" && escalatedSL > pos.stopLossPrice && escalatedSL < pos.currentPrice) ||
+              (pos.type === "SELL" && escalatedSL < pos.stopLossPrice && escalatedSL > pos.currentPrice)) {
             pos.stopLossPrice = escalatedSL;
             triggeredLogs.push(`💎 Tier 2 Profit Lock for ${pos.symbol}: Guaranteed profit locked @ $${pos.stopLossPrice}!`);
           }
         }
 
-        // Exit Check 1: Realistic Take-Profit Hit (1.5x ATR)
+        // Exit Check 1: Take-Profit Target Hit (1.5x ATR)
         const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
         if (isTPHit) {
           const res = this.closePosition(pos.id, pos.currentPrice, "TARGET_HIT");
@@ -919,10 +923,12 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Exit Check 2: Peak-Retracement Logical Exit (Never give back > 50% of peak gains)
-        if (pos.highestProfitUSD >= 2.50 && pnlUSD <= (pos.highestProfitUSD * 0.45)) {
+        // Exit Check 2: Dynamic Peak-Profit Retracement Exit (Never let green profit turn red!)
+        // If trade reached +$0.40+ peak profit and now dropped by >= 45% from peak:
+        // AUTO-EXIT IMMEDIATELY with banked green profit!
+        if (pos.highestProfitUSD >= 0.40 && pnlUSD <= (pos.highestProfitUSD * 0.55)) {
           const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
-          triggeredLogs.push(`🎯 Peak-Retracement Logical Exit: Banked $${pos.unrealizedPnLUSD} before giving back peak profit!`);
+          triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} before giving back profit!`);
           return;
         }
 
@@ -935,16 +941,23 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Exit Check 4: Stagnant Chop Exit (Holding > 45 Mins with zero momentum)
+        // Exit Check 4: 15-Minute Momentum Decay / Reversal Exit (In profit earlier, now decaying toward minus after 12m)
         const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
         const holdDurationMins = (now - entryMs) / 60000;
-        if (holdDurationMins >= 45 && holdDurationMins < 60 && Math.abs(pos.unrealizedPnLPct) < 0.20) {
-          const res = this.closePosition(pos.id, pos.currentPrice, "TIME_STALL_EXIT");
-          triggeredLogs.push(`⏳ 45-Min Stale Trade Exit: Closed ${pos.symbol} at scratch to release capital for fresh momentum.`);
+        if (holdDurationMins >= 12 && pos.highestProfitUSD > 0.15 && pnlUSD < 0.05) {
+          const res = this.closePosition(pos.id, pos.currentPrice, "EARLY_MOMENTUM_REVERSAL");
+          triggeredLogs.push(`⚠️ 15m Momentum Decay Exit: Closed ${pos.symbol} at scratch ($${pos.unrealizedPnLUSD}) before slipping negative.`);
           return;
         }
 
-        // Exit Check 5: 60-Minute (1-Hour) Precision Intraday Max Horizon Rule
+        // Exit Check 5: Stagnant Chop Exit (Holding > 30 Mins with zero momentum)
+        if (holdDurationMins >= 30 && holdDurationMins < 60 && Math.abs(pos.unrealizedPnLPct) < 0.15) {
+          const res = this.closePosition(pos.id, pos.currentPrice, "TIME_STALL_EXIT");
+          triggeredLogs.push(`⏳ 30-Min Stale Trade Exit: Closed ${pos.symbol} at scratch to release capital.`);
+          return;
+        }
+
+        // Exit Check 6: 60-Minute (1-Hour) Precision Intraday Max Horizon Rule
         if (now >= pos.maxHoldTimeExpiry || holdDurationMins >= 60) {
           const reason = pnlUSD > 0.05 ? "TARGET_HIT" : "MAX_TIME_60M";
           const res = this.closePosition(pos.id, pos.currentPrice, reason);
