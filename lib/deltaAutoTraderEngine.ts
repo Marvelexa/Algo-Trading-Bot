@@ -611,19 +611,24 @@ export class DeltaAutoTraderEngine {
     const adx4h = this.calculateADX(bars4h);
 
     let fourHourTrend: "BULLISH" | "BEARISH" | "SIDEWAYS" = "SIDEWAYS";
-    let trendScore = 10;
-    if (currentPrice > ema21_4h && ema9_4h >= ema21_4h && ema21_4h >= ema50_4h) {
+    let bullTrendPoints = 0;
+    let bearTrendPoints = 0;
+
+    if (currentPrice > ema21_4h && ema9_4h >= ema21_4h) {
       fourHourTrend = "BULLISH";
-      trendScore = 30;
-    } else if (currentPrice < ema21_4h && ema9_4h <= ema21_4h && ema21_4h <= ema50_4h) {
+      bullTrendPoints = 28;
+    } else if (currentPrice < ema21_4h && ema9_4h <= ema21_4h) {
       fourHourTrend = "BEARISH";
-      trendScore = 30;
+      bearTrendPoints = 28;
     } else if (currentPrice > ema21_4h) {
       fourHourTrend = "BULLISH";
-      trendScore = 22;
+      bullTrendPoints = 20;
     } else if (currentPrice < ema21_4h) {
       fourHourTrend = "BEARISH";
-      trendScore = 22;
+      bearTrendPoints = 20;
+    } else {
+      bullTrendPoints = 12;
+      bearTrendPoints = 12;
     }
 
     // 2. 1-Hour Momentum & MACD / RSI Confluence
@@ -631,21 +636,33 @@ export class DeltaAutoTraderEngine {
     const rsi1h = this.calculateRSI(closes1h, 14);
     const atr1h = this.calculateATR(bars1h, 14);
     const macd1h = this.calculateMACD(closes1h);
+    const ema9_1h = this.calculateEMA(closes1h, 9);
+    const ema21_1h = this.calculateEMA(closes1h, 21);
 
     let oneHourMomentum: "BULLISH_DIVERGENCE" | "BEARISH_DIVERGENCE" | "NEUTRAL" = "NEUTRAL";
-    let momentumScore = 10;
-    if (rsi1h >= 48 && rsi1h <= 72 && macd1h.histogram >= 0) {
+    let bullMomPoints = 0;
+    let bearMomPoints = 0;
+
+    // Bullish Conditions:
+    if (rsi1h >= 46 && rsi1h <= 68 && macd1h.histogram >= 0 && ema9_1h >= ema21_1h) {
+      bullMomPoints = 28;
       oneHourMomentum = "BULLISH_DIVERGENCE";
-      momentumScore = 25;
-    } else if (rsi1h <= 52 && rsi1h >= 28 && macd1h.histogram <= 0) {
-      oneHourMomentum = "BEARISH_DIVERGENCE";
-      momentumScore = 25;
-    } else if (rsi1h > 52) {
+    } else if (rsi1h < 38) {
+      bullMomPoints = 25; // Deep oversold reversal
       oneHourMomentum = "BULLISH_DIVERGENCE";
-      momentumScore = 18;
-    } else if (rsi1h < 48) {
+    } else if (rsi1h > 50) {
+      bullMomPoints = 16;
+    }
+
+    // Bearish Conditions:
+    if (rsi1h >= 32 && rsi1h <= 54 && macd1h.histogram <= 0 && ema9_1h <= ema21_1h) {
+      bearMomPoints = 28;
       oneHourMomentum = "BEARISH_DIVERGENCE";
-      momentumScore = 18;
+    } else if (rsi1h > 68) {
+      bearMomPoints = 26; // Overbought exhaustion / short opportunity
+      oneHourMomentum = "BEARISH_DIVERGENCE";
+    } else if (rsi1h < 50) {
+      bearMomPoints = 16;
     }
 
     // 3. 15-Minute Multi-Candle Pattern Recognition
@@ -654,33 +671,36 @@ export class DeltaAutoTraderEngine {
     const avgVol15m = bars15mUse.slice(-5).reduce((a, b) => a + (b.volume || 1), 0) / 5;
     const last15m = bars15mUse[bars15mUse.length - 1];
     const volMultiplier = (last15m.volume || 1) / (avgVol15m || 1);
+    const volBonus = volMultiplier >= 1.2 ? 22 : volMultiplier >= 0.95 ? 16 : 10;
 
-    let volumeScore = volMultiplier >= 1.15 ? 20 : volMultiplier >= 0.95 ? 15 : 8;
+    let bullPatternPoints = patternInfo.signal === "BULLISH" ? patternInfo.score : 6;
+    let bearPatternPoints = patternInfo.signal === "BEARISH" ? patternInfo.score : 6;
+
+    // Total Bullish vs Bearish Confluence Scores
+    const totalBullScore = Math.min(98, Math.max(30, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus));
+    const totalBearScore = Math.min(98, Math.max(30, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus));
 
     // 4. Strict Direction & 80%+ Confluence Determination
     let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
+    let overallScore = 50;
 
-    // Strict BUY Confluence: 4h Bullish + 1h Momentum Bullish + 15m Bullish Pattern
-    if (fourHourTrend === "BULLISH" && oneHourMomentum === "BULLISH_DIVERGENCE" && patternInfo.signal === "BULLISH") {
+    if (totalBullScore >= this.settings.minConfidenceThreshold && totalBullScore > totalBearScore + 6) {
       direction = "BUY";
-    }
-    // Strict SELL Confluence: 4h Bearish + 1h Momentum Bearish + 15m Bearish Pattern
-    else if (fourHourTrend === "BEARISH" && oneHourMomentum === "BEARISH_DIVERGENCE" && patternInfo.signal === "BEARISH") {
+      overallScore = totalBullScore;
+    } else if (totalBearScore >= this.settings.minConfidenceThreshold && totalBearScore > totalBullScore + 6) {
       direction = "SELL";
-    }
-    // No match -> Market is mixed / sideways -> DO NOT TRADE!
-    else {
+      overallScore = totalBearScore;
+    } else {
       direction = "NEUTRAL";
+      overallScore = Math.max(totalBullScore, totalBearScore);
     }
 
-    const overallScore = Math.min(98, Math.max(45, trendScore + momentumScore + patternInfo.score + volumeScore));
     const isEntryValid = direction !== "NEUTRAL" && overallScore >= this.settings.minConfidenceThreshold;
-
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
     const reasoning = isEntryValid
-      ? `🔥 80%+ CONFLUENCE: 4h ${fourHourTrend} (EMA Ribbon) + 1h RSI ${rsi1h.toFixed(1)} & MACD + 15m [${patternInfo.pattern}]. Score: ${overallScore}/100.`
-      : `⏳ 10m DEEP SCAN: 4h ${fourHourTrend}, 1h RSI ${rsi1h.toFixed(1)}, 15m [${patternInfo.pattern}]. Score ${overallScore}/100. (Waiting for strict 80%+ alignment)`;
+      ? `🔥 80%+ ${direction} SETUP: 15m [${patternInfo.pattern}] + 1h RSI ${rsi1h.toFixed(1)} & MACD + 4h ${fourHourTrend}. Score: ${overallScore}/100.`
+      : `⏳ 10m SCAN: Bull Score ${totalBullScore}/100 · Bear Score ${totalBearScore}/100 (15m [${patternInfo.pattern}], 1h RSI ${rsi1h.toFixed(1)}). Awaiting clean breakout.`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
@@ -1248,8 +1268,21 @@ export class DeltaAutoTraderEngine {
     // Sort descending by confluence score
     validCandidates.sort((a, b) => b.score - a.score);
 
+    const buyPositionsCount = this.openPositions.filter(p => p.type === "BUY").length;
+    const sellPositionsCount = this.openPositions.filter(p => p.type === "SELL").length;
+
+    // 🎯 Directional Portfolio Balancing: Max 3 BUYs / Max 3 SELLs across 5 slots
+    // If 3 BUYs are already open, prioritize finding high-conviction SELLs on weaker/overbought coins
     for (const cand of validCandidates) {
       if (cand.analysis.isEntryValid) {
+        const dir = cand.analysis.direction;
+        if (dir === "BUY" && buyPositionsCount >= 3 && sellPositionsCount < 3) {
+          continue; // Prioritize finding a SELL setup to hedge the portfolio
+        }
+        if (dir === "SELL" && sellPositionsCount >= 3 && buyPositionsCount < 3) {
+          continue; // Prioritize finding a BUY setup to hedge the portfolio
+        }
+
         const res = this.evaluateAndExecuteAutoTrade(cand.sym, cand.candles15m, cand.candles1h, cand.candles4h, cand.currentPrice);
         if (res.success && res.position) {
           console.log(`[AutoTrader] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
@@ -1339,8 +1372,13 @@ export class DeltaAutoTraderEngine {
       ? livePrice
       : (candleClose && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
     
-    // If neutral, default to trend direction or 4h momentum
-    let tradeDirection: "BUY" | "SELL" = analysis.direction !== "NEUTRAL" ? analysis.direction : analysis.fourHourTrend === "BEARISH" ? "SELL" : "BUY";
+    const buyCount = this.openPositions.filter(p => p.type === "BUY").length;
+    const sellCount = this.openPositions.filter(p => p.type === "SELL").length;
+
+    // If analysis has a specific direction, use it; otherwise balance BUY vs SELL
+    let tradeDirection: "BUY" | "SELL" = analysis.direction !== "NEUTRAL" 
+      ? analysis.direction 
+      : (buyCount > sellCount ? "SELL" : (sellCount > buyCount ? "BUY" : (analysis.fourHourTrend === "BEARISH" ? "SELL" : "BUY")));
 
     const atr = analysis.atr1h && analysis.atr1h > 0 ? analysis.atr1h : (currentPrice * 0.012);
     const realisticAtr = Math.max(currentPrice * 0.008, Math.min(currentPrice * 0.025, atr));
