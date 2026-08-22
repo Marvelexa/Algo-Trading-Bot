@@ -637,8 +637,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
             {positions.length === 0 ? (
               <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-400 text-xs">
-                <p className="font-bold text-slate-300 mb-1">No Active Positions Currently Open</p>
-                <p className="text-slate-500">The Delta Auto-Trader automatically executes when 15m+1h+4h timeframes align with a confidence score ≥ 65/100.</p>
+                <p className="text-slate-500">The Delta Auto-Trader patiently analyzes 15m multi-candle patterns + 1h momentum + 4h trend and executes when confidence score reaches ≥ 78/100 (Target: 80%+ Win Rate).</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1007,7 +1006,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <div>
                   <h3 className="text-sm font-black text-white">📡 10-Coin Confluence Radar & Market Diagnostic</h3>
                   <p className="text-xs text-slate-400 font-sans mt-0.5">
-                    Real-time market scan status · Code is 100% active & safe · Strict 70/100 filter active
+                    Real-time multi-timeframe candle scan · Strict 78/100 Filter (Target: 80%+ Win Rate)
                   </p>
                 </div>
               </div>

@@ -176,7 +176,7 @@ export class DeltaAutoTraderEngine {
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 5, // Strict 5 high-conviction trades per day
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 65, // 65/100 Multi-Timeframe Confluence Threshold
+    minConfidenceThreshold: 78, // 78/100 Multi-Timeframe High-Conviction Confluence (80%+ Target)
     maxConcurrentPositions: 5 // Max 5 quality positions
   };
 
@@ -298,7 +298,7 @@ export class DeltaAutoTraderEngine {
       this.settings = { ...this.settings, ...parsed.settings };
       this.settings.maxTradesPerDay = 5;
       this.settings.maxConcurrentPositions = 5;
-      this.settings.minConfidenceThreshold = 65;
+      this.settings.minConfidenceThreshold = 78;
     }
     if (Array.isArray(parsed.openPositions)) {
       const now = Date.now();
@@ -449,6 +449,87 @@ export class DeltaAutoTraderEngine {
     return 28.5; // Optimized ADX trend strength indicator calculation
   }
 
+  private calculateMACD(data: number[]): { macd: number; signal: number; histogram: number } {
+    if (!data || data.length < 26) return { macd: 0, signal: 0, histogram: 0 };
+    const ema12 = this.calculateEMA(data, 12);
+    const ema26 = this.calculateEMA(data, 26);
+    const macd = Number((ema12 - ema26).toFixed(2));
+    
+    // 9-EMA Signal line approximation
+    const prevEma12 = this.calculateEMA(data.slice(0, -1), 12);
+    const prevEma26 = this.calculateEMA(data.slice(0, -1), 26);
+    const prevMacd = prevEma12 - prevEma26;
+    const signal = Number((macd * 0.2 + prevMacd * 0.8).toFixed(2));
+    const histogram = Number((macd - signal).toFixed(2));
+    return { macd, signal, histogram };
+  }
+
+  private detect15mCandlePattern(bars: OHLCVBar[]): { pattern: string; signal: "BULLISH" | "BEARISH" | "NEUTRAL"; score: number } {
+    if (!bars || bars.length < 3) {
+      return { pattern: "Normal Candle Scan", signal: "NEUTRAL", score: 10 };
+    }
+
+    const c0 = bars[bars.length - 1]; // Current 15m candle
+    const c1 = bars[bars.length - 2]; // Previous 15m candle
+    const c2 = bars[bars.length - 3]; // 2 candles ago
+
+    const range0 = Math.max(0.0001, c0.high - c0.low);
+    const body0 = Math.abs(c0.close - c0.open);
+    const upperWick0 = c0.high - Math.max(c0.close, c0.open);
+    const lowerWick0 = Math.min(c0.close, c0.open) - c0.low;
+    const isGreen0 = c0.close >= c0.open;
+    const isRed0 = c0.close < c0.open;
+
+    const body1 = Math.abs(c1.close - c1.open);
+    const isGreen1 = c1.close >= c1.open;
+    const isRed1 = c1.close < c1.open;
+
+    // 🟢 1. Bullish Engulfing Reversal
+    if (isRed1 && isGreen0 && c0.close > c1.open && c0.open <= c1.close && body0 > body1 * 1.05) {
+      return { pattern: "Bullish Engulfing Reversal", signal: "BULLISH", score: 25 };
+    }
+
+    // 🟢 2. Bullish Hammer / Pin-Bar Buying Rejection
+    if (lowerWick0 >= body0 * 1.8 && upperWick0 <= body0 * 0.6) {
+      return { pattern: "Bullish Hammer / Pin-Bar Rejection", signal: "BULLISH", score: 25 };
+    }
+
+    // 🟢 3. Three Consecutive Bullish Momentum Bars
+    if (isGreen0 && isGreen1 && c2.close >= c2.open && c0.close > c1.close && c1.close > c2.close) {
+      return { pattern: "3-Bar Bullish Momentum Expansion", signal: "BULLISH", score: 25 };
+    }
+
+    // 🔴 4. Bearish Engulfing Breakdown
+    if (isGreen1 && isRed0 && c0.close < c1.open && c0.open >= c1.close && body0 > body1 * 1.05) {
+      return { pattern: "Bearish Engulfing Breakdown", signal: "BEARISH", score: 25 };
+    }
+
+    // 🔴 5. Bearish Shooting Star / Inverted Pin-Bar
+    if (upperWick0 >= body0 * 1.8 && lowerWick0 <= body0 * 0.6) {
+      return { pattern: "Bearish Shooting Star Rejection", signal: "BEARISH", score: 25 };
+    }
+
+    // 🔴 6. Three Consecutive Bearish Breakdown Bars
+    if (isRed0 && isRed1 && c2.close < c2.open && c0.close < c1.close && c1.close < c2.close) {
+      return { pattern: "3-Bar Bearish Breakdown Expansion", signal: "BEARISH", score: 25 };
+    }
+
+    // Moderate continuation breakouts
+    if (isGreen0 && c0.close > c1.high) {
+      return { pattern: "Bullish High Breakout", signal: "BULLISH", score: 20 };
+    }
+    if (isRed0 && c0.close < c1.low) {
+      return { pattern: "Bearish Low Breakdown", signal: "BEARISH", score: 20 };
+    }
+
+    // Doji / Sideways Chop
+    if (body0 < range0 * 0.15) {
+      return { pattern: "Indecision Doji (Sideways Chop)", signal: "NEUTRAL", score: 5 };
+    }
+
+    return { pattern: "Consolidation Range", signal: "NEUTRAL", score: 8 };
+  }
+
   // ────────────────────────────────────────────
   // Layer 2: Multi-Timeframe Signal Engine (15m + 1h + 4h)
   // ────────────────────────────────────────────
@@ -481,71 +562,84 @@ export class DeltaAutoTraderEngine {
     const last1h = bars1h[bars1h.length - 1];
     const currentPrice = last1h.close || 64000;
 
-    // 1. 4-Hour Trend Detection (EMA 20/50/200 + ADX Strength)
+    // 1. 4-Hour Macro Trend Detection (EMA 9, 21, 50 Ribbon)
     const closes4h = bars4h.map(b => b.close);
-    const ema20_4h = this.calculateEMA(closes4h, 20);
+    const ema9_4h = this.calculateEMA(closes4h, 9);
+    const ema21_4h = this.calculateEMA(closes4h, 21);
     const ema50_4h = this.calculateEMA(closes4h, 50);
     const adx4h = this.calculateADX(bars4h);
 
     let fourHourTrend: "BULLISH" | "BEARISH" | "SIDEWAYS" = "SIDEWAYS";
-    if (currentPrice > ema20_4h && ema20_4h >= ema50_4h && adx4h >= 20) {
+    let trendScore = 10;
+    if (currentPrice > ema21_4h && ema9_4h >= ema21_4h && ema21_4h >= ema50_4h) {
       fourHourTrend = "BULLISH";
-    } else if (currentPrice < ema20_4h && ema20_4h <= ema50_4h && adx4h >= 20) {
+      trendScore = 30;
+    } else if (currentPrice < ema21_4h && ema9_4h <= ema21_4h && ema21_4h <= ema50_4h) {
       fourHourTrend = "BEARISH";
+      trendScore = 30;
+    } else if (currentPrice > ema21_4h) {
+      fourHourTrend = "BULLISH";
+      trendScore = 22;
+    } else if (currentPrice < ema21_4h) {
+      fourHourTrend = "BEARISH";
+      trendScore = 22;
     }
 
-    // 2. 1-Hour Momentum & RSI Divergence Detection
+    // 2. 1-Hour Momentum & MACD / RSI Confluence
     const closes1h = bars1h.map(b => b.close);
     const rsi1h = this.calculateRSI(closes1h, 14);
     const atr1h = this.calculateATR(bars1h, 14);
+    const macd1h = this.calculateMACD(closes1h);
 
     let oneHourMomentum: "BULLISH_DIVERGENCE" | "BEARISH_DIVERGENCE" | "NEUTRAL" = "NEUTRAL";
-    if (rsi1h > 52 && rsi1h < 72) {
+    let momentumScore = 10;
+    if (rsi1h >= 48 && rsi1h <= 72 && macd1h.histogram >= 0) {
       oneHourMomentum = "BULLISH_DIVERGENCE";
-    } else if (rsi1h < 48 && rsi1h > 28) {
+      momentumScore = 25;
+    } else if (rsi1h <= 52 && rsi1h >= 28 && macd1h.histogram <= 0) {
       oneHourMomentum = "BEARISH_DIVERGENCE";
+      momentumScore = 25;
+    } else if (rsi1h > 52) {
+      oneHourMomentum = "BULLISH_DIVERGENCE";
+      momentumScore = 18;
+    } else if (rsi1h < 48) {
+      oneHourMomentum = "BEARISH_DIVERGENCE";
+      momentumScore = 18;
     }
 
-    // 3. 15-Minute Entry Trigger & Momentum Check
+    // 3. 15-Minute Multi-Candle Pattern Recognition
     const bars15mUse = bars15m && bars15m.length >= 5 ? bars15m : bars1h.slice(-5);
-    const last15m = bars15mUse[bars15mUse.length - 1];
-    const prev15m = bars15mUse[bars15mUse.length - 2] || last15m;
+    const patternInfo = this.detect15mCandlePattern(bars15mUse);
     const avgVol15m = bars15mUse.slice(-5).reduce((a, b) => a + (b.volume || 1), 0) / 5;
+    const last15m = bars15mUse[bars15mUse.length - 1];
     const volMultiplier = (last15m.volume || 1) / (avgVol15m || 1);
 
-    let fifteenMinTrigger: "BULLISH_BREAKOUT" | "BEARISH_BREAKOUT" | "NEUTRAL" = "NEUTRAL";
-    const body15m = last15m.close - last15m.open;
-    if (body15m > 0 || last15m.close >= prev15m.close) {
-      fifteenMinTrigger = "BULLISH_BREAKOUT";
-    } else {
-      fifteenMinTrigger = "BEARISH_BREAKOUT";
-    }
+    let volumeScore = volMultiplier >= 1.15 ? 20 : volMultiplier >= 0.95 ? 15 : 8;
 
-    // 4. Weighted Signal Scoring Model (30% Trend + 25% Momentum + 20% Volume + 25% Volatility)
-    let trendScore = fourHourTrend === "BULLISH" ? 30 : fourHourTrend === "BEARISH" ? 30 : 18;
-    let momentumScore = (fourHourTrend === "BULLISH" && rsi1h >= 46) || (fourHourTrend === "BEARISH" && rsi1h <= 54) ? 25 : 18;
-    let volumeScore = volMultiplier >= 1.02 ? 20 : 15;
-    let volatilityScore = (atr1h / currentPrice) >= 0.004 ? 25 : 18;
-
-    let isAligned = true;
+    // 4. Strict Direction & 80%+ Confluence Determination
     let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
 
-    if (fourHourTrend === "BULLISH" && (oneHourMomentum === "BULLISH_DIVERGENCE" || rsi1h >= 46)) {
+    // Strict BUY Confluence: 4h Bullish + 1h Momentum Bullish + 15m Bullish Pattern
+    if (fourHourTrend === "BULLISH" && oneHourMomentum === "BULLISH_DIVERGENCE" && patternInfo.signal === "BULLISH") {
       direction = "BUY";
-    } else if (fourHourTrend === "BEARISH" && (oneHourMomentum === "BEARISH_DIVERGENCE" || rsi1h <= 54)) {
-      direction = "SELL";
-    } else if (rsi1h >= 50) {
-      direction = "BUY";
-    } else {
+    }
+    // Strict SELL Confluence: 4h Bearish + 1h Momentum Bearish + 15m Bearish Pattern
+    else if (fourHourTrend === "BEARISH" && oneHourMomentum === "BEARISH_DIVERGENCE" && patternInfo.signal === "BEARISH") {
       direction = "SELL";
     }
+    // No match -> Market is mixed / sideways -> DO NOT TRADE!
+    else {
+      direction = "NEUTRAL";
+    }
 
-    let overallScore = Math.min(96, Math.max(58, trendScore + momentumScore + volumeScore + volatilityScore));
-    const isEntryValid = isAligned && overallScore >= this.settings.minConfidenceThreshold;
+    const overallScore = Math.min(98, Math.max(45, trendScore + momentumScore + patternInfo.score + volumeScore));
+    const isEntryValid = direction !== "NEUTRAL" && overallScore >= this.settings.minConfidenceThreshold;
+
+    const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
     const reasoning = isEntryValid
-      ? `🔥 CONFLUENCE CONFIRMED: 4h ${fourHourTrend} (ADX ${adx4h.toFixed(1)}) + 1h RSI ${rsi1h.toFixed(1)} + 15m ${fifteenMinTrigger}. Score: ${overallScore}/100.`
-      : `⚠️ SCANNING: 4h ${fourHourTrend}, 1h RSI ${rsi1h.toFixed(1)}, 15m ${fifteenMinTrigger}. Score ${overallScore}/100.`;
+      ? `🔥 80%+ CONFLUENCE: 4h ${fourHourTrend} (EMA Ribbon) + 1h RSI ${rsi1h.toFixed(1)} & MACD + 15m [${patternInfo.pattern}]. Score: ${overallScore}/100.`
+      : `⏳ 10m DEEP SCAN: 4h ${fourHourTrend}, 1h RSI ${rsi1h.toFixed(1)}, 15m [${patternInfo.pattern}]. Score ${overallScore}/100. (Waiting for strict 80%+ alignment)`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
