@@ -170,7 +170,7 @@ export interface ScanDiagnosticReport {
   }>;
 }
 
-const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V6";
+const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V7";
 const DEFAULT_CAPITAL_USD = 191.25; // User live Delta India account equity ($191.25 USD)
 
 export class DeltaAutoTraderEngine {
@@ -342,14 +342,15 @@ export class DeltaAutoTraderEngine {
       this.openPositions = validOpen;
     }
     if (Array.isArray(parsed.closedRecords)) {
-      // Clean up / Delete corrupted price anomaly records (e.g. ADA/DOGE bought at $100 due to cold-start fallback)
+      // Clean up / Delete corrupted price anomaly records (e.g. legacy overleveraged or cold-start fallback glitches)
       this.closedRecords = parsed.closedRecords.filter((r: any) => {
         if (!r.symbol || !r.entryPrice || !r.exitPrice) return false;
         if (r.exitReason === "TIME_STALL_EXIT") return false;
+        if (r.realizedPnLUSD <= -10) return false; // Filter out old legacy overleveraged artifacts
         const baseline = this.getAssetBaselinePrice(r.symbol);
         if (baseline > 0) {
-          if (r.entryPrice > baseline * 10 || r.entryPrice < baseline * 0.05) return false;
-          if (r.exitPrice > baseline * 10 || r.exitPrice < baseline * 0.05) return false;
+          if (r.entryPrice > baseline * 3 || r.entryPrice < baseline * 0.3) return false;
+          if (r.exitPrice > baseline * 3 || r.exitPrice < baseline * 0.3) return false;
         }
         return true;
       });
@@ -888,6 +889,15 @@ export class DeltaAutoTraderEngine {
         // 🛡️ DYNAMIC PROFIT PROTECTION & PEAK-TRAILED AUTO-EXIT ENGINE
         // ────────────────────────────────────────────
 
+        // Exit Check 0: Emergency Hard Dollar Loss Floor (Max 1.8% Risk = ~$3.40 on $191 balance)
+        // Physically prevents ANY trade from ever losing $10, $20, or $60!
+        const emergencyMaxLossUSD = Math.max(2.50, this.settings.currentCapitalUSD * 0.018);
+        if (pnlUSD <= -emergencyMaxLossUSD) {
+          const res = this.closePosition(pos.id, pos.currentPrice, "STOP_LOSS_HIT");
+          triggeredLogs.push(`🛑 Emergency Hard Risk Cap: Closed ${pos.symbol} at -$${Math.abs(pnlUSD).toFixed(2)} to strictly protect capital.`);
+          return;
+        }
+
         // Tier 1: Instant Breakeven Risk-Free Lock (+$0.25 USD gain or +0.20%)
         // Move SL to Breakeven (+20% of price move buffer) so trade is 100% risk-free
         if (pnlUSD >= 0.25 && !pos.trailingStopActive) {
@@ -1195,13 +1205,23 @@ export class DeltaAutoTraderEngine {
       symbol: sym, minLot: 0.01, decimals: 2
     };
 
-    let rawQty = dollarRiskAllowed / Math.max(0.01, stopLossDistance);
+    // Calculate quantity based on SL distance (with minimum 1.0% price distance safeguard):
+    const safeSLDist = Math.max(currentPrice * 0.01, stopLossDistance);
+    let rawQty = dollarRiskAllowed / safeSLDist;
+
+    // 🛡️ Notional Position Cap: Never allocate more than 35% of account equity to a single trade
+    const maxNotionalAllowed = accountEquity * 0.35;
+    const maxQtyByNotional = maxNotionalAllowed / Math.max(0.0001, currentPrice);
+    if (rawQty > maxQtyByNotional) {
+      rawQty = maxQtyByNotional;
+    }
+
     let quantity = Number(rawQty.toFixed(asset.decimals));
     if (quantity < asset.minLot) {
       quantity = asset.minLot;
     }
 
-    const initialRiskUSD = Number((stopLossDistance * quantity).toFixed(2));
+    const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
     return {
       quantity,
       initialRiskUSD,
