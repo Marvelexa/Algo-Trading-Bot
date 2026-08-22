@@ -801,7 +801,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Bot Open Positions ({positions.length} / {settings.maxConcurrentPositions})
+                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Bot Open Position ({positions.length} / {settings.maxConcurrentPositions})
               </h3>
               <button
                 onClick={handleResetTrades}
@@ -814,7 +814,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
             {positions.length === 0 ? (
               <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-400 text-xs">
-                <p className="text-slate-500">The Delta Auto-Trader patiently analyzes 15m multi-candle patterns + 1h momentum + 4h trend and executes when confidence score reaches ≥ 78/100 (Target: 80%+ Win Rate).</p>
+                <p className="text-slate-500">The Delta Auto-Trader sequentially observes each of the 10 curated assets in dedicated 5-minute confirmation windows before firing with strict 1.5% risk & R-multiple protection.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -829,14 +829,21 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                           {pos.type === "BUY" ? "🟢 BUY (LONG)" : "🔴 SELL (SHORT)"}
                         </span>
                         <span className="text-[10px] text-indigo-300 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
-                          {pos.timeframeAlignment}
+                          {pos.timeframeAlignment || "15m + 1h + 4h"}
                         </span>
                       </div>
 
-                      {/* AUTOMATED RISK ENGINE STATUS (NO MANUAL SQUARE OFF) */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-[10px] font-bold text-indigo-300">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        Auto-Managed SL/Target Exit Active
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-[10px] font-bold text-indigo-300">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          Auto-Managed R-Multiple Exit
+                        </div>
+                        <button
+                          onClick={() => handleClosePosition(pos.id, pos.currentPrice || pos.entryPrice)}
+                          className="px-2 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-[10px] font-bold transition cursor-pointer"
+                        >
+                          Manual Exit
+                        </button>
                       </div>
                     </div>
 
@@ -856,24 +863,25 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                         </strong>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 block">ATR Stop-Loss:</span>
+                        <span className="text-[10px] text-slate-400 block">Stop-Loss (Trailing):</span>
                         <strong className="text-rose-400">${formatAssetPrice(pos.stopLossPrice)}</strong>
                       </div>
                     </div>
 
-                    {/* ⏱️ 10M - 60M PRECISION INTRADAY HOLDING TIMER */}
+                    {/* ⏱️ 2-4H to 24H V3 SWING HORIZON HOLDING TIMER */}
                     {(() => {
                       const entryMs = pos.entryTimeMs || new Date(pos.entryTimestamp).getTime() || (Date.now() - 60000);
                       const diffMins = Math.max(1, Math.floor((Date.now() - entryMs) / 60000));
-                      const remainingMins = Math.max(0, 60 - diffMins);
+                      const diffHours = Math.floor(diffMins / 60);
+                      const remainingHours = Math.max(0, 24 - diffHours);
                       return (
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-indigo-500/20 text-[11px] font-mono">
                           <span className="text-amber-300 flex items-center gap-1.5 font-bold">
                             <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            Elapsed Hold: {diffMins}m · Target Horizon: 10m to 1 Hour
+                            Elapsed Hold: {diffHours > 0 ? `${diffHours}h ${diffMins % 60}m` : `${diffMins}m`} · Horizon: 2-4 Hours to 1 Day
                           </span>
                           <span className="text-slate-400">
-                            ⏰ 1h Auto-Horizon: ~{remainingMins}m remaining
+                            ⏰ 24h Max Hold: ~{remainingHours}h remaining
                           </span>
                         </div>
                       );
@@ -881,7 +889,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
                     {pos.trailingStopActive && (
                       <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 font-mono flex items-center gap-1.5">
-                        🔒 Trailing Stop Active: Profit locked above entry price (1.0x ATR rule)!
+                        🔒 Trailing Stop Active: Tier {pos.trailingStopTier || 1} Risk-Free Lock (+{pos.trailingStopTier === 2 ? "0.5R Guaranteed Profit" : "0.1R Breakeven Buffer"})!
                       </div>
                     )}
                   </div>

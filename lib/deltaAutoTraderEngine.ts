@@ -358,18 +358,19 @@ export class DeltaAutoTraderEngine {
     if (!parsed) return;
     if (parsed.settings) {
       this.settings = { ...this.settings, ...parsed.settings };
-      this.settings.maxTradesPerDay = 5;
-      this.settings.maxConcurrentPositions = 5;
-      this.settings.minConfidenceThreshold = 78;
+      this.settings.maxTradesPerDay = 10;
+      this.settings.maxConcurrentPositions = 1;
+      this.settings.minConfidenceThreshold = 60;
+      this.settings.inspectionWindowMinutes = 5;
     }
     if (Array.isArray(parsed.openPositions)) {
       const now = Date.now();
-      // Auto-exit/prune old stale positions that were opened under old 4h/24h rules (> 60 mins old)
       const validOpen: AutoTraderPosition[] = [];
       for (const pos of parsed.openPositions) {
         const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
-        const holdMins = (now - entryMs) / 60000;
-        if (holdMins >= 60) {
+        const holdMs = now - entryMs;
+        // Auto-exit/prune positions older than 24 hours (v3 Swing Horizon max hold)
+        if (holdMs >= V3_MAX_HOLD_TIME_MS) {
           const actualExitPrice = pos.currentPrice || pos.entryPrice;
           const pnlUSD = pos.type === "BUY"
             ? (actualExitPrice - pos.entryPrice) * pos.quantity
@@ -387,7 +388,7 @@ export class DeltaAutoTraderEngine {
             realizedPnLPct: pnlPct,
             confidenceScore: pos.confidenceScore || 75,
             outcome: pnlUSD > 0.1 ? "WIN" : pnlUSD < -0.1 ? "LOSS" : "BREAKEVEN",
-            exitReason: "MAX_TIME_60M",
+            exitReason: "MAX_HOLD_TIME_EXPIRY",
             entryTimestamp: pos.entryTimestamp,
             exitTimestamp: new Date().toISOString().replace("T", " ").substring(0, 16)
           });
@@ -395,14 +396,15 @@ export class DeltaAutoTraderEngine {
           validOpen.push(pos);
         }
       }
-      this.openPositions = validOpen;
+      // Strictly enforce max 1 sequential position
+      this.openPositions = validOpen.slice(0, 1);
     }
     if (Array.isArray(parsed.closedRecords)) {
-      // Clean up / Delete corrupted price anomaly records (e.g. legacy overleveraged or cold-start fallback glitches)
+      // Clean up / Delete corrupted price anomaly records
       this.closedRecords = parsed.closedRecords.filter((r: any) => {
         if (!r.symbol || !r.entryPrice || !r.exitPrice) return false;
         if (r.exitReason === "TIME_STALL_EXIT") return false;
-        if (r.realizedPnLUSD <= -10) return false; // Filter out old legacy overleveraged artifacts
+        if (r.realizedPnLUSD <= -10) return false;
         const baseline = this.getAssetBaselinePrice(r.symbol);
         if (baseline > 0) {
           if (r.entryPrice > baseline * 3 || r.entryPrice < baseline * 0.3) return false;
@@ -425,7 +427,7 @@ export class DeltaAutoTraderEngine {
     this.saveToStorage();
   }
 
-  public closeAllOpenPositions(reason: AutoTraderClosedRecord["exitReason"] = "MAX_TIME_60M"): { count: number; message: string } {
+  public closeAllOpenPositions(reason: AutoTraderClosedRecord["exitReason"] = "MAX_HOLD_TIME_EXPIRY"): { count: number; message: string } {
     const count = this.openPositions.length;
     if (count === 0) return { count: 0, message: "No active open positions to close." };
 
@@ -435,19 +437,24 @@ export class DeltaAutoTraderEngine {
     }
     this.slotReentryCooldownExpiry = 0;
     this.saveToStorage();
-    return { count, message: `Successfully exited all ${count} old position(s). Ready for fresh 5-slot continuous cycle!` };
+    return { count, message: `Successfully exited all ${count} position(s). Ready for fresh 5-minute sequential inspection!` };
   }
 
   public resetSystemCleanly(): { success: boolean; message: string } {
     this.openPositions = [];
     this.closedRecords = [];
     this.settings.isEnabled = false;
+    this.settings.maxConcurrentPositions = 1;
+    this.settings.inspectionWindowMinutes = 5;
+    this.settings.minConfidenceThreshold = 60;
     this.settings.currentCapitalUSD = this.settings.initialCapitalUSD;
     this.dailyStartCapitalUSD = this.settings.initialCapitalUSD;
     this.tradesTakenTodayCount = 0;
     this.lastLossTimestamp = 0;
     this.slotReentryCooldownExpiry = 0;
     this.currentCycleNumber = 1;
+    this.currentAssetIndex = 0;
+    this.inspectionStartTimeMs = 0;
     this.saveToStorage();
     return { success: true, message: "🧹 System reset: All P&L, trade records & open positions cleared. Bot is PAUSED (OFF). Ready for fresh start!" };
   }
