@@ -353,6 +353,19 @@ export class DeltaAutoTraderEngine {
       } catch (e) {
         // Offline / server fetch fallback
       }
+    } else {
+      // Node.js Direct Disk Hydration (24/7 background mode when browser is closed)
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const filePath = path.join(process.cwd(), ".delta_auto_trader_state.json");
+        if (fs.existsSync(filePath)) {
+          const raw = fs.readFileSync(filePath, "utf-8");
+          if (raw) {
+            this.applyParsedState(JSON.parse(raw));
+          }
+        }
+      } catch (e) {}
     }
   }
 
@@ -495,6 +508,16 @@ export class DeltaAutoTraderEngine {
       } catch (e) {
         console.warn("[DeltaAutoTrader] LocalStorage save error:", e);
       }
+    } else {
+      // Node.js Direct Disk Write (24/7 background mode when browser is closed)
+      try {
+        import("fs").then(fs => {
+          import("path").then(path => {
+            const filePath = path.join(process.cwd(), ".delta_auto_trader_state.json");
+            fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+          });
+        }).catch(() => {});
+      } catch (e) {}
     }
   }
 

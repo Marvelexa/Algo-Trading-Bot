@@ -542,6 +542,19 @@ async function startServer() {
   const DELTA_STATE_FILE = path.join(process.cwd(), ".delta_auto_trader_state.json");
   const PAPER_STATE_FILE = path.join(process.cwd(), ".paper_trading_state.json");
 
+  // 🚀 Hydrate 24/7 Standing Autonomous State from disk immediately on server start
+  try {
+    if (fs.existsSync(DELTA_STATE_FILE)) {
+      const raw = fs.readFileSync(DELTA_STATE_FILE, "utf-8");
+      if (raw) {
+        (deltaAutoTraderEngine as any).applyParsedState(JSON.parse(raw));
+        console.log("[Server] 🚀 24/7 Delta Auto-Trader state hydrated from disk (.delta_auto_trader_state.json)");
+      }
+    }
+  } catch (e) {
+    console.warn("[Server] ⚠️ Could not hydrate delta state from disk:", e);
+  }
+
   // Real-Time Server State (Runs 24/7 in Cloud even when Chrome is closed / Mobile is sleeping)
   app.get("/api/autotrader/state", (req, res) => {
     try {
@@ -569,7 +582,11 @@ async function startServer() {
     try {
       const { isEnabled } = req.body;
       const newStatus = deltaAutoTraderEngine.toggleBot(isEnabled);
-      return res.json({ success: true, isEnabled: newStatus, state: deltaAutoTraderEngine.getLiveFullState() });
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      try {
+        fs.writeFileSync(DELTA_STATE_FILE, JSON.stringify(fullState, null, 2), "utf-8");
+      } catch (e) {}
+      return res.json({ success: true, isEnabled: newStatus, state: fullState });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
