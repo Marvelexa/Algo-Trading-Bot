@@ -617,22 +617,20 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Bot Open Positions ({positions.length} / {settings.maxConcurrentPositions})
               </h3>
-              {positions.length > 0 && (
-                <button
-                  onClick={() => {
-                    const res = deltaAutoTraderEngine.closeAllOpenPositions("MAX_TIME_60M");
-                    setPositions(deltaAutoTraderEngine.getOpenPositions());
-                    setRecords(deltaAutoTraderEngine.getClosedRecords());
-                    setStatus(deltaAutoTraderEngine.getStatus());
-                    setNotification(res.message);
-                    setTimeout(() => setNotification(null), 5000);
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold text-[10px] transition flex items-center gap-1 cursor-pointer"
-                >
-                  <X className="w-3 h-3" />
-                  Exit All Old Trades & Start Fresh 10m Batch
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  const res = deltaAutoTraderEngine.resetSystemCleanly();
+                  setPositions(deltaAutoTraderEngine.getOpenPositions());
+                  setRecords(deltaAutoTraderEngine.getClosedRecords());
+                  setStatus(deltaAutoTraderEngine.getStatus());
+                  setNotification(res.message);
+                  setTimeout(() => setNotification(null), 5000);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold text-[10px] transition flex items-center gap-1 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+                🧹 Reset Trades & Set Bot OFF
+              </button>
             </div>
 
             {positions.length === 0 ? (
