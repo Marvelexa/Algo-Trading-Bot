@@ -166,10 +166,10 @@ export class DeltaAutoTraderEngine {
     currentCapitalUSD: DEFAULT_CAPITAL_USD,
     riskPerTradePct: 1.5,
     maxDailyLossPct: 3.0,
-    maxTradesPerDay: 10, // Default 10 quality trades max per day
+    maxTradesPerDay: 5, // Strict 5 high-conviction trades per day
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 60, // Adaptive 60/100 threshold
-    maxConcurrentPositions: 10 // Up to 10 positions across all 10 curated coins
+    minConfidenceThreshold: 70, // 70/100 Multi-Timeframe Confluence Threshold
+    maxConcurrentPositions: 5 // Max 5 quality positions
   };
 
   private openPositions: AutoTraderPosition[] = [];
@@ -282,22 +282,24 @@ export class DeltaAutoTraderEngine {
     if (!parsed) return;
     if (parsed.settings) {
       this.settings = { ...this.settings, ...parsed.settings };
-      if (!parsed.settings.maxTradesPerDay || parsed.settings.maxTradesPerDay < 10) {
-        this.settings.maxTradesPerDay = 10;
-      }
-      if (!parsed.settings.maxConcurrentPositions || parsed.settings.maxConcurrentPositions < 10) {
-        this.settings.maxConcurrentPositions = 10;
-      }
-      if (!parsed.settings.minConfidenceThreshold || parsed.settings.minConfidenceThreshold > 60) {
-        this.settings.minConfidenceThreshold = 60;
-      }
+      this.settings.maxTradesPerDay = 5;
+      this.settings.maxConcurrentPositions = 5;
+      this.settings.minConfidenceThreshold = 70;
     }
     if (Array.isArray(parsed.openPositions)) this.openPositions = parsed.openPositions;
-    if (Array.isArray(parsed.closedRecords)) this.closedRecords = parsed.closedRecords;
+    if (Array.isArray(parsed.closedRecords)) {
+      // Clean up / Delete the 5 premature TIME_STALL_EXIT scratch records from earlier
+      this.closedRecords = parsed.closedRecords.filter((r: any) => r.exitReason !== "TIME_STALL_EXIT");
+    }
     if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;
     if (parsed.todayDateStr) this.todayDateStr = parsed.todayDateStr;
-    if (typeof parsed.tradesTakenTodayCount === "number") this.tradesTakenTodayCount = parsed.tradesTakenTodayCount;
+
+    // Recalculate valid trades count today
+    const validTodayRecords = this.closedRecords.filter(r => r.exitTimestamp && r.exitTimestamp.startsWith(this.todayDateStr));
+    this.tradesTakenTodayCount = validTodayRecords.length + this.openPositions.length;
+
     if (typeof parsed.dailyStartCapitalUSD === "number") this.dailyStartCapitalUSD = parsed.dailyStartCapitalUSD;
+    this.saveToStorage();
   }
 
   public saveToStorage() {
@@ -991,15 +993,7 @@ export class DeltaAutoTraderEngine {
       } catch (err) {}
     }
 
-    // Fallback: If best candidate has score >= 58, execute the trade
-    if (bestCandidate && bestCandidate.score >= 58) {
-      const res = this.evaluateAndExecuteAutoTrade(bestCandidate.sym, bestCandidate.candles15m, bestCandidate.candles1h, bestCandidate.candles4h, bestCandidate.currentPrice);
-      if (res.success && res.position) {
-        return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
-      }
-    }
-
-    return { executed: false, message: "Scanning... 10 crypto assets monitored for highest confluence." };
+    return { executed: false, message: "Scanning 10 crypto assets... Waiting for high-conviction 15m+1h+4h alignment (Score ≥ 70)." };
   }
 
   public async getScanDiagnostics(): Promise<ScanDiagnosticReport> {
