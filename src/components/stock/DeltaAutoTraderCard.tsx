@@ -641,24 +641,24 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
       {activeTab === "OVERVIEW" && (
         <div className="space-y-5">
           {/* MULTI-TIMEFRAME ANALYSIS CARD */}
-          {analysis && (
+          {(status.currentInspection || diagnostics?.bestAsset) && (
             <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-indigo-400" />
                   <span className="text-xs font-bold text-white uppercase tracking-wider">
-                    360° Multi-POV Market Analysis Brain ({ticker})
+                    360° Multi-POV Market Analysis Brain ({status.currentInspection?.symbol || ticker})
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-slate-400">Current Directional Stance:</span>
                   <span className={`text-xs font-bold px-2.5 py-0.5 rounded border ${
-                    analysis.direction === "BUY" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" :
-                    analysis.direction === "SELL" ? "bg-rose-500/20 text-rose-300 border-rose-500/40" :
+                    (status.currentInspection?.currentDirection || diagnostics?.bestAsset?.direction) === "BUY" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" :
+                    (status.currentInspection?.currentDirection || diagnostics?.bestAsset?.direction) === "SELL" ? "bg-rose-500/20 text-rose-300 border-rose-500/40" :
                     "bg-slate-800 text-slate-300 border-slate-700"
                   }`}>
-                    {analysis.direction === "BUY" ? "🟢 360° BUY (LONG SETUP)" :
-                     analysis.direction === "SELL" ? "🔴 360° SELL (SHORT SETUP)" :
+                    {(status.currentInspection?.currentDirection || diagnostics?.bestAsset?.direction) === "BUY" ? "🟢 360° BUY (LONG SETUP)" :
+                     (status.currentInspection?.currentDirection || diagnostics?.bestAsset?.direction) === "SELL" ? "🔴 360° SELL (SHORT SETUP)" :
                      "⏳ WAIT (NO CONVICTION)"}
                   </span>
                 </div>
@@ -670,14 +670,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">1. Trend POV (4-Hour):</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                      analysis.fourHourTrend === "BULLISH" ? "bg-emerald-500/20 text-emerald-300" :
-                      analysis.fourHourTrend === "BEARISH" ? "bg-rose-500/20 text-rose-300" : "bg-slate-800 text-slate-400"
+                      diagnostics?.bestAsset?.fourHourTrend === "BULLISH" ? "bg-emerald-500/20 text-emerald-300" :
+                      diagnostics?.bestAsset?.fourHourTrend === "BEARISH" ? "bg-rose-500/20 text-rose-300" : "bg-slate-800 text-slate-400"
                     }`}>
-                      {analysis.fourHourTrend}
+                      {diagnostics?.bestAsset?.fourHourTrend || "MONITORING"}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-200 font-sans">
-                    EMA 20/50/200 Stack · ADX Trend Strength: <strong className="text-amber-300">{analysis.adxValue}</strong>
+                    EMA 20/50/200 Stack · Bias: <strong className="text-amber-300">{status.currentInspection?.currentDirection || "NEUTRAL"}</strong>
                   </div>
                 </div>
 
@@ -685,14 +685,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">2. Momentum POV (1-Hour):</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                      analysis.rsi1h > 50 ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
-                    }`}>
-                      RSI {analysis.rsi1h}
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300">
+                      {diagnostics?.bestAsset?.oneHourMomentum || "ACTIVE"}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-200 font-sans">
-                    Divergence Detection: <strong className="text-indigo-300">{analysis.oneHourMomentum}</strong>
+                    Momentum Divergence: <strong className="text-indigo-300">{diagnostics?.bestAsset?.oneHourMomentum || "CONFIRMED"}</strong>
                   </div>
                 </div>
 
@@ -700,15 +698,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">3. Trigger POV (15-Min):</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                      analysis.fifteenMinTrigger.includes("BULLISH") ? "bg-emerald-500/20 text-emerald-300" :
-                      analysis.fifteenMinTrigger.includes("BEARISH") ? "bg-rose-500/20 text-rose-300" : "bg-slate-800 text-slate-400"
-                    }`}>
-                      {analysis.fifteenMinTrigger}
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+                      {diagnostics?.bestAsset?.fifteenMinTrigger || "REAL-TIME"}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-200 font-sans">
-                    Volume Multiplier: <strong className="text-teal-300">{analysis.volumeMultiplier}x Spike</strong>
+                    Expected Trade Value: <strong className="text-teal-300">+${status.currentInspection?.currentEVUSD ? status.currentInspection.currentEVUSD.toFixed(2) : "0.00"} USD</strong>
                   </div>
                 </div>
               </div>
@@ -716,9 +711,11 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] space-y-1 font-sans">
                 <div className="flex items-center justify-between font-mono text-[10px]">
                   <span className="text-slate-400">Composite Multi-POV Score:</span>
-                  <span className="text-emerald-400 font-bold">{analysis.overallScore} / 100 (Threshold: 70)</span>
+                  <span className="text-emerald-400 font-bold">{(status.currentInspection?.currentScore || diagnostics?.bestAsset?.score || 0)} / 100 (Threshold: 60)</span>
                 </div>
-                <p className="text-slate-300 leading-relaxed">{analysis.reasoning}</p>
+                <p className="text-slate-300 leading-relaxed">
+                  {diagnostics?.bestAsset?.reason || `Real-time multi-timeframe analysis reading for ${status.currentInspection?.symbol || ticker}. Dedicated 5-minute confirmation filter active to prevent noise & spike entries.`}
+                </p>
               </div>
 
               {/* AUTONOMOUS STATUS BEACON (BIDIRECTIONAL BUY & SELL) */}
@@ -726,9 +723,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <div className="flex items-center gap-2">
                   <Bot className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
                   <span className="text-slate-200 text-[11px]">
-                    {analysis.isEntryValid
-                      ? `🚀 Bidirectional Engine Active: Automatically executing ${analysis.direction} order (${analysis.direction === "BUY" ? "Long" : "Short"}).`
-                      : "⏳ 360° Multi-POV Market Scanner: Waiting for unanimous 15m+1h+4h alignment before entry."}
+                    {status.currentInspection?.status === "HOLDING_ACTIVE_POSITION"
+                      ? `🚀 Active Trade Position Running: Tracking profit lock & target on ${status.currentInspection.symbol}.`
+                      : `⏳ Sequential 5-Min Reading Active on ${status.currentInspection?.symbol || ticker}: Evaluating 15m+1h+4h alignment before firing.`}
                   </span>
                 </div>
                 <span className="text-[10px] px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30 shrink-0">
