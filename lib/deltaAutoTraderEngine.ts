@@ -137,7 +137,7 @@ export class DeltaAutoTraderEngine {
     maxTradesPerDay: 5, // Default 5 trades max per day
     cooldownMinutesAfterLoss: 45,
     minConfidenceThreshold: 70,
-    maxConcurrentPositions: 2
+    maxConcurrentPositions: 5
   };
 
   private openPositions: AutoTraderPosition[] = [];
@@ -552,8 +552,10 @@ export class DeltaAutoTraderEngine {
     const triggeredLogs: string[] = [];
     const now = Date.now();
 
+    const cleanSym = symbol.toUpperCase().replace("USDT", "").replace("USD", "").trim();
     this.openPositions.forEach(pos => {
-      if (pos.symbol === symbol || symbol.includes(pos.symbol) || pos.symbol.includes(symbol)) {
+      const posClean = pos.symbol.toUpperCase().replace("USDT", "").replace("USD", "").trim();
+      if (pos.symbol === symbol || symbol.includes(pos.symbol) || pos.symbol.includes(symbol) || cleanSym === posClean) {
         pos.currentPrice = Number(currentPriceUSD.toFixed(2));
 
         // P&L Calculation

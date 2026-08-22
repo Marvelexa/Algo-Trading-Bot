@@ -30,6 +30,67 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const USD_TO_INR = 83.50;
   const isSettingsLocked = positions.length > 0;
 
+  const syncAllLivePrices = async () => {
+    try {
+      // 1. Fetch live prices from Binance Public API (single fast request for all pairs)
+      const res = await fetch("https://api.binance.com/api/v3/ticker/price");
+      if (res.ok) {
+        const data: Array<{ symbol: string; price: string }> = await res.json();
+        if (Array.isArray(data)) {
+          const map: Record<string, number> = {};
+          for (const item of data) {
+            if (item.symbol && item.price) {
+              map[item.symbol] = parseFloat(item.price);
+            }
+          }
+
+          const symbolMap: Record<string, string> = {
+            "BTCUSD": "BTCUSDT",
+            "ETHUSD": "ETHUSDT",
+            "SOLUSD": "SOLUSDT",
+            "XRPUSD": "XRPUSDT",
+            "BNBUSD": "BNBUSDT",
+            "DOGEUSD": "DOGEUSDT",
+            "AVAXUSD": "AVAXUSDT",
+            "LINKUSD": "LINKUSDT",
+            "ADAUSD": "ADAUSDT",
+            "SUIUSD": "SUIUSDT"
+          };
+
+          for (const [appSym, binanceSym] of Object.entries(symbolMap)) {
+            const p = map[binanceSym];
+            if (p && p > 0) {
+              deltaAutoTraderEngine.updateLivePriceAndCheckExits(appSym, p);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Fallback to Coinbase per open position
+      try {
+        const openPos = deltaAutoTraderEngine.getOpenPositions();
+        for (const pos of openPos) {
+          const base = pos.symbol.replace("USDT", "").replace("USD", "").trim();
+          const cbRes = await fetch(`https://api.exchange.coinbase.com/products/${base}-USD/ticker`);
+          if (cbRes.ok) {
+            const cbJson = await cbRes.json();
+            const p = parseFloat(cbJson.price || "0");
+            if (p && p > 0) {
+              deltaAutoTraderEngine.updateLivePriceAndCheckExits(pos.symbol, p);
+            }
+          }
+        }
+      } catch (err) {}
+    }
+
+    // Refresh state after price update
+    setStatus(deltaAutoTraderEngine.getStatus());
+    setSettings(deltaAutoTraderEngine.getSettings());
+    setPositions(deltaAutoTraderEngine.getOpenPositions() || []);
+    setRecords(deltaAutoTraderEngine.getClosedRecords() || []);
+    setNews(deltaAutoTraderEngine.getCryptoNews() || []);
+  };
+
   const refreshData = () => {
     try {
       const safeTicker = ticker || "BTCUSD";
@@ -52,21 +113,23 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
   useEffect(() => {
     refreshData();
+    syncAllLivePrices();
 
     const onTick = (tick: any) => {
-      if (tick?.symbol && (tick.symbol === ticker || tick.symbol.includes("BTC") || tick.symbol === "BTCUSD")) {
-        if (tick.price && tick.price > 0) {
-          deltaAutoTraderEngine.updateLivePriceAndCheckExits(ticker || "BTCUSD", tick.price);
-          refreshData();
-        }
+      if (tick?.symbol && tick?.price && tick.price > 0) {
+        deltaAutoTraderEngine.updateLivePriceAndCheckExits(tick.symbol, tick.price);
+        refreshData();
       }
     };
 
     brokerTickEngine.on("tick", onTick);
-    const interval = setInterval(refreshData, 1500);
+    const syncInterval = setInterval(syncAllLivePrices, 1500);
+    const localInterval = setInterval(refreshData, 1000);
+
     return () => {
       brokerTickEngine.off("tick", onTick);
-      clearInterval(interval);
+      clearInterval(syncInterval);
+      clearInterval(localInterval);
     };
   }, [ticker, currentPriceUSD]);
 
