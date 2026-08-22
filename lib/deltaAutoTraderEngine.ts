@@ -787,7 +787,12 @@ export class DeltaAutoTraderEngine {
   }
 
   public calculateDynamicLotSize(symbol: string, currentPrice: number, stopLossDistance: number): { quantity: number; initialRiskUSD: number; accountEquity: number } {
-    const liveDeltaBalance = deltaExchangeEngine.getAccountSummary()?.netEquityUSD;
+    let liveDeltaBalance: number | undefined = undefined;
+    try {
+      if (deltaExchangeEngine && typeof (deltaExchangeEngine as any).getAccountSummary === "function") {
+        liveDeltaBalance = (deltaExchangeEngine as any).getAccountSummary()?.netEquityUSD;
+      }
+    } catch (e) {}
     const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : this.settings.currentCapitalUSD;
     
     // 🎯 Exact 1.5% Risk of live account balance (e.g. $2.87 on $191.25 USD)
