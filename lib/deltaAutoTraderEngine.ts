@@ -112,7 +112,7 @@ export interface AutoTraderSettings {
   riskPerTradePct: number; // e.g. 1.5%
   maxDailyLossPct: number; // e.g. 3.0%
   maxTradesPerDay: number; // e.g. 10
-  maxConcurrentPositions: number; // 1 position max (sequential single-asset focus)
+  maxConcurrentPositions: number; // Up to 5 concurrent positions (Pipelined 5-min round-robin)
   cooldownMinutesAfterLoss: number; // e.g. 45
   minConfidenceThreshold: number; // e.g. 60
   inspectionWindowMinutes: number; // 5 minutes dedicated inspection window per coin
@@ -141,7 +141,7 @@ export interface AutoTraderStatus {
     tag: string;
     inspectionRemainingSeconds: number;
     inspectionTotalSeconds: number;
-    status: "INSPECTING" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED";
+    status: "INSPECTING" | "SLOTS_FULL" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED";
     nextSymbol: string;
     currentScore: number;
     currentDirection: "BUY" | "SELL" | "NEUTRAL";
@@ -237,7 +237,7 @@ export class DeltaAutoTraderEngine {
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
     minConfidenceThreshold: 60,
-    maxConcurrentPositions: 1, // Single-asset sequential focus
+    maxConcurrentPositions: 5, // Up to 5 concurrent positions (Pipelined 5-min round-robin)
     inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
 
@@ -359,7 +359,7 @@ export class DeltaAutoTraderEngine {
     if (parsed.settings) {
       this.settings = { ...this.settings, ...parsed.settings };
       this.settings.maxTradesPerDay = 10;
-      this.settings.maxConcurrentPositions = 1;
+      this.settings.maxConcurrentPositions = 5;
       this.settings.minConfidenceThreshold = 60;
       this.settings.inspectionWindowMinutes = 5;
     }
@@ -396,8 +396,8 @@ export class DeltaAutoTraderEngine {
           validOpen.push(pos);
         }
       }
-      // Strictly enforce max 1 sequential position
-      this.openPositions = validOpen.slice(0, 1);
+      // Keep up to 5 concurrent positions
+      this.openPositions = validOpen.slice(0, 5);
     }
     if (Array.isArray(parsed.closedRecords)) {
       // Clean up / Delete corrupted price anomaly records
@@ -444,7 +444,7 @@ export class DeltaAutoTraderEngine {
     this.openPositions = [];
     this.closedRecords = [];
     this.settings.isEnabled = false;
-    this.settings.maxConcurrentPositions = 1;
+    this.settings.maxConcurrentPositions = 5;
     this.settings.inspectionWindowMinutes = 5;
     this.settings.minConfidenceThreshold = 60;
     this.settings.currentCapitalUSD = this.settings.initialCapitalUSD;
@@ -1177,12 +1177,14 @@ export class DeltaAutoTraderEngine {
     this.closedRecords.unshift(record);
 
     const now = Date.now();
-    if (this.openPositions.length === 0) {
-      // 🎯 Automatically advance sequential pointer to next coin in 10-asset sequence!
-      this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+    // 🎯 If slots were full and now a slot freed up, make sure inspection timer is active to read the next coin!
+    if (this.openPositions.length < this.settings.maxConcurrentPositions && this.inspectionStartTimeMs === 0) {
       this.inspectionStartTimeMs = now;
-      const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
-      console.log(`[AutoTrader] 🔄 Trade closed on ${pos.symbol}. Advanced queue to Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) - 5-min inspection started.`);
+      const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length];
+      console.log(`[AutoTrader] 🔄 Position exited on ${pos.symbol}. Resumed 5-min inspection on Asset #${(this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length) + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) to fill open slot (${this.openPositions.length}/${this.settings.maxConcurrentPositions} active).`);
+    }
+
+    if (this.openPositions.length === 0) {
       // Check if deferred midnight daily reset can now take place
       this.checkDailyReset();
     }
@@ -1301,11 +1303,14 @@ export class DeltaAutoTraderEngine {
     const nextAsset = CURATED_AUTO_TRADER_ASSETS[(safeIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length];
     const cachedAnalysis = this.analysisCache.get(currentAsset.symbol);
 
-    let inspectionStatus: "INSPECTING" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED" = "INSPECTING";
+    const isSlotsFull = this.openPositions.length >= (this.settings.maxConcurrentPositions || 5);
+    let inspectionStatus: "INSPECTING" | "SLOTS_FULL" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED" = "INSPECTING";
     if (!this.settings.isEnabled) {
       inspectionStatus = "PAUSED";
-    } else if (this.openPositions.length > 0) {
-      inspectionStatus = "HOLDING_ACTIVE_POSITION";
+    } else if (isSlotsFull) {
+      inspectionStatus = "SLOTS_FULL";
+    } else {
+      inspectionStatus = "INSPECTING";
     }
 
     const currentInspection = {
@@ -1313,7 +1318,7 @@ export class DeltaAutoTraderEngine {
       symbol: currentAsset.symbol,
       name: currentAsset.name,
       tag: currentAsset.tag,
-      inspectionRemainingSeconds: this.openPositions.length > 0 ? 0 : inspectionRemainingSeconds,
+      inspectionRemainingSeconds: isSlotsFull ? 0 : inspectionRemainingSeconds,
       inspectionTotalSeconds,
       status: inspectionStatus,
       nextSymbol: nextAsset.symbol,
@@ -1528,18 +1533,25 @@ export class DeltaAutoTraderEngine {
       return { executed: false, message: "🛑 Daily Loss Circuit Breaker Active. Trading halted to preserve capital." };
     }
 
-    // 1. Single-Asset Focus Rule: If an active position is already open, do not enter parallel trades!
-    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
-      const active = this.openPositions[0];
+    // 1. Capacity Check: If all 5 slots are full, pause scanner and track profit exits!
+    if (this.openPositions.length >= (this.settings.maxConcurrentPositions || 5)) {
+      const openSymbols = this.openPositions.map(p => `${p.symbol} (${p.type})`).join(", ");
       return {
         executed: false,
-        message: `🛡️ 1-Position Focus Active: Monitoring ${active.symbol} (${active.type} @ $${active.entryPrice}) for profit capture (+0.5R/1.0R trailing lock, +1.6R target).`
+        message: `🎯 All ${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} Positions Active (Holding: ${openSymbols}). Actively managing trailing locks & targets. Next coin scan resumes as soon as any position exits.`
       };
     }
 
     const now = Date.now();
     if (this.inspectionStartTimeMs === 0) {
       this.inspectionStartTimeMs = now;
+    }
+
+    // Skip current coin if it's already one of the active open positions
+    let attempts = 0;
+    while (attempts < CURATED_AUTO_TRADER_ASSETS.length && this.openPositions.some(p => p.symbol === CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length].symbol)) {
+      this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+      attempts++;
     }
 
     const inspectionWindowMs = (this.settings.inspectionWindowMinutes || 5) * 60 * 1000;
@@ -1576,7 +1588,7 @@ export class DeltaAutoTraderEngine {
       const secs = inspectionRemainingSec % 60;
       return {
         executed: false,
-        message: `⏳ 5-Min Asset Reading in Progress: [Asset #${safeIndex + 1}/10: ${currentAsset.tag} (${sym})]. Reading price action & 15m/1h/4h signals (${mins}m ${secs}s remaining). Live Score: ${analysis.overallScore}/100, Direction: ${analysis.direction}.`
+        message: `⏳ 5-Min Asset Reading in Progress: [Asset #${safeIndex + 1}/10: ${currentAsset.tag} (${sym})] (${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} slots active). Reading price action & 15m/1h/4h signals (${mins}m ${secs}s remaining). Live Score: ${analysis.overallScore}/100, Direction: ${analysis.direction}.`
       };
     }
 
@@ -1584,10 +1596,16 @@ export class DeltaAutoTraderEngine {
     if (analysis.isEntryValid && analysis.direction !== "NEUTRAL" && analysis.projectedProfitUSD > 0) {
       const res = this.evaluateAndExecuteAutoTrade(sym, candles15m, candles1h, candles4h, currentPrice);
       if (res.success && res.position) {
-        console.log(`[AutoTrader] 🚀 5-MIN INSPECTION COMPLETE: Placed ${res.position.type} trade on ${sym} @ $${res.position.entryPrice} (Score: ${analysis.overallScore}/100, Expected Profit: +$${analysis.projectedProfitUSD})!`);
+        // Pipelined: Advance queue and start 5-min window on next coin immediately!
+        this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+        this.inspectionStartTimeMs = now;
+        const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
+        const msg = `🚀 Executed ${res.position.type} on ${sym} @ $${res.position.entryPrice} (Score: ${analysis.overallScore}/100, Slots: ${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5})! Started 5-min reading on Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag}.`;
+        console.log(`[AutoTrader] ${msg}`);
+        this.saveToStorage();
         return {
           executed: true,
-          message: `🚀 5-Min Inspection Complete: Executed ${res.position.type} on ${sym} @ $${res.position.entryPrice} (Score: ${analysis.overallScore}/100)!`,
+          message: msg,
           position: res.position
         };
       }
@@ -1599,7 +1617,7 @@ export class DeltaAutoTraderEngine {
     this.inspectionStartTimeMs = now;
     const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
 
-    const skipMsg = `ℹ️ 5-Min Inspection for ${skippedSymbol} completed: Market in consolidation (Score: ${analysis.overallScore}/100, EV: $${analysis.projectedProfitUSD}). Skipped without forcing bad trade. Started 5-min reading on Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}).`;
+    const skipMsg = `ℹ️ 5-Min Inspection for ${skippedSymbol} completed: Market in consolidation (Score: ${analysis.overallScore}/100, EV: $${analysis.projectedProfitUSD}). Skipped without forcing trade. Started 5-min reading on Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) [${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} slots active].`;
     console.log(`[AutoTrader] ${skipMsg}`);
     this.saveToStorage();
 

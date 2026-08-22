@@ -501,18 +501,18 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </div>
         </div>
 
-        {/* SEQUENTIAL 1-SLOT PIPELINE */}
+        {/* PIPELINED 5-SLOT ROUND-ROBIN PIPELINE */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
           <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">
             Execution Mode
           </span>
           <div>
             <span className="text-xl font-black text-amber-300 block">
-              {positions.length > 0 ? "1/1 Position Active" : "0/1 (Sequential)"}
+              {positions.length} / {settings.maxConcurrentPositions || 5} Positions Active
             </span>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              {positions.length > 0
-                ? `🛡️ Holding ${positions[0].symbol} Profit Target`
+              {positions.length >= (settings.maxConcurrentPositions || 5)
+                ? `🎯 All 5 Slots Full · Tracking Exits`
                 : `🔍 Inspecting #${(status.currentInspection?.assetIndex ?? 0) + 1}/10 (${status.currentInspection?.tag || "BTC"})`}
             </span>
           </div>
@@ -553,7 +553,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="p-3 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
-              <Clock className={`w-6 h-6 ${settings.isEnabled && positions.length === 0 ? "animate-spin" : ""}`} />
+              <Clock className={`w-6 h-6 ${settings.isEnabled && positions.length < (settings.maxConcurrentPositions || 5) ? "animate-spin" : ""}`} />
             </span>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -563,26 +563,26 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono font-bold">
                   Asset #{(status.currentInspection?.assetIndex ?? 0) + 1} of 10: {status.currentInspection?.name || "Bitcoin"} ({status.currentInspection?.symbol || "BTCUSD"})
                 </span>
-                {positions.length > 0 ? (
+                {positions.length >= (settings.maxConcurrentPositions || 5) ? (
                   <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
-                    🚀 ACTIVE TRADE RUNNING
+                    🎯 ALL 5 SLOTS FULL
                   </span>
                 ) : (
                   <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 animate-pulse">
-                    ⏳ 5-MIN READING WINDOW
+                    ⏳ 5-MIN READING WINDOW ({positions.length}/5 ACTIVE)
                   </span>
                 )}
               </div>
               <p className="text-[11px] text-slate-300 font-sans mt-1">
-                {positions.length > 0
-                  ? `Position active on ${positions[0].symbol}. Once profit is booked (+1.6R / trailing stops), engine immediately advances to next coin in sequence.`
-                  : `Dedicated 5-minute price action & candle confirmation on ${status.currentInspection?.symbol || "BTCUSD"}. If valid setup appears ➔ Executes trade; if flat/choppy ➔ Skips to next coin safely without forcing losses.`}
+                {positions.length >= (settings.maxConcurrentPositions || 5)
+                  ? `All 5/5 slots currently active (${positions.map(p => p.symbol).join(", ")}). Actively managing trailing stops & profit targets. Scanner will resume reading next coin as soon as any position exits.`
+                  : `Dedicated 5-minute price action & candle confirmation on ${status.currentInspection?.symbol || "BTCUSD"}. If valid setup appears ➔ Executes trade; if flat/choppy ➔ Moves to next coin. (${positions.length}/5 active slots running in parallel).`}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
-            {positions.length === 0 && (
+            {positions.length < (settings.maxConcurrentPositions || 5) && (
               <button
                 onClick={handleSkipInspection}
                 className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
@@ -603,7 +603,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         </div>
 
         {/* 5-MINUTE COUNTDOWN & SIGNAL PROGRESS BAR */}
-        {positions.length === 0 && settings.isEnabled && (
+        {positions.length < (settings.maxConcurrentPositions || 5) && settings.isEnabled && (
           <div className="pt-2 border-t border-indigo-950/80 space-y-1.5">
             <div className="flex items-center justify-between text-xs font-mono text-slate-300">
               <span className="flex items-center gap-1.5">
@@ -637,11 +637,11 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-emerald-300">🟢 10-COIN AI RADAR ACTIVE</span>
               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                Sequential Discipline Guarded
+                Pipelined 5-Slot Capacity
               </span>
             </div>
             <p className="text-[11px] text-slate-300 font-sans mt-0.5">
-              5-min dedicated inspection per asset · 1 position at a time · Automatic profit capture (+1.6R / Trailing lock) ➔ Advance to next asset in loop
+              5-min dedicated inspection per asset · Up to 5 concurrent positions running in parallel · Exit on profit/SL frees slot for next coin
             </p>
           </div>
         </div>
