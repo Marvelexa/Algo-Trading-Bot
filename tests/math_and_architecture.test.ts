@@ -77,7 +77,7 @@ async function runTestSuite() {
   // ─────────────────────────────────────────────────────────────
   console.log("\n2. v3 TUNABLE DAEMON INTERVALS");
   assert(EXIT_MONITORING_INTERVAL_MS === 30000, "Exit monitoring interval configured to 30s", `EXIT_MONITORING_INTERVAL_MS = ${EXIT_MONITORING_INTERVAL_MS}ms`);
-  assert(NEW_ENTRY_SCAN_INTERVAL_MS === 120000, "New entry scan interval configured to 2m", `NEW_ENTRY_SCAN_INTERVAL_MS = ${NEW_ENTRY_SCAN_INTERVAL_MS}ms`);
+  assert(NEW_ENTRY_SCAN_INTERVAL_MS === 10000, "Responsive 5-min timer evaluation interval configured to 10s", `NEW_ENTRY_SCAN_INTERVAL_MS = ${NEW_ENTRY_SCAN_INTERVAL_MS}ms`);
   assert(V3_MAX_HOLD_TIME_MS === 86400000, "Max hold window configured to 24h", `V3_MAX_HOLD_TIME_MS = ${V3_MAX_HOLD_TIME_MS}ms`);
 
   // ─────────────────────────────────────────────────────────────

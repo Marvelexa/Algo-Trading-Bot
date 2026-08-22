@@ -21,7 +21,7 @@
 import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
 
 export const EXIT_MONITORING_INTERVAL_MS = 30_000; // 30s exit/trailing stop check for v3
-export const NEW_ENTRY_SCAN_INTERVAL_MS = 120_000; // 2m new entry scanning for v3
+export const NEW_ENTRY_SCAN_INTERVAL_MS = 10_000; // 10s responsive evaluation for 5-min round-robin
 export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours Max Hold Window
 
 export interface OHLCVBar {
@@ -937,13 +937,6 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⚠️ Correlation Cap: Already holding ${sameDirectionCount} ${analysis.direction} positions. Skipping to maintain portfolio balance.` };
     }
 
-    if (this.openPositions.length === 0 && this.checkBatchCycle()) {
-      const remainingSeconds = Math.max(0, Math.ceil((this.slotReentryCooldownExpiry - Date.now()) / 1000));
-      const mins = Math.floor(remainingSeconds / 60);
-      const secs = remainingSeconds % 60;
-      return { success: false, message: `🧠 10-Min AI Market Calibration: Previous batch complete. Analyzing market for next batch of up to 5 trades in ${mins}m ${secs}s.` };
-    }
-
     const baseline = this.getAssetBaselinePrice(symbol);
     const liveTick = deltaExchangeEngine.getLivePrice(symbol)?.usd || this.getLivePriceUSD(symbol);
     const price = (liveTick > 0 && liveTick > baseline * 0.1 && liveTick < baseline * 10)
@@ -1406,25 +1399,21 @@ export class DeltaAutoTraderEngine {
     } catch (e) {}
     const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : this.settings.currentCapitalUSD;
     
-    // 🎯 Exact 1.5% Risk of live account balance (e.g. $2.87 on $191.25 USD)
-    const dollarRiskAllowed = accountEquity * (this.settings.riskPerTradePct / 100);
+    // 🎯 Target: ₹1,000 INR / Day Goal (₹15k ➔ ₹16k INR)
+    // Risk 2.0% per trade ($3.60 on $180 balance) -> Target (+1.6R) = +$5.76 USD (~₹480 INR) per winning trade!
+    const effectiveRiskPct = Math.max(1.8, this.settings.riskPerTradePct || 2.0);
+    const dollarRiskAllowed = accountEquity * (effectiveRiskPct / 100);
     
     const sym = symbol.toUpperCase().trim();
     const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
       symbol: sym, minLot: 0.01, decimals: 2
     };
 
-    // Calculate quantity based on SL distance (with minimum 1.0% price distance safeguard):
-    const safeSLDist = Math.max(currentPrice * 0.01, stopLossDistance);
+    // Calculate quantity based on SL distance:
+    const safeSLDist = Math.max(currentPrice * 0.008, stopLossDistance);
     let rawQty = dollarRiskAllowed / safeSLDist;
 
-    // 🛡️ Notional Position Cap: Never allocate more than 35% of account equity to a single trade
-    const maxNotionalAllowed = accountEquity * 0.35;
-    const maxQtyByNotional = maxNotionalAllowed / Math.max(0.0001, currentPrice);
-    if (rawQty > maxQtyByNotional) {
-      rawQty = maxQtyByNotional;
-    }
-
+    // Minimum contract allocation
     let quantity = Number(rawQty.toFixed(asset.decimals));
     if (quantity < asset.minLot) {
       quantity = asset.minLot;
