@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { deltaAutoTraderEngine, AutoTraderPosition, AutoTraderClosedRecord, AutoTraderSettings, AutoTraderStatus, MultiTimeframeAnalysis, CryptoNewsItem, CURATED_AUTO_TRADER_ASSETS, CuratedAsset, ScanDiagnosticReport } from "../../../lib/deltaAutoTraderEngine";
-import { brokerTickEngine } from "../../../lib/brokerTickEngine";
-import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2, Zap, Radio, RefreshCw, X, AlertTriangle, ArrowUpRight, ArrowDownRight, Compass, Eye } from "lucide-react";
+import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2, Zap, Radio, RefreshCw, X, AlertTriangle, ArrowUpRight, ArrowDownRight, Compass, Eye, Brain } from "lucide-react";
 
 interface DeltaAutoTraderCardProps {
   ticker?: string;
@@ -364,15 +363,17 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </div>
         </div>
 
-        {/* TRADES TAKEN TODAY */}
+        {/* BATCH CYCLE & TRADES */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
-          <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">Trades Taken Today</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">
+            Batch Cycle #{status.batchCycle?.cycleNumber || 1}
+          </span>
           <div>
             <span className="text-xl font-black text-amber-300 block">
-              {status.tradesTakenToday} / {settings.maxTradesPerDay}
+              {status.batchCycle?.currentBatchTrades ?? 0} / 5 Trades
             </span>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              Hard Cap: Max {settings.maxTradesPerDay} quality trades/day
+              🔄 5-Trade Loop · 10m AI Analysis Cooldown
             </span>
           </div>
         </div>
@@ -406,6 +407,34 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 🧠 10-MIN MARKET ANALYSIS & RE-CALIBRATION BANNER */}
+      {status.batchCycle?.isCoolingDown && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950 via-indigo-950 to-purple-950 border border-purple-500/50 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+              <Brain className="w-5 h-5 animate-pulse" />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-purple-300">🧠 10-MIN AI MARKET RE-CALIBRATION ACTIVE</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 border border-purple-500/40 font-bold">
+                  Batch #{status.batchCycle.cycleNumber} Complete (5/5 Trades)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 font-sans mt-0.5">
+                Market volatility is settling. AI Multi-Timeframe Brain is re-analyzing 4h/1h/15m charts to arm the next 5-trade high-conviction batch.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="px-3.5 py-2 rounded-xl bg-purple-900/40 border border-purple-500/40 text-purple-200 font-bold text-xs flex items-center gap-1.5 font-mono shadow-inner">
+              <Clock className="w-4 h-4 text-purple-400 animate-spin" />
+              Next Batch in: {Math.floor((status.batchCycle.cooldownRemainingSeconds || 0) / 60)}m {((status.batchCycle.cooldownRemainingSeconds || 0) % 60).toString().padStart(2, "0")}s
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 📡 ACTIVE AUTONOMOUS RADAR STATUS BAR */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-indigo-950/70 to-slate-950 border border-indigo-500/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
