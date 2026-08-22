@@ -202,6 +202,7 @@ export class DeltaAutoTraderEngine {
   private slotReentryCooldownExpiry: number = 0;
   private batchCooldownMinutes: number = 10;
   private currentCycleNumber: number = 1;
+  private lastActiveTickTimestamp: number = Date.now();
 
   private cryptoNewsList: CryptoNewsItem[] = [
     {
@@ -1043,6 +1044,15 @@ export class DeltaAutoTraderEngine {
       return false;
     }
 
+    // 🛡️ Tab/Device Sleep & Wakeup Protection:
+    // If device was asleep or tab was inactive for > 45s, do NOT execute blind stale trades on wakeup!
+    // Re-arm a full active 10-minute candle analysis window from the wake moment.
+    if (this.lastActiveTickTimestamp > 0 && (now - this.lastActiveTickTimestamp) > 45000 && this.slotReentryCooldownExpiry > 0) {
+      console.warn(`[DeltaAutoTrader] ⚠️ Tab Sleep Detected (${Math.round((now - this.lastActiveTickTimestamp) / 1000)}s inactive). Resetting 10-Min Pre-Trade AI analysis countdown for safe entry.`);
+      this.slotReentryCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
+    }
+    this.lastActiveTickTimestamp = now;
+
     // If currently in 10-minute cooldown for vacant slots
     if (this.slotReentryCooldownExpiry > 0) {
       if (now >= this.slotReentryCooldownExpiry) {
@@ -1233,7 +1243,26 @@ export class DeltaAutoTraderEngine {
   }
 
   public async fetchCryptoCandles(symbol: string, interval: "15m" | "1h" | "4h" = "1h", limit: number = 30): Promise<OHLCVBar[]> {
-    const base = symbol.toUpperCase().replace("USD", "").replace("USDT", "").trim();
+    const sym = symbol.toUpperCase().trim();
+
+    // 1. Primary: Genuine Live Historical Candles directly from Delta Exchange India / Global API
+    try {
+      const deltaResolution = interval === "15m" ? "15m" : interval === "1h" ? "1h" : "4h";
+      const deltaCandles = await deltaExchangeEngine.fetchCandles(sym, deltaResolution);
+      if (Array.isArray(deltaCandles) && deltaCandles.length > 0) {
+        return deltaCandles.slice(-limit).map(c => ({
+          timestamp: new Date(c.time * 1000).toISOString().split("T")[0],
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume
+        }));
+      }
+    } catch (e) {}
+
+    // 2. Secondary: Binance Public Spot / Futures Kline API
+    const base = sym.replace("USD", "").replace("USDT", "").trim();
     const binancePair = `${base}USDT`;
     try {
       const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`, {
@@ -1254,25 +1283,8 @@ export class DeltaAutoTraderEngine {
       }
     } catch (e) {}
 
-    // Dynamic Micro-Bar Fallback using realistic asset price benchmark (NEVER a flat 100!)
-    const baseline = this.getAssetBaselinePrice(symbol);
-    const livePrice = this.getLivePriceUSD(symbol);
-    const price = (livePrice > 0 && livePrice > baseline * 0.1 && livePrice < baseline * 10) ? livePrice : baseline;
-    const bars: OHLCVBar[] = [];
-    let p = price * 0.985;
-    for (let i = limit; i >= 0; i--) {
-      const change = (Math.random() - 0.47) * (price * 0.005);
-      p = Math.max(0.0001, p + change);
-      bars.push({
-        timestamp: new Date(Date.now() - i * (interval === "15m" ? 900000 : interval === "1h" ? 3600000 : 14400000)).toISOString().split("T")[0],
-        open: p * 0.999,
-        high: p * 1.003,
-        low: p * 0.997,
-        close: p,
-        volume: 50000 + Math.floor(Math.random() * 80000)
-      });
-    }
-    return bars;
+    // 3. If real candles cannot be retrieved, return empty array (NEVER generate fake synthetic candles)
+    return [];
   }
 
   public async scanAndExecuteNextTrade(): Promise<{ executed: boolean; message: string; position?: AutoTraderPosition }> {

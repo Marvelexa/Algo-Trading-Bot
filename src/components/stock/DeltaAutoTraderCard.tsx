@@ -139,6 +139,31 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     const syncInterval = setInterval(syncAllLivePrices, 1500);
     const localInterval = setInterval(refreshData, 1000);
 
+    // 📱 Screen WakeLock: Prevents mobile and laptop screen from sleeping while Auto-Trader is running
+    let wakeLockSentinel: any = null;
+    const requestWakeLock = async () => {
+      try {
+        if ("wakeLock" in navigator && (navigator as any).wakeLock) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request("screen");
+        }
+      } catch (err) {}
+    };
+
+    if (settings.isEnabled) {
+      requestWakeLock();
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshData();
+        syncAllLivePrices();
+        if (settings.isEnabled && (!wakeLockSentinel || wakeLockSentinel.released)) {
+          requestWakeLock();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     // 🌐 24/7 Server State Hydrator: Polls Node server daemon so closing Chrome or Mobile sleeps never stops trading
     const serverPollInterval = setInterval(async () => {
       try {
@@ -161,8 +186,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
       clearInterval(syncInterval);
       clearInterval(localInterval);
       clearInterval(serverPollInterval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (wakeLockSentinel && typeof wakeLockSentinel.release === "function") {
+        wakeLockSentinel.release().catch(() => {});
+      }
     };
-  }, [ticker, currentPriceUSD]);
+  }, [ticker, currentPriceUSD, settings.isEnabled]);
 
   const handleOpenRadarModal = async () => {
     setIsScanning(true);
