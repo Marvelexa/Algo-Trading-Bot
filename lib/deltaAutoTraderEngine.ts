@@ -713,12 +713,12 @@ export class DeltaAutoTraderEngine {
     let projectedProfitUSD = 0;
     let profitProbabilityPct = 50;
 
-    if (buyProjectedProfitUSD > 0 && totalBullScore >= this.settings.minConfidenceThreshold && buyProjectedProfitUSD >= sellProjectedProfitUSD) {
+    if (buyProjectedProfitUSD > 0 && totalBullScore >= this.settings.minConfidenceThreshold && totalBullScore > totalBearScore + 6) {
       direction = "BUY";
       overallScore = totalBullScore;
       projectedProfitUSD = buyProjectedProfitUSD;
       profitProbabilityPct = totalBullScore;
-    } else if (sellProjectedProfitUSD > 0 && totalBearScore >= this.settings.minConfidenceThreshold && sellProjectedProfitUSD > buyProjectedProfitUSD) {
+    } else if (sellProjectedProfitUSD > 0 && totalBearScore >= this.settings.minConfidenceThreshold && totalBearScore > totalBullScore + 6) {
       direction = "SELL";
       overallScore = totalBearScore;
       projectedProfitUSD = sellProjectedProfitUSD;
@@ -1188,6 +1188,17 @@ export class DeltaAutoTraderEngine {
 
   public getCuratedAssets(): CuratedAsset[] {
     return [...CURATED_AUTO_TRADER_ASSETS];
+  }
+
+  public getLiveFullState() {
+    return {
+      settings: this.getSettings(),
+      openPositions: this.getOpenPositions(),
+      closedRecords: this.getClosedRecords(),
+      status: this.getStatus(),
+      cryptoNews: this.getCryptoNews(),
+      curatedAssets: this.getCuratedAssets()
+    };
   }
 
   public startAutonomousBackgroundDaemon() {

@@ -139,34 +139,44 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     const syncInterval = setInterval(syncAllLivePrices, 1500);
     const localInterval = setInterval(refreshData, 1000);
 
-    // 🤖 Autonomous Scanner Loop: Scans all 10 assets and executes trades in real-time in browser
-    const autoScanInterval = setInterval(async () => {
+    // 🌐 24/7 Server State Hydrator: Polls Node server daemon so closing Chrome or Mobile sleeps never stops trading
+    const serverPollInterval = setInterval(async () => {
       try {
-        const curSettings = deltaAutoTraderEngine.getSettings();
-        if (curSettings.isEnabled) {
-          const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
-          if (res.executed) {
-            refreshData();
-            setNotification(`🚀 AUTO-TRADE EXECUTED: ${res.message}`);
-            setTimeout(() => setNotification(null), 5000);
+        const res = await fetch("/api/autotrader/state");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.success && data?.state) {
+            if (data.state.settings) setSettings(data.state.settings);
+            if (data.state.openPositions) setPositions(data.state.openPositions);
+            if (data.state.closedRecords) setRecords(data.state.closedRecords);
+            if (data.state.status) setStatus(data.state.status);
+            if (data.state.cryptoNews) setNews(data.state.cryptoNews);
           }
         }
-      } catch (err) {}
-    }, 4000);
+      } catch (e) {}
+    }, 2000);
 
     return () => {
       brokerTickEngine.off("tick", onTick);
       clearInterval(syncInterval);
       clearInterval(localInterval);
-      clearInterval(autoScanInterval);
+      clearInterval(serverPollInterval);
     };
   }, [ticker, currentPriceUSD]);
 
   const handleOpenRadarModal = async () => {
     setIsScanning(true);
     try {
-      const diag = await deltaAutoTraderEngine.getScanDiagnostics();
-      setDiagnostics(diag);
+      const res = await fetch("/api/autotrader/diagnostics");
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && data?.diagnostics) {
+          setDiagnostics(data.diagnostics);
+        }
+      } else {
+        const diag = await deltaAutoTraderEngine.getScanDiagnostics();
+        setDiagnostics(diag);
+      }
       setShowRadarModal(true);
     } catch (e) {
       console.warn("Diagnostics error", e);
@@ -180,6 +190,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     setNotification(`⚡ Forcing instant execution on ${sym}...`);
     try {
       const res = await deltaAutoTraderEngine.forceExecuteTrade(sym);
+      fetch("/api/autotrader/force", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: sym })
+      }).catch(() => {});
+
       refreshData();
       if (res.success) {
         setNotification(res.message);
@@ -218,24 +234,26 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   };
 
   const handleToggleBot = async () => {
-    const nextState = deltaAutoTraderEngine.toggleBot();
+    const curEnabled = settings.isEnabled;
+    const nextState = !curEnabled;
+    deltaAutoTraderEngine.toggleBot(nextState);
     const updatedStatus = deltaAutoTraderEngine.getStatus();
     const updatedSettings = deltaAutoTraderEngine.getSettings();
     setStatus(updatedStatus);
     setSettings(updatedSettings);
     refreshData();
-    setNotification(nextState ? "🟢 Delta Auto-Trader STARTED! 24/7 Multi-timeframe scanner is active." : "⏸️ Delta Auto-Trader PAUSED.");
+
+    // 🌐 Sync to 24/7 Cloud Server Daemon
+    try {
+      await fetch("/api/autotrader/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled: nextState })
+      });
+    } catch (e) {}
+
+    setNotification(nextState ? "🟢 24/7 Cloud Auto-Trader STARTED! Server is actively monitoring & trading 24/7." : "⏸️ Delta Auto-Trader PAUSED.");
     setTimeout(() => setNotification(null), 4000);
-    if (nextState) {
-      try {
-        const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
-        if (res.executed) {
-          refreshData();
-          setNotification(`🚀 AUTO-TRADE EXECUTED: ${res.message}`);
-          setTimeout(() => setNotification(null), 5000);
-        }
-      } catch (err) {}
-    }
   };
 
   const handleToggleMode = () => {
@@ -450,6 +468,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             <button
               onClick={() => {
                 deltaAutoTraderEngine.skipBatchCooldown();
+                fetch("/api/autotrader/skip-cooldown", { method: "POST" }).catch(() => {});
                 setStatus(deltaAutoTraderEngine.getStatus());
                 setNotification("⚡ 10-Min AI Analysis completed early! Filling available slots now...");
                 setTimeout(() => setNotification(null), 4000);
@@ -643,8 +662,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Bot Open Positions ({positions.length} / {settings.maxConcurrentPositions})
               </h3>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const res = deltaAutoTraderEngine.resetSystemCleanly();
+                  fetch("/api/autotrader/reset", { method: "POST" }).catch(() => {});
                   setPositions(deltaAutoTraderEngine.getOpenPositions());
                   setRecords(deltaAutoTraderEngine.getClosedRecords());
                   setStatus(deltaAutoTraderEngine.getStatus());

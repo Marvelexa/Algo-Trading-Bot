@@ -5,6 +5,7 @@ import { createServer as createViteServer } from "vite";
 import AdmZip from "adm-zip";
 import { WebSocketServer, WebSocket } from "ws";
 import { brokerTickEngine } from "./lib/brokerTickEngine.js";
+import { deltaAutoTraderEngine } from "./lib/deltaAutoTraderEngine.js";
 
 import fs from "fs";
 import { getCitiesForLocation } from "./lib/cityDatabase.js";
@@ -535,18 +536,16 @@ async function startServer() {
   });
 
   // ────────────────────────────────────────────
-  // Persistent Auto-Trader & Paper Trading State (Survives Server & PC Restarts)
+  // 24/7 Standing Autonomous Delta Auto-Trader Backend Engine
   // ────────────────────────────────────────────
   const DELTA_STATE_FILE = path.join(process.cwd(), ".delta_auto_trader_state.json");
   const PAPER_STATE_FILE = path.join(process.cwd(), ".paper_trading_state.json");
 
+  // Real-Time Server State (Runs 24/7 in Cloud even when Chrome is closed / Mobile is sleeping)
   app.get("/api/autotrader/state", (req, res) => {
     try {
-      if (fs.existsSync(DELTA_STATE_FILE)) {
-        const raw = fs.readFileSync(DELTA_STATE_FILE, "utf-8");
-        return res.json({ success: true, state: JSON.parse(raw) });
-      }
-      res.json({ success: true, state: null });
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      return res.json({ success: true, state: fullState });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -560,6 +559,62 @@ async function startServer() {
         return res.json({ success: true });
       }
       res.status(400).json({ success: false, error: "Empty payload" });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/toggle", (req, res) => {
+    try {
+      const { isEnabled } = req.body;
+      const newStatus = deltaAutoTraderEngine.toggleBot(isEnabled);
+      return res.json({ success: true, isEnabled: newStatus, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/reset", (req, res) => {
+    try {
+      const result = deltaAutoTraderEngine.resetSystemCleanly();
+      return res.json({ success: true, message: result.message, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/close-all", (req, res) => {
+    try {
+      const result = deltaAutoTraderEngine.closeAllOpenPositions("MANUAL_PANIC_CLOSE");
+      return res.json({ success: true, count: result.count, message: result.message, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/skip-cooldown", (req, res) => {
+    try {
+      deltaAutoTraderEngine.skipBatchCooldown();
+      return res.json({ success: true, message: "10-Min AI Analysis timer skipped", state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/force", async (req, res) => {
+    try {
+      const { symbol } = req.body;
+      const result = await deltaAutoTraderEngine.forceExecuteTrade(symbol);
+      return res.json({ ...result, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/autotrader/diagnostics", async (req, res) => {
+    try {
+      const diagnostics = await deltaAutoTraderEngine.getScanDiagnostics();
+      return res.json({ success: true, diagnostics });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
