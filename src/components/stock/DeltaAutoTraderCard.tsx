@@ -556,6 +556,30 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         </div>
       </div>
 
+      {/* 💼 5-SLOT EQUAL CAPITAL DISTRIBUTION DASHBOARD */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 grid grid-cols-2 sm:grid-cols-4 gap-3 shadow-xl">
+        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+          <span className="text-[10px] text-slate-400 block uppercase font-mono">Total Capital Balance</span>
+          <strong className="text-white text-sm font-mono">₹{(settings.currentCapitalUSD * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR</strong>
+          <span className="text-[9px] text-slate-500 block font-mono">(${settings.currentCapitalUSD.toFixed(2)} USD)</span>
+        </div>
+        <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30">
+          <span className="text-[10px] text-emerald-400 block uppercase font-mono font-bold">Per-Slot Capital (1/5)</span>
+          <strong className="text-emerald-300 text-sm font-mono">₹{((settings.currentCapitalUSD / (settings.maxConcurrentPositions || 5)) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR</strong>
+          <span className="text-[9px] text-emerald-400/80 block font-mono">(${((settings.currentCapitalUSD / (settings.maxConcurrentPositions || 5))).toFixed(2)} USD / Slot)</span>
+        </div>
+        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+          <span className="text-[10px] text-slate-400 block uppercase font-mono">Slot Distribution</span>
+          <strong className="text-indigo-300 text-sm font-mono">{positions.length} / {settings.maxConcurrentPositions || 5} Slots Active</strong>
+          <span className="text-[9px] text-indigo-400/80 block font-mono">5x–8x Leverage Allocation</span>
+        </div>
+        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+          <span className="text-[10px] text-slate-400 block uppercase font-mono">Target Gain / Slot</span>
+          <strong className="text-emerald-400 text-sm font-mono">+₹525 – +₹650 INR</strong>
+          <span className="text-[9px] text-amber-300 block font-mono">(+$6.28 to $7.80 USD)</span>
+        </div>
+      </div>
+
       {/* 🔄 5-MINUTE DEDICATED ROUND-ROBIN ASSET READING & PROFIT QUEUE */}
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-indigo-950/70 to-slate-950 border border-indigo-500/50 shadow-2xl space-y-3 animate-fade-in">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
