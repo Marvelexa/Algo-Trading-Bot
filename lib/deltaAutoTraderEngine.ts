@@ -41,7 +41,7 @@ export interface AutoTraderClosedRecord {
   realizedPnLPct: number;
   confidenceScore: number;
   outcome: "WIN" | "LOSS" | "BREAKEVEN";
-  exitReason: "STOP_LOSS_HIT" | "TARGET_HIT" | "TRAILING_STOP_HIT" | "TRAILING_PROFIT_LOCKED" | "PEAK_RETRACEMENT_EXIT" | "TIME_STALL_EXIT" | "MAX_TIME_24H" | "DAILY_CIRCUIT_BREAKER" | "NEWS_FREEZE_EXIT" | "MANUAL_EXIT";
+  exitReason: "STOP_LOSS_HIT" | "TARGET_HIT" | "TRAILING_STOP_HIT" | "TRAILING_PROFIT_LOCKED" | "PEAK_RETRACEMENT_EXIT" | "TIME_STALL_EXIT" | "MAX_TIME_60M" | "MAX_TIME_24H" | "DAILY_CIRCUIT_BREAKER" | "NEWS_FREEZE_EXIT" | "MANUAL_EXIT";
   entryTimestamp: string;
   exitTimestamp: string;
 }
@@ -584,7 +584,7 @@ export class DeltaAutoTraderEngine {
       timeframeAlignment: "15m + 1h + 4h Aligned",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
       entryTimeMs: now,
-      maxHoldTimeExpiry: now + (24 * 60 * 60 * 1000) // 24-Hour Max Hold Time Rule
+      maxHoldTimeExpiry: now + (60 * 60 * 1000) // 10m to 60m Precision Intraday Horizon Window
     };
 
     this.openPositions.unshift(position);
@@ -686,19 +686,20 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Exit Check 4: Time-Decay Stale Trade Exit (Holding > 4 Hours in dead chop)
+        // Exit Check 4: Stagnant Chop Exit (Holding > 45 Mins with zero momentum)
         const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
         const holdDurationMins = (now - entryMs) / 60000;
-        if (holdDurationMins >= 240 && holdDurationMins <= 1440 && Math.abs(pos.unrealizedPnLPct) < 0.4) {
+        if (holdDurationMins >= 45 && holdDurationMins < 60 && Math.abs(pos.unrealizedPnLPct) < 0.20) {
           const res = this.closePosition(pos.id, pos.currentPrice, "TIME_STALL_EXIT");
-          triggeredLogs.push(`⏳ 4-Hour Stale Trade Exit: Closed ${pos.symbol} at scratch to release capital.`);
+          triggeredLogs.push(`⏳ 45-Min Stale Trade Exit: Closed ${pos.symbol} at scratch to release capital for fresh momentum.`);
           return;
         }
 
-        // Exit Check 5: 24-Hour Max Hold Time Expiry Rule
-        if (now >= pos.maxHoldTimeExpiry) {
-          const res = this.closePosition(pos.id, pos.currentPrice, "MAX_TIME_24H");
-          triggeredLogs.push(res.message);
+        // Exit Check 5: 60-Minute (1-Hour) Precision Intraday Max Horizon Rule
+        if (now >= pos.maxHoldTimeExpiry || holdDurationMins >= 60) {
+          const reason = pnlUSD > 0.05 ? "TARGET_HIT" : "MAX_TIME_60M";
+          const res = this.closePosition(pos.id, pos.currentPrice, reason);
+          triggeredLogs.push(`⏰ 60-Min Horizon Complete: Closed ${pos.symbol} @ $${pos.currentPrice} (${pnlUSD >= 0 ? "+$" + pnlUSD.toFixed(2) : "-$" + Math.abs(pnlUSD).toFixed(2)})`);
           return;
         }
       }
@@ -1172,10 +1173,11 @@ export class DeltaAutoTraderEngine {
       timeframeAlignment: "Forced Instant Execution · Real-Time Market Alignment",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
       entryTimeMs: now,
-      maxHoldTimeExpiry: now + (24 * 60 * 60 * 1000)
+      maxHoldTimeExpiry: now + (60 * 60 * 1000) // 10m to 60m Precision Intraday Horizon Window
     };
 
     this.openPositions.unshift(position);
+    this.currentBatchTradesCount++;
     this.tradesTakenTodayCount++;
     this.saveToStorage();
 

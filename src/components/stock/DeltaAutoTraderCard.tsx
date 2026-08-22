@@ -749,8 +749,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                         {rec.exitReason === "TARGET_HIT" ? "🎯 Target Hit" :
                          rec.exitReason === "TRAILING_PROFIT_LOCKED" ? "🔒 Trailing Profit Locked" :
                          rec.exitReason === "PEAK_RETRACEMENT_EXIT" ? "💎 Peak-Gain Protected" :
-                         rec.exitReason === "TIME_STALL_EXIT" ? "⏳ 4h Stale Trade Scratch" :
+                         rec.exitReason === "TIME_STALL_EXIT" ? "⏳ 45m Chop Scratch" :
                          rec.exitReason === "STOP_LOSS_HIT" ? "🛡️ Safety Stop-Loss" :
+                         rec.exitReason === "MAX_TIME_60M" ? "⏰ 60m Horizon Banked" :
                          rec.exitReason === "MAX_TIME_24H" ? "⏰ 24h Max Expiry" : rec.exitReason}
                       </span>
                     </td>
