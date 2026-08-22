@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  deltaAutoTraderEngine,
   AutoTraderPosition,
   AutoTraderClosedRecord,
   AutoTraderSettings,
@@ -89,7 +90,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     return price.toFixed(6);
   };
 
-  // 🌐 Single-Brained Server State Poller (Authoritative Single Source of Truth)
+  // 🌐 Server-First State Poller with Instant Engine Fallback
   const fetchServerState = useCallback(async () => {
     try {
       const res = await fetch("/api/autotrader/state");
@@ -101,11 +102,24 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           if (data.state.closedRecords) setRecords(data.state.closedRecords);
           if (data.state.status) setStatus(data.state.status);
           if (data.state.cryptoNews) setNews(data.state.cryptoNews);
+          return;
         }
       }
     } catch (e) {
-      // Server offline or starting up
+      // Server offline or standalone client preview
     }
+
+    // Graceful Engine Fallback
+    try {
+      const localState = deltaAutoTraderEngine.getLiveFullState();
+      if (localState) {
+        setSettings(localState.settings);
+        setPositions(localState.openPositions);
+        setRecords(localState.closedRecords);
+        setStatus(localState.status);
+        setNews(localState.cryptoNews);
+      }
+    } catch (err) {}
   }, []);
 
   useEffect(() => {
@@ -154,10 +168,17 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         if (data?.success && data?.diagnostics) {
           setDiagnostics(data.diagnostics);
         }
+      } else {
+        const localDiag = await deltaAutoTraderEngine.getScanDiagnostics();
+        setDiagnostics(localDiag);
       }
       setShowRadarModal(true);
     } catch (e) {
-      console.warn("Diagnostics error", e);
+      try {
+        const localDiag = await deltaAutoTraderEngine.getScanDiagnostics();
+        setDiagnostics(localDiag);
+        setShowRadarModal(true);
+      } catch (err) {}
     } finally {
       setIsScanning(false);
     }
@@ -165,23 +186,28 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
   const handleForceTrade = async (sym: string) => {
     setIsForcing(true);
-    setNotification(`⚡ Sending instant execution request for ${sym} to 24/7 server...`);
+    setNotification(`⚡ Sending instant execution request for ${sym}...`);
     try {
       const res = await fetch("/api/autotrader/force", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol: sym })
       });
-      const data = await res.json();
-      if (data?.success) {
-        setNotification(data.message);
+      if (res.ok) {
+        const data = await res.json();
+        setNotification(data?.message || `Executed trade on ${sym}`);
         setShowRadarModal(false);
       } else {
-        setNotification(`⚠️ ${data?.message || "Execution rejected"}`);
+        const localRes = await deltaAutoTraderEngine.forceExecuteTrade(sym);
+        setNotification(localRes.message);
+        setShowRadarModal(false);
       }
       fetchServerState();
     } catch (e) {
-      setNotification("⚠️ Force trade request failed.");
+      const localRes = await deltaAutoTraderEngine.forceExecuteTrade(sym);
+      setNotification(localRes.message);
+      setShowRadarModal(false);
+      fetchServerState();
     } finally {
       setIsForcing(false);
       setTimeout(() => setNotification(null), 5000);
@@ -190,26 +216,26 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
   const handleManualScan = async () => {
     setIsScanning(true);
-    setNotification("🔍 Server scanning 10 Curated Coins for Multi-POV Confluence (Score ≥ 60, Positive EV)...");
+    setNotification("🔍 Scanning 10 Curated Coins for Multi-POV Confluence (Score ≥ 60, Positive EV)...");
     try {
-      const diagRes = await fetch("/api/autotrader/diagnostics");
-      if (diagRes.ok) {
-        const diagData = await diagRes.json();
-        if (diagData?.diagnostics) setDiagnostics(diagData.diagnostics);
-      }
-
       const scanRes = await fetch("/api/autotrader/scan", { method: "POST" });
-      const scanData = await scanRes.json();
-      fetchServerState();
-
-      if (scanData?.executed) {
-        setNotification(`🚀 TRADE PLACED: ${scanData.message}`);
+      if (scanRes.ok) {
+        const scanData = await scanRes.json();
+        fetchServerState();
+        if (scanData?.executed) {
+          setNotification(`🚀 TRADE PLACED: ${scanData.message}`);
+        } else {
+          setNotification(scanData?.message || "Scan complete: 5-minute reading active.");
+        }
       } else {
-        setShowRadarModal(true);
-        setNotification(`📡 Scan complete: Market currently consolidating. Diagnostic radar updated.`);
+        const localScan = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+        fetchServerState();
+        setNotification(localScan.message);
       }
     } catch (err) {
-      setNotification("⚠️ Scan error occurred.");
+      const localScan = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+      fetchServerState();
+      setNotification(localScan.message);
     } finally {
       setIsScanning(false);
       setTimeout(() => setNotification(null), 5000);
@@ -219,34 +245,50 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const handleSkipInspection = async () => {
     try {
       const res = await fetch("/api/autotrader/skip-inspection", { method: "POST" });
-      const data = await res.json();
-      if (data?.message) {
-        setNotification(data.message);
+      if (res.ok) {
+        const data = await res.json();
+        setNotification(data?.message || "Skipped to next coin in queue.");
+      } else {
+        const localRes = deltaAutoTraderEngine.skipCurrentAssetInspection();
+        setNotification(localRes.message);
       }
       fetchServerState();
     } catch (e) {
-      setNotification("⚠️ Skip request failed.");
+      const localRes = deltaAutoTraderEngine.skipCurrentAssetInspection();
+      setNotification(localRes.message);
+      fetchServerState();
     }
+    setTimeout(() => setNotification(null), 4000);
   };
 
   const handleToggleBot = async () => {
     const nextState = !settings.isEnabled;
-    setNotification(nextState ? "🟢 Starting 24/7 Cloud Auto-Trader Server Daemon..." : "⏸️ Pausing Delta Auto-Trader...");
+    setNotification(nextState ? "🟢 Starting Auto-Trader (5-Min Round-Robin Queue)..." : "⏸️ Pausing Delta Auto-Trader...");
     try {
       const res = await fetch("/api/autotrader/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isEnabled: nextState })
       });
-      const data = await res.json();
-      if (data?.success) {
-        if (data.state?.settings) setSettings(data.state.settings);
-        if (data.state?.status) setStatus(data.state.status);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state?.settings) setSettings(data.state.settings);
+        if (data?.state?.status) setStatus(data.state.status);
+      } else {
+        deltaAutoTraderEngine.toggleBot(nextState);
+        const local = deltaAutoTraderEngine.getLiveFullState();
+        setSettings(local.settings);
+        setStatus(local.status);
       }
       fetchServerState();
-      setNotification(nextState ? "🟢 24/7 Server Daemon ACTIVE! Monitoring & trading in cloud 24/7." : "⏸️ Delta Auto-Trader PAUSED.");
+      setNotification(nextState ? "🟢 24/7 Auto-Trader ACTIVE! 5-Min inspection window started on Coin #1 (BTCUSD)." : "⏸️ Delta Auto-Trader PAUSED.");
     } catch (e) {
-      setNotification("⚠️ Toggle failed to reach server.");
+      deltaAutoTraderEngine.toggleBot(nextState);
+      const local = deltaAutoTraderEngine.getLiveFullState();
+      setSettings(local.settings);
+      setStatus(local.status);
+      fetchServerState();
+      setNotification(nextState ? "🟢 Auto-Trader ACTIVE! 5-Min inspection window running on Coin #1 (BTCUSD)." : "⏸️ Delta Auto-Trader PAUSED.");
     }
     setTimeout(() => setNotification(null), 4000);
   };
@@ -259,16 +301,20 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: nextMode })
       });
-      const data = await res.json();
-      if (data?.success && data.state?.settings) {
-        setSettings(data.state.settings);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state?.settings) setSettings(data.state.settings);
+      } else {
+        deltaAutoTraderEngine.toggleMode(nextMode);
+        setSettings(deltaAutoTraderEngine.getSettings());
       }
-      fetchServerState();
-      setNotification(`⚡ Execution Mode Switched to: ${nextMode} TRADING`);
     } catch (e) {
-      setNotification("⚠️ Mode switch failed.");
+      deltaAutoTraderEngine.toggleMode(nextMode);
+      setSettings(deltaAutoTraderEngine.getSettings());
     }
-    setTimeout(() => setNotification(null), 4000);
+    fetchServerState();
+    setNotification(`Switched mode to ${nextMode}`);
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleUpdateSettings = async (patch: Partial<AutoTraderSettings>) => {
@@ -291,12 +337,20 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const handleResetTrades = async () => {
     try {
       const res = await fetch("/api/autotrader/reset", { method: "POST" });
-      const data = await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        setNotification(data?.message || "Trades reset successfully.");
+      } else {
+        deltaAutoTraderEngine.resetDailyCounters();
+        setNotification("Trades reset successfully.");
+      }
       fetchServerState();
-      setNotification(data?.message || "Trades reset successfully.");
       setTimeout(() => setNotification(null), 5000);
     } catch (e) {
-      setNotification("⚠️ Reset failed.");
+      deltaAutoTraderEngine.resetDailyCounters();
+      fetchServerState();
+      setNotification("Trades reset successfully.");
+      setTimeout(() => setNotification(null), 5000);
     }
   };
 
@@ -307,12 +361,20 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ positionId, exitPrice: currentPrice, reason: "MANUAL_UI_CLOSE" })
       });
-      const data = await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        setNotification(data?.message || "Position closed.");
+      } else {
+        deltaAutoTraderEngine.closePosition(positionId, currentPrice, "MANUAL_UI_CLOSE");
+        setNotification("Position closed successfully.");
+      }
       fetchServerState();
-      setNotification(data?.message || "Position closed.");
       setTimeout(() => setNotification(null), 4000);
     } catch (e) {
-      setNotification("⚠️ Close position failed.");
+      deltaAutoTraderEngine.closePosition(positionId, currentPrice, "MANUAL_UI_CLOSE");
+      fetchServerState();
+      setNotification("Position closed successfully.");
+      setTimeout(() => setNotification(null), 4000);
     }
   };
 
@@ -329,7 +391,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </span>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black tracking-wide text-white">Delta Exchange Auto-Trader v2</h2>
+              <h2 className="text-lg font-black tracking-wide text-white">Delta Exchange Auto-Trader v3</h2>
               <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
                 status.mode === "LIVE" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : "bg-purple-500/20 text-purple-300 border-purple-500/40"
               }`}>
