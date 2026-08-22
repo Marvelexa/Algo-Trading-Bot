@@ -111,6 +111,8 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     }
   };
 
+  const [isScanning, setIsScanning] = useState(false);
+
   useEffect(() => {
     refreshData();
     syncAllLivePrices();
@@ -126,18 +128,63 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     const syncInterval = setInterval(syncAllLivePrices, 1500);
     const localInterval = setInterval(refreshData, 1000);
 
+    // 🤖 Autonomous Scanner Loop: Scans all 10 assets and executes trades in real-time in browser
+    const autoScanInterval = setInterval(async () => {
+      try {
+        const curSettings = deltaAutoTraderEngine.getSettings();
+        if (curSettings.isEnabled) {
+          const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+          if (res.executed) {
+            refreshData();
+            setNotification(`🚀 AUTO-TRADE EXECUTED: ${res.message}`);
+            setTimeout(() => setNotification(null), 5000);
+          }
+        }
+      } catch (err) {}
+    }, 4000);
+
     return () => {
       brokerTickEngine.off("tick", onTick);
       clearInterval(syncInterval);
       clearInterval(localInterval);
+      clearInterval(autoScanInterval);
     };
   }, [ticker, currentPriceUSD]);
+
+  const handleManualScan = async () => {
+    setIsScanning(true);
+    setNotification("🔍 Scanning 10 Curated Coins for 15m+1h+4h Confluence (Score ≥ 70)...");
+    try {
+      const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+      refreshData();
+      if (res.executed) {
+        setNotification(`🚀 TRADE PLACED: ${res.message}`);
+      } else {
+        setNotification(`ℹ️ ${res.message}`);
+      }
+    } catch (err) {
+      setNotification("⚠️ Scan error occurred.");
+    } finally {
+      setIsScanning(false);
+      setTimeout(() => setNotification(null), 4000);
+    }
+  };
 
   const handleToggleBot = () => {
     const nextState = deltaAutoTraderEngine.toggleBot();
     refreshData();
     setNotification(nextState ? "🟢 Delta Auto-Trader STARTED! 24/7 Multi-timeframe scanner is active." : "⏸️ Delta Auto-Trader PAUSED.");
     setTimeout(() => setNotification(null), 4000);
+    if (nextState) {
+      // Trigger instant scan cycle on start
+      deltaAutoTraderEngine.scanAndExecuteNextTrade().then(res => {
+        if (res.executed) {
+          refreshData();
+          setNotification(`🚀 AUTO-TRADE EXECUTED: ${res.message}`);
+          setTimeout(() => setNotification(null), 5000);
+        }
+      }).catch(() => {});
+    }
   };
 
   const handleToggleMode = () => {
@@ -192,6 +239,16 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             ) : (
               <> <Play className="w-4 h-4" /> ▶️ START AUTO-TRADER </>
             )}
+          </button>
+
+          {/* SCAN & TRADE BUTTON */}
+          <button
+            onClick={handleManualScan}
+            disabled={isScanning}
+            className="px-3.5 py-2.5 rounded-xl font-bold text-xs bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 transition shadow-lg flex items-center gap-1.5 shrink-0"
+          >
+            <Zap className={`w-4 h-4 text-amber-400 ${isScanning ? "animate-spin" : ""}`} />
+            {isScanning ? "Scanning..." : "⚡ Scan & Trade Now"}
           </button>
 
           {/* MODE TOGGLE */}
