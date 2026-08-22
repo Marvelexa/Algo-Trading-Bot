@@ -1,5 +1,14 @@
-import React, { useState, useEffect } from "react";
-import { deltaAutoTraderEngine, AutoTraderPosition, AutoTraderClosedRecord, AutoTraderSettings, AutoTraderStatus, MultiTimeframeAnalysis, CryptoNewsItem, CURATED_AUTO_TRADER_ASSETS, CuratedAsset, ScanDiagnosticReport } from "../../../lib/deltaAutoTraderEngine";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  AutoTraderPosition,
+  AutoTraderClosedRecord,
+  AutoTraderSettings,
+  AutoTraderStatus,
+  MultiTimeframeAnalysis,
+  CryptoNewsItem,
+  CURATED_AUTO_TRADER_ASSETS,
+  ScanDiagnosticReport
+} from "../../../lib/deltaAutoTraderEngine";
 import { brokerTickEngine } from "../../../lib/brokerTickEngine";
 import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2, Zap, Radio, RefreshCw, X, AlertTriangle, ArrowUpRight, ArrowDownRight, Compass, Eye, Brain } from "lucide-react";
 
@@ -11,6 +20,45 @@ interface DeltaAutoTraderCardProps {
   bars4h?: any[];
 }
 
+const DEFAULT_STATUS: AutoTraderStatus = {
+  botState: "PAUSED",
+  mode: "PAPER",
+  todayPnLUSD: 0,
+  todayPnLPct: 0,
+  totalFloatingPnLUSD: 0,
+  totalFloatingDrawdownPct: 0,
+  tradesTakenToday: 0,
+  winningTradesToday: 0,
+  losingTradesToday: 0,
+  winRatePct: 0,
+  cooldownRemainingMins: 0,
+  circuitBreakerActive: false,
+  fundingRateWarning: null,
+  newsFreezeActive: false,
+  lastAnalysisTimestamp: "",
+  batchCycle: {
+    currentBatchTrades: 0,
+    maxBatchTrades: 5,
+    cycleNumber: 1,
+    isCoolingDown: false,
+    cooldownRemainingSeconds: 0,
+    cooldownTotalSeconds: 600
+  }
+};
+
+const DEFAULT_SETTINGS: AutoTraderSettings = {
+  mode: "PAPER",
+  isEnabled: false,
+  initialCapitalUSD: 191.25,
+  currentCapitalUSD: 191.25,
+  riskPerTradePct: 1.5,
+  maxDailyLossPct: 3.0,
+  maxTradesPerDay: 10,
+  maxConcurrentPositions: 5,
+  cooldownMinutesAfterLoss: 45,
+  minConfidenceThreshold: 60
+};
+
 export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   ticker = "BTCUSD",
   currentPriceUSD,
@@ -18,17 +66,17 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   bars1h = [],
   bars4h = []
 }) => {
-  const [status, setStatus] = useState<AutoTraderStatus>(deltaAutoTraderEngine.getStatus());
-  const [settings, setSettings] = useState<AutoTraderSettings>(deltaAutoTraderEngine.getSettings());
-  const [positions, setPositions] = useState<AutoTraderPosition[]>(deltaAutoTraderEngine.getOpenPositions());
-  const [records, setRecords] = useState<AutoTraderClosedRecord[]>(deltaAutoTraderEngine.getClosedRecords());
-  const [analysis, setAnalysis] = useState<MultiTimeframeAnalysis | null>(null);
-  const [news, setNews] = useState<CryptoNewsItem[]>(deltaAutoTraderEngine.getCryptoNews());
+  const [status, setStatus] = useState<AutoTraderStatus>(DEFAULT_STATUS);
+  const [settings, setSettings] = useState<AutoTraderSettings>(DEFAULT_SETTINGS);
+  const [positions, setPositions] = useState<AutoTraderPosition[]>([]);
+  const [records, setRecords] = useState<AutoTraderClosedRecord[]>([]);
+  const [news, setNews] = useState<CryptoNewsItem[]>([]);
   const [activeTab, setActiveTab] = useState<"OVERVIEW" | "CURATED_ASSETS" | "JOURNAL" | "NEWS" | "SETTINGS">("OVERVIEW");
   const [notification, setNotification] = useState<string | null>(null);
   const [showRadarModal, setShowRadarModal] = useState<boolean>(false);
   const [diagnostics, setDiagnostics] = useState<ScanDiagnosticReport | null>(null);
   const [isForcing, setIsForcing] = useState<boolean>(false);
+  const [isScanning, setIsScanning] = useState(false);
 
   const USD_TO_INR = 83.50;
   const isSettingsLocked = positions.length > 0;
@@ -41,103 +89,28 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     return price.toFixed(6);
   };
 
-  const syncAllLivePrices = async () => {
+  // 🌐 Single-Brained Server State Poller (Authoritative Single Source of Truth)
+  const fetchServerState = useCallback(async () => {
     try {
-      // 1. Fetch live prices from Binance Public API (single fast request for all pairs)
-      const res = await fetch("https://api.binance.com/api/v3/ticker/price");
+      const res = await fetch("/api/autotrader/state");
       if (res.ok) {
-        const data: Array<{ symbol: string; price: string }> = await res.json();
-        if (Array.isArray(data)) {
-          const map: Record<string, number> = {};
-          for (const item of data) {
-            if (item.symbol && item.price) {
-              map[item.symbol] = parseFloat(item.price);
-            }
-          }
-
-          const symbolMap: Record<string, string> = {
-            "BTCUSD": "BTCUSDT",
-            "ETHUSD": "ETHUSDT",
-            "SOLUSD": "SOLUSDT",
-            "XRPUSD": "XRPUSDT",
-            "BNBUSD": "BNBUSDT",
-            "DOGEUSD": "DOGEUSDT",
-            "AVAXUSD": "AVAXUSDT",
-            "LINKUSD": "LINKUSDT",
-            "ADAUSD": "ADAUSDT",
-            "SUIUSD": "SUIUSDT"
-          };
-
-          for (const [appSym, binanceSym] of Object.entries(symbolMap)) {
-            const p = map[binanceSym];
-            if (p && p > 0) {
-              deltaAutoTraderEngine.updateLivePriceAndCheckExits(appSym, p);
-            }
-          }
+        const data = await res.json();
+        if (data?.success && data?.state) {
+          if (data.state.settings) setSettings(data.state.settings);
+          if (data.state.openPositions) setPositions(data.state.openPositions);
+          if (data.state.closedRecords) setRecords(data.state.closedRecords);
+          if (data.state.status) setStatus(data.state.status);
+          if (data.state.cryptoNews) setNews(data.state.cryptoNews);
         }
       }
     } catch (e) {
-      // Fallback to Coinbase per open position
-      try {
-        const openPos = deltaAutoTraderEngine.getOpenPositions();
-        for (const pos of openPos) {
-          const base = pos.symbol.replace("USDT", "").replace("USD", "").trim();
-          const cbRes = await fetch(`https://api.exchange.coinbase.com/products/${base}-USD/ticker`);
-          if (cbRes.ok) {
-            const cbJson = await cbRes.json();
-            const p = parseFloat(cbJson.price || "0");
-            if (p && p > 0) {
-              deltaAutoTraderEngine.updateLivePriceAndCheckExits(pos.symbol, p);
-            }
-          }
-        }
-      } catch (err) {}
+      // Server offline or starting up
     }
-
-    // Refresh state after price update
-    setStatus(deltaAutoTraderEngine.getStatus());
-    setSettings(deltaAutoTraderEngine.getSettings());
-    setPositions(deltaAutoTraderEngine.getOpenPositions() || []);
-    setRecords(deltaAutoTraderEngine.getClosedRecords() || []);
-    setNews(deltaAutoTraderEngine.getCryptoNews() || []);
-  };
-
-  const refreshData = () => {
-    try {
-      const safeTicker = ticker || "BTCUSD";
-      const liveEnginePrice = brokerTickEngine.getLivePrice(safeTicker);
-      const safePrice = currentPriceUSD && currentPriceUSD > 0 ? currentPriceUSD : (liveEnginePrice && liveEnginePrice > 0 ? liveEnginePrice : 74900);
-      deltaAutoTraderEngine.updateLivePriceAndCheckExits(safeTicker, safePrice);
-
-      setStatus(deltaAutoTraderEngine.getStatus());
-      setSettings(deltaAutoTraderEngine.getSettings());
-      setPositions(deltaAutoTraderEngine.getOpenPositions() || []);
-      setRecords(deltaAutoTraderEngine.getClosedRecords() || []);
-      setNews(deltaAutoTraderEngine.getCryptoNews() || []);
-
-      const res = deltaAutoTraderEngine.analyzeMultiTimeframe(safeTicker, bars15m || [], bars1h || [], bars4h || []);
-      if (res) setAnalysis(res);
-    } catch (e) {
-      console.warn("[DeltaAutoTraderCard] Refresh warning:", e);
-    }
-  };
-
-  const [isScanning, setIsScanning] = useState(false);
+  }, []);
 
   useEffect(() => {
-    refreshData();
-    syncAllLivePrices();
-
-    const onTick = (tick: any) => {
-      if (tick?.symbol && tick?.price && tick.price > 0) {
-        deltaAutoTraderEngine.updateLivePriceAndCheckExits(tick.symbol, tick.price);
-        refreshData();
-      }
-    };
-
-    brokerTickEngine.on("tick", onTick);
-    const syncInterval = setInterval(syncAllLivePrices, 1500);
-    const localInterval = setInterval(refreshData, 1000);
+    fetchServerState();
+    const serverPollInterval = setInterval(fetchServerState, 1500);
 
     // 📱 Screen WakeLock: Prevents mobile and laptop screen from sleeping while Auto-Trader is running
     let wakeLockSentinel: any = null;
@@ -155,8 +128,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        refreshData();
-        syncAllLivePrices();
+        fetchServerState();
         if (settings.isEnabled && (!wakeLockSentinel || wakeLockSentinel.released)) {
           requestWakeLock();
         }
@@ -164,49 +136,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 
-    // 🌐 24/7 Server State Hydrator: Polls Node server daemon so closing Chrome or Mobile sleeps never stops trading
-    const serverPollInterval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/autotrader/state");
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.success && data?.state) {
-            if (data.state.settings) setSettings(data.state.settings);
-            if (data.state.openPositions) setPositions(data.state.openPositions);
-            if (data.state.closedRecords) setRecords(data.state.closedRecords);
-            if (data.state.status) setStatus(data.state.status);
-            if (data.state.cryptoNews) setNews(data.state.cryptoNews);
-          }
-        }
-      } catch (e) {}
-    }, 2000);
-
-    // 🤖 Autonomous Progressive Opportunity Scanner: Scans & Executes Ready Coins Continuously
-    const autoScanInterval = setInterval(async () => {
-      if (settings.isEnabled) {
-        try {
-          const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
-          if (res.executed) {
-            refreshData();
-            setNotification(`🚀 AUTO-TRADE EXECUTED: ${res.message}`);
-            setTimeout(() => setNotification(null), 5000);
-          }
-        } catch (e) {}
-      }
-    }, 4000);
-
     return () => {
-      brokerTickEngine.off("tick", onTick);
-      clearInterval(syncInterval);
-      clearInterval(localInterval);
       clearInterval(serverPollInterval);
-      clearInterval(autoScanInterval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (wakeLockSentinel && typeof wakeLockSentinel.release === "function") {
         wakeLockSentinel.release().catch(() => {});
       }
     };
-  }, [ticker, currentPriceUSD, settings.isEnabled]);
+  }, [fetchServerState, settings.isEnabled]);
 
   const handleOpenRadarModal = async () => {
     setIsScanning(true);
@@ -217,9 +154,6 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         if (data?.success && data?.diagnostics) {
           setDiagnostics(data.diagnostics);
         }
-      } else {
-        const diag = await deltaAutoTraderEngine.getScanDiagnostics();
-        setDiagnostics(diag);
       }
       setShowRadarModal(true);
     } catch (e) {
@@ -231,24 +165,23 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
   const handleForceTrade = async (sym: string) => {
     setIsForcing(true);
-    setNotification(`⚡ Forcing instant execution on ${sym}...`);
+    setNotification(`⚡ Sending instant execution request for ${sym} to 24/7 server...`);
     try {
-      const res = await deltaAutoTraderEngine.forceExecuteTrade(sym);
-      fetch("/api/autotrader/force", {
+      const res = await fetch("/api/autotrader/force", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol: sym })
-      }).catch(() => {});
-
-      refreshData();
-      if (res.success) {
-        setNotification(res.message);
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setNotification(data.message);
         setShowRadarModal(false);
       } else {
-        setNotification(`⚠️ ${res.message}`);
+        setNotification(`⚠️ ${data?.message || "Execution rejected"}`);
       }
+      fetchServerState();
     } catch (e) {
-      setNotification("⚠️ Force trade failed.");
+      setNotification("⚠️ Force trade request failed.");
     } finally {
       setIsForcing(false);
       setTimeout(() => setNotification(null), 5000);
@@ -257,17 +190,23 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
   const handleManualScan = async () => {
     setIsScanning(true);
-    setNotification("🔍 Scanning 10 Curated Coins for 15m+1h+4h Confluence (Score ≥ 70)...");
+    setNotification("🔍 Server scanning 10 Curated Coins for Multi-POV Confluence (Score ≥ 60, Positive EV)...");
     try {
-      const diag = await deltaAutoTraderEngine.getScanDiagnostics();
-      setDiagnostics(diag);
-      const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
-      refreshData();
-      if (res.executed) {
-        setNotification(`🚀 TRADE PLACED: ${res.message}`);
+      const diagRes = await fetch("/api/autotrader/diagnostics");
+      if (diagRes.ok) {
+        const diagData = await diagRes.json();
+        if (diagData?.diagnostics) setDiagnostics(diagData.diagnostics);
+      }
+
+      const scanRes = await fetch("/api/autotrader/scan", { method: "POST" });
+      const scanData = await scanRes.json();
+      fetchServerState();
+
+      if (scanData?.executed) {
+        setNotification(`🚀 TRADE PLACED: ${scanData.message}`);
       } else {
         setShowRadarModal(true);
-        setNotification(`📡 10-Coin Scan Complete: Market currently consolidating. Diagnostic radar opened.`);
+        setNotification(`📡 Scan complete: Market currently consolidating. Diagnostic radar updated.`);
       }
     } catch (err) {
       setNotification("⚠️ Scan error occurred.");
@@ -278,37 +217,90 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   };
 
   const handleToggleBot = async () => {
-    const curEnabled = settings.isEnabled;
-    const nextState = !curEnabled;
-    deltaAutoTraderEngine.toggleBot(nextState);
-    const updatedStatus = deltaAutoTraderEngine.getStatus();
-    const updatedSettings = deltaAutoTraderEngine.getSettings();
-    setStatus(updatedStatus);
-    setSettings(updatedSettings);
-    refreshData();
-
-    // 🌐 Sync to 24/7 Cloud Server Daemon
+    const nextState = !settings.isEnabled;
+    setNotification(nextState ? "🟢 Starting 24/7 Cloud Auto-Trader Server Daemon..." : "⏸️ Pausing Delta Auto-Trader...");
     try {
-      await fetch("/api/autotrader/toggle", {
+      const res = await fetch("/api/autotrader/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isEnabled: nextState })
       });
-    } catch (e) {}
-
-    setNotification(nextState ? "🟢 24/7 Cloud Auto-Trader STARTED! Server is actively monitoring & trading 24/7." : "⏸️ Delta Auto-Trader PAUSED.");
+      const data = await res.json();
+      if (data?.success) {
+        if (data.state?.settings) setSettings(data.state.settings);
+        if (data.state?.status) setStatus(data.state.status);
+      }
+      fetchServerState();
+      setNotification(nextState ? "🟢 24/7 Server Daemon ACTIVE! Monitoring & trading in cloud 24/7." : "⏸️ Delta Auto-Trader PAUSED.");
+    } catch (e) {
+      setNotification("⚠️ Toggle failed to reach server.");
+    }
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const handleToggleMode = () => {
-    const nextMode = deltaAutoTraderEngine.toggleMode();
-    const updatedStatus = deltaAutoTraderEngine.getStatus();
-    const updatedSettings = deltaAutoTraderEngine.getSettings();
-    setStatus(updatedStatus);
-    setSettings(updatedSettings);
-    refreshData();
-    setNotification(`⚡ Execution Mode Switched to: ${nextMode} TRADING`);
+  const handleToggleMode = async () => {
+    const nextMode = settings.mode === "PAPER" ? "LIVE" : "PAPER";
+    try {
+      const res = await fetch("/api/autotrader/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: nextMode })
+      });
+      const data = await res.json();
+      if (data?.success && data.state?.settings) {
+        setSettings(data.state.settings);
+      }
+      fetchServerState();
+      setNotification(`⚡ Execution Mode Switched to: ${nextMode} TRADING`);
+    } catch (e) {
+      setNotification("⚠️ Mode switch failed.");
+    }
     setTimeout(() => setNotification(null), 4000);
+  };
+
+  const handleUpdateSettings = async (patch: Partial<AutoTraderSettings>) => {
+    try {
+      const res = await fetch("/api/autotrader/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      const data = await res.json();
+      if (data?.success && data.state?.settings) {
+        setSettings(data.state.settings);
+      }
+      fetchServerState();
+    } catch (e) {
+      console.warn("Update settings failed", e);
+    }
+  };
+
+  const handleResetTrades = async () => {
+    try {
+      const res = await fetch("/api/autotrader/reset", { method: "POST" });
+      const data = await res.json();
+      fetchServerState();
+      setNotification(data?.message || "Trades reset successfully.");
+      setTimeout(() => setNotification(null), 5000);
+    } catch (e) {
+      setNotification("⚠️ Reset failed.");
+    }
+  };
+
+  const handleClosePosition = async (positionId: string, currentPrice: number) => {
+    try {
+      const res = await fetch("/api/autotrader/close-position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionId, exitPrice: currentPrice, reason: "MANUAL_UI_CLOSE" })
+      });
+      const data = await res.json();
+      fetchServerState();
+      setNotification(data?.message || "Position closed.");
+      setTimeout(() => setNotification(null), 4000);
+    } catch (e) {
+      setNotification("⚠️ Close position failed.");
+    }
   };
 
   const isProfit = status.todayPnLUSD >= 0;
@@ -701,15 +693,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Bot Open Positions ({positions.length} / {settings.maxConcurrentPositions})
               </h3>
               <button
-                onClick={async () => {
-                  const res = deltaAutoTraderEngine.resetSystemCleanly();
-                  fetch("/api/autotrader/reset", { method: "POST" }).catch(() => {});
-                  setPositions(deltaAutoTraderEngine.getOpenPositions());
-                  setRecords(deltaAutoTraderEngine.getClosedRecords());
-                  setStatus(deltaAutoTraderEngine.getStatus());
-                  setNotification(res.message);
-                  setTimeout(() => setNotification(null), 5000);
-                }}
+                onClick={handleResetTrades}
                 className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold text-[10px] transition flex items-center gap-1 cursor-pointer"
               >
                 <X className="w-3 h-3" />
@@ -887,9 +871,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {CURATED_AUTO_TRADER_ASSETS.map((ast, idx) => {
-              const liveP = brokerTickEngine.getLivePrice(ast.symbol) || 100;
-              const approxSLDist = Math.max(liveP * 0.008, 0.05);
-              const lotSizing = deltaAutoTraderEngine.calculateDynamicLotSize(ast.symbol, liveP, approxSLDist);
+              const liveP = brokerTickEngine.getLivePrice(ast.symbol) || ast.baselinePrice;
+              const approxSLDist = Math.max(liveP * 0.015, 0.05);
+              const riskBudgetUSD = settings.currentCapitalUSD * (settings.riskPerTradePct / 100);
+              const rawQty = approxSLDist > 0 ? riskBudgetUSD / approxSLDist : ast.minLot;
+              const quantity = Math.max(ast.minLot, Number(rawQty.toFixed(ast.decimals)));
+              const initialRiskUSD = Number((approxSLDist * quantity).toFixed(2));
               const isCurrent = (ticker || "").toUpperCase().includes(ast.tag);
 
               return (
@@ -922,99 +909,109 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                     </div>
                     <div className="flex justify-between text-[11px]">
                       <span className="text-slate-400">Auto Lot Size:</span>
-                      <strong className="text-teal-300 font-bold">{lotSizing.quantity} {ast.tag}</strong>
+                      <strong className="text-teal-300 font-bold">{quantity} {ast.tag}</strong>
                     </div>
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Max 1.5% Risk:</span>
-                      <span className="text-amber-300 font-bold">${lotSizing.initialRiskUSD} USD</span>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Initial Risk (1R):</span>
+                      <strong className="text-indigo-300 font-bold">${initialRiskUSD.toFixed(2)}</strong>
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => handleForceTrade(ast.symbol)}
+                    disabled={isForcing}
+                    className="w-full py-1.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 font-bold text-[10px] transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    <Zap className="w-3 h-3" />
+                    FORCE TRADE
+                  </button>
                 </div>
               );
             })}
           </div>
         </div>
       )}
-      {activeTab === "NEWS" && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
-            <div className="flex items-center gap-2">
-              <Newspaper className="w-5 h-5 text-emerald-400" />
-              <div>
-                <h4 className="font-bold text-white text-xs">Layer 3: Crypto News & Sentiment Filter</h4>
-                <p className="text-[11px] text-slate-400 font-sans">Automated headline filtering & news freeze protection window (30m pre/post major events).</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded border ${
-                status.newsFreezeActive ? "bg-rose-500/20 text-rose-300 border-rose-500/40" : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-              }`}>
-                {status.newsFreezeActive ? "🛑 NEWS FREEZE ACTIVE (Entries Paused)" : "🟢 NEWS WINDOW CLEAR"}
-              </span>
-            </div>
+
+      {/* TAB 3: TRADE JOURNAL */}
+      {activeTab === "JOURNAL" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+              Autonomous Trade Closed History ({records.length} Executed)
+            </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {news.map(item => (
-              <div key={item.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400 font-bold">{item.source} · {item.timestamp}</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
-                    item.sentiment === "POSITIVE" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" :
-                    item.sentiment === "NEGATIVE" ? "bg-rose-500/20 text-rose-300 border-rose-500/30" :
-                    "bg-slate-700/40 text-slate-300 border-slate-600"
-                  }`}>
-                    {item.sentiment}
-                  </span>
-                </div>
-                <h5 className="font-bold text-slate-100 text-xs leading-snug">{item.title}</h5>
-                <p className="text-slate-400 text-[11px] font-sans">{item.summary}</p>
-              </div>
-            ))}
-          </div>
+          {records.length === 0 ? (
+            <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-400 text-xs">
+              <p className="text-slate-500">No closed trades recorded yet for today's session.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-800">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] border-b border-slate-800">
+                  <tr>
+                    <th className="p-3">Time</th>
+                    <th className="p-3">Asset</th>
+                    <th className="p-3">Side</th>
+                    <th className="p-3">Entry → Exit</th>
+                    <th className="p-3">Realized P&L</th>
+                    <th className="p-3">Exit Reason</th>
+                    <th className="p-3">Score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 bg-slate-950/40">
+                  {records.map(rec => (
+                    <tr key={rec.id} className="hover:bg-slate-900/50">
+                      <td className="p-3 font-mono text-[10px] text-slate-400">{rec.exitTimestamp}</td>
+                      <td className="p-3 font-bold text-white">{rec.symbol}</td>
+                      <td className="p-3">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          rec.type === "BUY" ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
+                        }`}>
+                          {rec.type}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono text-slate-200">
+                        ${formatAssetPrice(rec.entryPrice)} → ${formatAssetPrice(rec.exitPrice)}
+                      </td>
+                      <td className="p-3 font-mono font-bold">
+                        <span className={rec.realizedPnLUSD >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                          {rec.realizedPnLUSD >= 0 ? "+" : ""}${rec.realizedPnLUSD.toFixed(2)} ({rec.realizedPnLPct >= 0 ? "+" : ""}{rec.realizedPnLPct.toFixed(2)}%)
+                        </span>
+                      </td>
+                      <td className="p-3 text-[10px] text-slate-400">{rec.exitReason}</td>
+                      <td className="p-3 font-mono text-indigo-300">{rec.confidenceScore}/100</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      {/* TAB CONTENT 4: SETTINGS & CIRCUIT BREAKER CONTROLS */}
+      {/* TAB 4: RISK SETTINGS */}
       {activeTab === "SETTINGS" && (
-        <div className="max-w-xl mx-auto p-5 bg-slate-900 rounded-2xl border border-slate-800 text-xs font-mono space-y-4">
-          <h3 className="font-bold text-white text-sm flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-amber-400" /> Delta Auto-Trader Risk & Parameter Controls
-          </h3>
-
-          {/* ANTI-TAMPERING LOCK BANNER */}
-          {isSettingsLocked && (
-            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/50 text-amber-300 text-xs flex items-center gap-2.5">
-              <Lock className="w-5 h-5 text-amber-400 shrink-0" />
-              <span>
-                <strong>Settings Locked:</strong> Parameters cannot be modified while an autonomous position is open (Spec Rule: Zero mid-trade emotional tampering).
-              </span>
-            </div>
-          )}
-
-          {/* DELTA EXCHANGE API CREDENTIALS STATUS */}
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-2">
+        <div className="max-w-2xl space-y-4 text-xs font-sans">
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Delta Exchange India API Connected
+              <span className="font-bold text-white text-xs flex items-center gap-1.5 font-mono">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                DELTA EXCHANGE INDIA ACCOUNT
               </span>
               <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px] border border-emerald-500/30">
                 AUTH OK (200)
               </span>
             </div>
             <div className="text-[11px] text-slate-300 space-y-1">
-              <div className="flex justify-between">
-                <span className="text-slate-400">API Key:</span>
-                <span className="font-bold text-slate-200">9gmFYIfIIEcYTPcCDP6NBj53...</span>
-              </div>
               <div className="flex justify-between items-center pt-1 border-t border-slate-800">
                 <span className="text-slate-400">Live Net Equity:</span>
-                <span className="font-bold text-emerald-400">${settings.currentCapitalUSD.toFixed(2)} USD (₹{(settings.currentCapitalUSD * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR)</span>
+                <span className="font-bold text-emerald-400 font-mono">${settings.currentCapitalUSD.toFixed(2)} USD (₹{(settings.currentCapitalUSD * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR)</span>
               </div>
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 font-mono">
             <div>
               <label className="block text-slate-400 mb-1">Risk % Per Trade (Default 1.5%):</label>
               <input
@@ -1022,7 +1019,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 step="0.1"
                 disabled={isSettingsLocked}
                 value={settings.riskPerTradePct}
-                onChange={e => deltaAutoTraderEngine.updateSettings({ riskPerTradePct: Number(e.target.value) })}
+                onChange={e => handleUpdateSettings({ riskPerTradePct: Number(e.target.value) })}
                 className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white ${isSettingsLocked ? "opacity-50 cursor-not-allowed" : ""}`}
               />
             </div>
@@ -1034,7 +1031,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 step="0.5"
                 disabled={isSettingsLocked}
                 value={settings.maxDailyLossPct}
-                onChange={e => deltaAutoTraderEngine.updateSettings({ maxDailyLossPct: Number(e.target.value) })}
+                onChange={e => handleUpdateSettings({ maxDailyLossPct: Number(e.target.value) })}
                 className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white ${isSettingsLocked ? "opacity-50 cursor-not-allowed" : ""}`}
               />
             </div>
@@ -1045,18 +1042,18 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 type="number"
                 disabled={isSettingsLocked}
                 value={settings.maxTradesPerDay}
-                onChange={e => deltaAutoTraderEngine.updateSettings({ maxTradesPerDay: Number(e.target.value) })}
+                onChange={e => handleUpdateSettings({ maxTradesPerDay: Number(e.target.value) })}
                 className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white ${isSettingsLocked ? "opacity-50 cursor-not-allowed" : ""}`}
               />
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1">Max Concurrent Positions (Default 10 slots):</label>
+              <label className="block text-slate-400 mb-1">Max Concurrent Positions (Default 5 slots):</label>
               <input
                 type="number"
                 disabled={isSettingsLocked}
                 value={settings.maxConcurrentPositions}
-                onChange={e => deltaAutoTraderEngine.updateSettings({ maxConcurrentPositions: Number(e.target.value) })}
+                onChange={e => handleUpdateSettings({ maxConcurrentPositions: Number(e.target.value) })}
                 className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white ${isSettingsLocked ? "opacity-50 cursor-not-allowed" : ""}`}
               />
             </div>
@@ -1067,7 +1064,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 type="number"
                 disabled={isSettingsLocked}
                 value={settings.cooldownMinutesAfterLoss}
-                onChange={e => deltaAutoTraderEngine.updateSettings({ cooldownMinutesAfterLoss: Number(e.target.value) })}
+                onChange={e => handleUpdateSettings({ cooldownMinutesAfterLoss: Number(e.target.value) })}
                 className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white ${isSettingsLocked ? "opacity-50 cursor-not-allowed" : ""}`}
               />
             </div>

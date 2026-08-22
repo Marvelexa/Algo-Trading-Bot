@@ -79,17 +79,15 @@ class DeltaExchangeEngine {
   ];
 
   constructor() {
-    const envKey = (typeof process !== "undefined" && process.env?.DELTA_EXCHANGE_API_KEY) || 
-      ((typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_DELTA_EXCHANGE_API_KEY) ? (import.meta as any).env.VITE_DELTA_EXCHANGE_API_KEY : "");
-    const envSecret = (typeof process !== "undefined" && process.env?.DELTA_EXCHANGE_API_SECRET) || 
-      ((typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_DELTA_EXCHANGE_API_SECRET) ? (import.meta as any).env.VITE_DELTA_EXCHANGE_API_SECRET : "");
+    const envKey = typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_KEY || process.env?.VITE_DELTA_EXCHANGE_API_KEY) : "";
+    const envSecret = typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_SECRET || process.env?.VITE_DELTA_EXCHANGE_API_SECRET) : "";
 
-    this.apiKey = envKey || "9gmFYIfIIEcYTPcCDP6NBj53MDUnwi";
-    this.apiSecret = envSecret || "Hfg0W9VOB99juHNe5mqwqpIEhSerZxIs3nqJO7PsgladjFO5llVwXO4adpkJ";
+    this.apiKey = envKey || "";
+    this.apiSecret = envSecret || "";
     if (this.apiKey) {
       console.log(`[DeltaExchange] 🟢 API Key loaded: ${this.apiKey.slice(0, 8)}...`);
     } else {
-      console.warn("[DeltaExchange] ⚠️ No API key found in DELTA_EXCHANGE_API_KEY env var");
+      console.warn("[DeltaExchange] ℹ️ DELTA_EXCHANGE_API_KEY not configured. LIVE trading restricted.");
     }
   }
 
@@ -242,10 +240,18 @@ class DeltaExchangeEngine {
     }
   }
 
+  private deltaFailureCount: number = 0;
+  private deltaCooldownExpiry: number = 0;
+
   // ────────────────────────────────────────────
   // REST API: Fetch OHLCV Candles
   // ────────────────────────────────────────────
   public async fetchCandles(symbol: string, resolution: string = "1m", startTime?: number, endTime?: number): Promise<DeltaCandle[]> {
+    const now = Math.floor(Date.now() / 1000);
+    if (this.deltaCooldownExpiry > now) {
+      return [];
+    }
+
     try {
       if (this.products.size === 0) {
         await this.fetchProducts();
@@ -255,13 +261,11 @@ class DeltaExchangeEngine {
         // Fallback: search by symbol or underlying
         const found = Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symbol.toUpperCase() || p.underlying_asset?.symbol?.toUpperCase() === symbol.replace("USD", "").toUpperCase());
         if (!found) {
-          console.warn(`[DeltaExchange] ⚠️ Product not found for candles: ${symbol}`);
           return [];
         }
         product = found;
       }
 
-      const now = Math.floor(Date.now() / 1000);
       let defaultLookback = 86400 * 2; // 2 days default
       if (resolution === "4h" || resolution === "240") {
         defaultLookback = 86400 * 14; // 14 days for 4h
@@ -280,13 +284,27 @@ class DeltaExchangeEngine {
         const altRes = await fetch(`https://api.delta.exchange/v2/history/candles${queryParams}`, {
           headers: { "Content-Type": "application/json", "User-Agent": "DeltaExchangeEngine/1.0" }
         });
-        if (!altRes.ok) return [];
+        if (!altRes.ok) {
+          this.deltaFailureCount++;
+          if (this.deltaFailureCount >= 3) {
+            this.deltaCooldownExpiry = now + 60;
+            console.warn("[DeltaExchange] ⚠️ 3 consecutive candle fetch failures. Delta REST backoff cooldown active for 60s.");
+          }
+          return [];
+        }
+        this.deltaFailureCount = 0;
         const altJson: any = await altRes.json();
         return this.parseCandles(altJson?.result || []);
       }
+      this.deltaFailureCount = 0;
       const json: any = await res.json();
       return this.parseCandles(json?.result || []);
     } catch (e) {
+      this.deltaFailureCount++;
+      if (this.deltaFailureCount >= 3) {
+        this.deltaCooldownExpiry = now + 60;
+        console.warn("[DeltaExchange] ⚠️ 3 consecutive candle fetch failures. Delta REST backoff cooldown active for 60s.");
+      }
       return [];
     }
   }

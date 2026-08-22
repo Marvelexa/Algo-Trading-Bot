@@ -5,7 +5,8 @@ import { createServer as createViteServer } from "vite";
 import AdmZip from "adm-zip";
 import { WebSocketServer, WebSocket } from "ws";
 import { brokerTickEngine } from "./lib/brokerTickEngine.js";
-import { deltaAutoTraderEngine } from "./lib/deltaAutoTraderEngine.js";
+import { deltaAutoTraderEngine, CURATED_AUTO_TRADER_ASSETS, EXIT_MONITORING_INTERVAL_MS, NEW_ENTRY_SCAN_INTERVAL_MS } from "./lib/deltaAutoTraderEngine.js";
+import { deltaExchangeEngine } from "./lib/deltaExchangeEngine.js";
 
 import fs from "fs";
 import { getCitiesForLocation } from "./lib/cityDatabase.js";
@@ -611,6 +612,50 @@ async function startServer() {
     }
   });
 
+  app.post("/api/autotrader/settings", (req, res) => {
+    try {
+      const newSettings = req.body;
+      if (newSettings) {
+        deltaAutoTraderEngine.updateSettings(newSettings);
+        return res.json({ success: true, state: deltaAutoTraderEngine.getLiveFullState() });
+      }
+      res.status(400).json({ success: false, error: "Settings payload required" });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/close-position", (req, res) => {
+    try {
+      const { positionId, exitPrice, reason } = req.body;
+      const result = deltaAutoTraderEngine.closePosition(positionId, exitPrice, reason || "MANUAL_UI_CLOSE");
+      return res.json({ ...result, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/autotrader/scan", async (req, res) => {
+    try {
+      const result = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+      return res.json({ ...result, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/autotrader/preview-lot", (req, res) => {
+    try {
+      const symbol = (req.query.symbol as string) || "BTCUSD";
+      const price = Number(req.query.price) || deltaAutoTraderEngine.getLivePriceUSD(symbol);
+      const slDist = Number(req.query.slDist) || (price * 0.015);
+      const result = deltaAutoTraderEngine.calculateDynamicLotSize(symbol, price, slDist);
+      return res.json({ success: true, preview: result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.get("/api/autotrader/diagnostics", async (req, res) => {
     try {
       const diagnostics = await deltaAutoTraderEngine.getScanDiagnostics();
@@ -619,6 +664,50 @@ async function startServer() {
       res.status(500).json({ success: false, error: e.message });
     }
   });
+
+  // ============================================================================
+  // 🤖 24/7 CLOUD AUTONOMOUS SWING DAEMON WITH IN-PROCESS MUTEX EXECUTION LOCK
+  // ============================================================================
+  let isDaemonExecutionLocked = false;
+
+  // 1. Exit & Trailing Stop Monitoring Daemon (every 30s for v3 swing horizon)
+  setInterval(async () => {
+    if (isDaemonExecutionLocked) return;
+    isDaemonExecutionLocked = true;
+    try {
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      if (fullState.settings.isEnabled && fullState.openPositions.length > 0) {
+        const trackedSymbols = CURATED_AUTO_TRADER_ASSETS.map(a => a.symbol);
+        for (const sym of trackedSymbols) {
+          const livePriceObj = deltaExchangeEngine.getLivePrice(sym);
+          const currentPrice = livePriceObj?.usd || 0;
+          if (currentPrice > 0) {
+            deltaAutoTraderEngine.updateLivePriceAndCheckExits(sym, currentPrice);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[DeltaDaemon] ⚠️ Exit monitoring tick error:", e);
+    } finally {
+      isDaemonExecutionLocked = false;
+    }
+  }, EXIT_MONITORING_INTERVAL_MS);
+
+  // 2. New Entry Scanning Daemon (every 2m for v3 swing horizon)
+  setInterval(async () => {
+    if (isDaemonExecutionLocked) return;
+    isDaemonExecutionLocked = true;
+    try {
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      if (fullState.settings.isEnabled && fullState.openPositions.length < fullState.settings.maxConcurrentPositions) {
+        await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+      }
+    } catch (e) {
+      console.warn("[DeltaDaemon] ⚠️ Entry scan tick error:", e);
+    } finally {
+      isDaemonExecutionLocked = false;
+    }
+  }, NEW_ENTRY_SCAN_INTERVAL_MS);
 
   app.get("/api/paper-trading/state", (req, res) => {
     try {
