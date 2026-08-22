@@ -1070,19 +1070,33 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <div>
+                        <div className="flex items-center gap-1.5">
                           <span className="font-bold text-white text-xs">{asset.symbol}</span>
-                          <span className="text-[10px] text-slate-400 ml-1.5">(${asset.currentPrice.toLocaleString()})</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                            asset.direction === "BUY" ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" :
+                            asset.direction === "SELL" ? "bg-rose-500/20 text-rose-300 border border-rose-500/40" :
+                            "bg-slate-800 text-slate-400"
+                          }`}>
+                            {asset.direction}
+                          </span>
+                          <span className="text-[10px] text-slate-400">(${asset.currentPrice.toLocaleString()})</span>
                         </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                          asset.score >= 70
-                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                            : asset.score >= 60
-                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                            : "bg-slate-800 text-slate-400 border-slate-700"
-                        }`}>
-                          Score: {asset.score}/100
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {asset.projectedProfitUSD && asset.projectedProfitUSD > 0 ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                              EV: +${asset.projectedProfitUSD.toFixed(2)}
+                            </span>
+                          ) : null}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                            asset.score >= 70
+                              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                              : asset.score >= 60
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                              : "bg-slate-800 text-slate-400 border-slate-700"
+                          }`}>
+                            {asset.score}/100
+                          </span>
+                        </div>
                       </div>
 
                       <div className="text-[10px] text-slate-400 flex items-center gap-2">

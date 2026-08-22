@@ -121,6 +121,8 @@ export interface MultiTimeframeAnalysis {
   overallScore: number; // 0 to 100
   isEntryValid: boolean;
   direction: "BUY" | "SELL" | "NEUTRAL";
+  projectedProfitUSD: number; // Expected USD profit on 10m-1h trade
+  profitProbabilityPct: number; // 0 to 100% win probability
   fourHourTrend: "BULLISH" | "BEARISH" | "SIDEWAYS";
   oneHourMomentum: "BULLISH_DIVERGENCE" | "BEARISH_DIVERGENCE" | "NEUTRAL";
   fifteenMinTrigger: "BULLISH_BREAKOUT" | "BEARISH_BREAKOUT" | "NEUTRAL";
@@ -144,6 +146,8 @@ export interface ScanDiagnosticReport {
     name: string;
     score: number;
     direction: "BUY" | "SELL" | "NEUTRAL";
+    projectedProfitUSD: number;
+    profitProbabilityPct: number;
     reason: string;
     fourHourTrend: string;
     oneHourMomentum: string;
@@ -155,6 +159,8 @@ export interface ScanDiagnosticReport {
     name: string;
     score: number;
     direction: "BUY" | "SELL" | "NEUTRAL";
+    projectedProfitUSD: number;
+    profitProbabilityPct: number;
     status: "READY_TO_FIRE" | "WAITING_CONFLUENCE" | "CONSOLIDATION" | "ALREADY_OPEN";
     reason: string;
     fourHourTrend: string;
@@ -583,6 +589,8 @@ export class DeltaAutoTraderEngine {
       overallScore: 50,
       isEntryValid: false,
       direction: "NEUTRAL",
+      projectedProfitUSD: 0,
+      profitProbabilityPct: 50,
       fourHourTrend: "SIDEWAYS",
       oneHourMomentum: "NEUTRAL",
       fifteenMinTrigger: "NEUTRAL",
@@ -680,33 +688,57 @@ export class DeltaAutoTraderEngine {
     const totalBullScore = Math.min(98, Math.max(30, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus));
     const totalBearScore = Math.min(98, Math.max(30, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus));
 
-    // 4. Strict Direction & 80%+ Confluence Determination
+    // 🎯 10-Minute to 1-Hour Horizon Expected Profit Forecasting (EV Calculation)
+    const realisticAtr = Math.max(currentPrice * 0.008, Math.min(currentPrice * 0.025, atr1h));
+    const slDist = realisticAtr * 0.95;
+    const tpDist = realisticAtr * 1.5;
+    const lotSize = this.calculateDynamicLotSize(sym, currentPrice, slDist).quantity;
+
+    // Projected Profit if BUY is executed:
+    const buyWinProb = totalBullScore / 100;
+    const buyProjectedProfitUSD = Number(((tpDist * lotSize * buyWinProb) - (slDist * lotSize * (1 - buyWinProb))).toFixed(2));
+
+    // Projected Profit if SELL is executed:
+    const sellWinProb = totalBearScore / 100;
+    const sellProjectedProfitUSD = Number(((tpDist * lotSize * sellWinProb) - (slDist * lotSize * (1 - sellWinProb))).toFixed(2));
+
+    // 4. Pure Expected Profit Decision (No Sequence, Pure High-EV Strategy):
     let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
     let overallScore = 50;
+    let projectedProfitUSD = 0;
+    let profitProbabilityPct = 50;
 
-    if (totalBullScore >= this.settings.minConfidenceThreshold && totalBullScore > totalBearScore + 6) {
+    if (buyProjectedProfitUSD > 0 && totalBullScore >= this.settings.minConfidenceThreshold && buyProjectedProfitUSD >= sellProjectedProfitUSD) {
       direction = "BUY";
       overallScore = totalBullScore;
-    } else if (totalBearScore >= this.settings.minConfidenceThreshold && totalBearScore > totalBullScore + 6) {
+      projectedProfitUSD = buyProjectedProfitUSD;
+      profitProbabilityPct = totalBullScore;
+    } else if (sellProjectedProfitUSD > 0 && totalBearScore >= this.settings.minConfidenceThreshold && sellProjectedProfitUSD > buyProjectedProfitUSD) {
       direction = "SELL";
       overallScore = totalBearScore;
+      projectedProfitUSD = sellProjectedProfitUSD;
+      profitProbabilityPct = totalBearScore;
     } else {
       direction = "NEUTRAL";
       overallScore = Math.max(totalBullScore, totalBearScore);
+      projectedProfitUSD = 0;
+      profitProbabilityPct = overallScore;
     }
 
     const isEntryValid = direction !== "NEUTRAL" && overallScore >= this.settings.minConfidenceThreshold;
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
     const reasoning = isEntryValid
-      ? `🔥 80%+ ${direction} SETUP: 15m [${patternInfo.pattern}] + 1h RSI ${rsi1h.toFixed(1)} & MACD + 4h ${fourHourTrend}. Score: ${overallScore}/100.`
-      : `⏳ 10m SCAN: Bull Score ${totalBullScore}/100 · Bear Score ${totalBearScore}/100 (15m [${patternInfo.pattern}], 1h RSI ${rsi1h.toFixed(1)}). Awaiting clean breakout.`;
+      ? `🎯 10m-1h PROFIT FORECAST [${direction}]: Expected Gain +$${projectedProfitUSD} USD (${profitProbabilityPct}% Win Probability). 15m [${patternInfo.pattern}], 1h RSI ${rsi1h.toFixed(1)}, 4h ${fourHourTrend}.`
+      : `⏳ 10m AI SCAN: Buy EV $${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV $${sellProjectedProfitUSD} (${totalBearScore}%). Waiting for 80%+ clear profit edge.`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
       overallScore,
       isEntryValid,
       direction,
+      projectedProfitUSD,
+      profitProbabilityPct,
       fourHourTrend,
       oneHourMomentum,
       fifteenMinTrigger,
@@ -1265,35 +1297,24 @@ export class DeltaAutoTraderEngine {
     );
 
     const validCandidates = candidateAnalyses.filter((c): c is NonNullable<typeof c> => c !== null);
-    // Sort descending by confluence score
-    validCandidates.sort((a, b) => b.score - a.score);
+    // Sort descending by highest confluence and profit projection
+    validCandidates.sort((a, b) => (b.analysis.projectedProfitUSD || b.score) - (a.analysis.projectedProfitUSD || a.score));
 
-    const buyPositionsCount = this.openPositions.filter(p => p.type === "BUY").length;
-    const sellPositionsCount = this.openPositions.filter(p => p.type === "SELL").length;
-
-    // 🎯 Directional Portfolio Balancing: Max 3 BUYs / Max 3 SELLs across 5 slots
-    // If 3 BUYs are already open, prioritize finding high-conviction SELLs on weaker/overbought coins
+    // 🎯 Pure 10m-1h Expected Profit Decision (No Sequence / No Alternating Bias):
+    // Execute whatever setup gives the highest profit expectation (BUY or SELL)
     for (const cand of validCandidates) {
       if (cand.analysis.isEntryValid) {
-        const dir = cand.analysis.direction;
-        if (dir === "BUY" && buyPositionsCount >= 3 && sellPositionsCount < 3) {
-          continue; // Prioritize finding a SELL setup to hedge the portfolio
-        }
-        if (dir === "SELL" && sellPositionsCount >= 3 && buyPositionsCount < 3) {
-          continue; // Prioritize finding a BUY setup to hedge the portfolio
-        }
-
         const res = this.evaluateAndExecuteAutoTrade(cand.sym, cand.candles15m, cand.candles1h, cand.candles4h, cand.currentPrice);
         if (res.success && res.position) {
-          console.log(`[AutoTrader] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
+          console.log(`[AutoTrader] 🎯 AUTONOMOUS PROFIT TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice} (Score: ${res.position.confidenceScore}/100, Expected Profit: +$${cand.analysis.projectedProfitUSD})`);
           return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
         }
       }
     }
 
     const topAsset = validCandidates[0];
-    const topMsg = topAsset ? `Top Setup: ${topAsset.sym} (${topAsset.analysis.direction} · Score: ${topAsset.score}/100)` : "Analyzing 10 crypto assets...";
-    return { executed: false, message: `Waiting for high-conviction 80%+ setup. ${topMsg}` };
+    const topMsg = topAsset ? `Top Setup: ${topAsset.sym} (${topAsset.analysis.direction} · Score: ${topAsset.score}/100 · EV: +$${topAsset.analysis.projectedProfitUSD})` : "Analyzing 10 crypto assets...";
+    return { executed: false, message: `Waiting for high-conviction 80%+ profit setup. ${topMsg}` };
   }
 
   public async getScanDiagnostics(): Promise<ScanDiagnosticReport> {
@@ -1324,6 +1345,8 @@ export class DeltaAutoTraderEngine {
             name: item.name,
             score: analysis.overallScore,
             direction: analysis.direction,
+            projectedProfitUSD: analysis.projectedProfitUSD,
+            profitProbabilityPct: analysis.profitProbabilityPct,
             status,
             reason: analysis.reasoning,
             fourHourTrend: analysis.fourHourTrend,
@@ -1372,13 +1395,10 @@ export class DeltaAutoTraderEngine {
       ? livePrice
       : (candleClose && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
     
-    const buyCount = this.openPositions.filter(p => p.type === "BUY").length;
-    const sellCount = this.openPositions.filter(p => p.type === "SELL").length;
-
-    // If analysis has a specific direction, use it; otherwise balance BUY vs SELL
+    // Direction chosen strictly by which side (BUY or SELL) has higher profit forecast:
     let tradeDirection: "BUY" | "SELL" = analysis.direction !== "NEUTRAL" 
       ? analysis.direction 
-      : (buyCount > sellCount ? "SELL" : (sellCount > buyCount ? "BUY" : (analysis.fourHourTrend === "BEARISH" ? "SELL" : "BUY")));
+      : (analysis.projectedProfitUSD > 0 ? analysis.direction : (analysis.overallScore >= 50 && analysis.fourHourTrend === "BULLISH" ? "BUY" : "SELL"));
 
     const atr = analysis.atr1h && analysis.atr1h > 0 ? analysis.atr1h : (currentPrice * 0.012);
     const realisticAtr = Math.max(currentPrice * 0.008, Math.min(currentPrice * 0.025, atr));
