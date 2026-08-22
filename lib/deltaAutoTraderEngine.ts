@@ -139,6 +139,7 @@ export interface AutoTraderStatus {
     symbol: string;
     name: string;
     tag: string;
+    currentPrice?: number;
     inspectionRemainingSeconds: number;
     inspectionTotalSeconds: number;
     status: "INSPECTING" | "SLOTS_FULL" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED";
@@ -223,7 +224,7 @@ export interface ScanDiagnosticReport {
   }>;
 }
 
-const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V9";
+const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V10";
 const DEFAULT_CAPITAL_USD = 195.80; // ₹16,350 INR ($195.80 USD)
 
 export class DeltaAutoTraderEngine {
@@ -250,6 +251,7 @@ export class DeltaAutoTraderEngine {
   private newsFreezeActive: boolean = false;
   private newsFreezeCountdownMins: number = 0;
   private analysisCache: Map<string, MultiTimeframeAnalysis> = new Map();
+  private latestPrices: Map<string, number> = new Map();
   private stoppedAssetCooldowns: Map<string, number> = new Map(); // Asset re-entry cooldown after SL
   private isScanningLoopActive: boolean = false;
   // 🔄 Sequential 10-Coin Round-Robin Engine (5-min inspection per coin)
@@ -1017,6 +1019,7 @@ export class DeltaAutoTraderEngine {
   public updateLivePriceAndCheckExits(symbol: string, currentPriceUSD: number): string[] {
     this.checkDailyReset();
     if (!currentPriceUSD || isNaN(currentPriceUSD) || currentPriceUSD <= 0) return [];
+    this.latestPrices.set(symbol.toUpperCase().trim(), currentPriceUSD);
 
     const triggeredLogs: string[] = [];
     const now = Date.now();
@@ -1323,11 +1326,13 @@ export class DeltaAutoTraderEngine {
       inspectionStatus = "INSPECTING";
     }
 
+    const inspectionCurrentPrice = this.latestPrices.get(currentAsset.symbol) || 0;
     const currentInspection = {
       assetIndex: safeIndex,
       symbol: currentAsset.symbol,
       name: currentAsset.name,
       tag: currentAsset.tag,
+      currentPrice: inspectionCurrentPrice,
       inspectionRemainingSeconds: isSlotsFull ? 0 : inspectionRemainingSeconds,
       inspectionTotalSeconds,
       status: inspectionStatus,

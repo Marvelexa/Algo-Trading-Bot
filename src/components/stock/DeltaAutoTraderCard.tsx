@@ -468,27 +468,27 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             <Award className="w-5 h-5" />
           </span>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-white text-sm">Daily Target Range: ₹15,200 ➔ ₹16,000 INR</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-white text-sm">Growth Target Range: ₹16,350 ➔ ₹18,000 INR</span>
               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                +₹200 to +₹1,000 / Day (1.5% - 6.6%)
+                +₹1,650 Target Goal (+10.1%)
               </span>
             </div>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              Base Capital: ₹15,000 (~$180 USD) · Realized Today: ₹{((status.todayPnLUSD || 0) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} ({status.todayPnLPct}%)
+              Base Capital: ₹16,350 (~$195.80 USD) · Realized Today: ₹{((status.todayPnLUSD || 0) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} ({status.todayPnLPct}%)
             </span>
           </div>
         </div>
 
         <div className="w-full md:w-64 space-y-1">
-          <div className="flex justify-between text-[10px] text-slate-400">
-            <span>₹15,000</span>
-            <span className="text-amber-300 font-bold">Goal: ₹16,000</span>
+          <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+            <span>₹16,350</span>
+            <span className="text-amber-300 font-bold">Goal: ₹18,000</span>
           </div>
           <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
             <div
               className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-400 transition-all duration-700"
-              style={{ width: `${Math.min(100, Math.max(5, ((15000 + Math.max(0, (status.todayPnLUSD || 0) * USD_TO_INR) - 15000) / 1000) * 100))}%` }}
+              style={{ width: `${Math.min(100, Math.max(5, ((Math.max(0, (status.todayPnLUSD || 0) * USD_TO_INR)) / 1650) * 100))}%` }}
             />
           </div>
         </div>
@@ -642,8 +642,11 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
                 Inspection Time Remaining: <strong className="text-amber-300">{Math.floor((status.currentInspection?.inspectionRemainingSeconds || 300) / 60)}m {((status.currentInspection?.inspectionRemainingSeconds || 300) % 60).toString().padStart(2, "0")}s</strong>
               </span>
-              <span className="text-[11px] text-slate-400">
-                Live Bias: <strong className={status.currentInspection?.currentDirection === "BUY" ? "text-emerald-400" : status.currentInspection?.currentDirection === "SELL" ? "text-rose-400" : "text-slate-400"}>{status.currentInspection?.currentDirection || "ANALYZING"}</strong> · Score: <strong className="text-indigo-300">{status.currentInspection?.currentScore || "--"}/100</strong> · EV: <strong className="text-emerald-300">+${status.currentInspection?.currentEVUSD ? status.currentInspection.currentEVUSD.toFixed(2) : "0.00"}</strong>
+              <span className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap">
+                <span>Price: <strong className="text-white">${formatAssetPrice(status.currentInspection?.currentPrice || 0)} (₹{((status.currentInspection?.currentPrice || 0) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR)</strong></span>
+                <span>· Bias: <strong className={status.currentInspection?.currentDirection === "BUY" ? "text-emerald-400" : status.currentInspection?.currentDirection === "SELL" ? "text-rose-400" : "text-slate-400"}>{status.currentInspection?.currentDirection || "ANALYZING"}</strong></span>
+                <span>· Score: <strong className="text-indigo-300">{status.currentInspection?.currentScore || "--"}/100</strong></span>
+                <span>· EV: <strong className="text-emerald-300">+${status.currentInspection?.currentEVUSD ? status.currentInspection.currentEVUSD.toFixed(2) : "0.00"}</strong></span>
               </span>
             </div>
             <div className="w-full h-2 rounded-full bg-slate-900 overflow-hidden border border-indigo-950">
