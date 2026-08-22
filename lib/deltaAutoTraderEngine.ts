@@ -26,6 +26,7 @@ export interface AutoTraderPosition {
   highestProfitUSD: number;
   timeframeAlignment: string; // e.g. "15m+1h+4h Aligned"
   entryTimestamp: string;
+  entryTimeMs: number; // Unix timestamp in ms
   maxHoldTimeExpiry: number; // Unix timestamp for 24h force-close
 }
 
@@ -560,6 +561,7 @@ export class DeltaAutoTraderEngine {
       highestProfitUSD: 0,
       timeframeAlignment: "15m + 1h + 4h Aligned",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+      entryTimeMs: now,
       maxHoldTimeExpiry: now + (24 * 60 * 60 * 1000) // 24-Hour Max Hold Time Rule
     };
 
@@ -662,9 +664,9 @@ export class DeltaAutoTraderEngine {
         }
 
         // Exit Check 4: Time-Decay Stale Trade Exit (Holding > 4 Hours in dead chop)
-        const entryMs = new Date(pos.entryTimestamp).getTime() || now;
+        const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
         const holdDurationMins = (now - entryMs) / 60000;
-        if (holdDurationMins >= 240 && Math.abs(pos.unrealizedPnLPct) < 0.4) {
+        if (holdDurationMins >= 240 && holdDurationMins <= 1440 && Math.abs(pos.unrealizedPnLPct) < 0.4) {
           const res = this.closePosition(pos.id, pos.currentPrice, "TIME_STALL_EXIT");
           triggeredLogs.push(`⏳ 4-Hour Stale Trade Exit: Closed ${pos.symbol} at scratch to release capital.`);
           return;
@@ -1101,6 +1103,7 @@ export class DeltaAutoTraderEngine {
       highestProfitUSD: 0,
       timeframeAlignment: "Forced Instant Execution · Real-Time Market Alignment",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+      entryTimeMs: now,
       maxHoldTimeExpiry: now + (24 * 60 * 60 * 1000)
     };
 
