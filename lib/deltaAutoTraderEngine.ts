@@ -1331,14 +1331,13 @@ export class DeltaAutoTraderEngine {
       return { executed: false, message: `All 5 pipeline slots active (${this.openPositions.length}/${this.settings.maxConcurrentPositions} positions running).` };
     }
 
-    if (this.checkBatchCycle()) {
+    if (this.openPositions.length === 0 && this.checkBatchCycle()) {
       const remainingSeconds = Math.max(0, Math.ceil((this.slotReentryCooldownExpiry - Date.now()) / 1000));
       const mins = Math.floor(remainingSeconds / 60);
       const secs = remainingSeconds % 60;
-      const vacant = this.settings.maxConcurrentPositions - this.openPositions.length;
       return {
         executed: false,
-        message: `🧠 10-Min AI Market Re-Calibration: ${this.openPositions.length}/5 active positions running. Filling ${vacant} vacant slot(s) in ${mins}m ${secs}s.`
+        message: `🧠 10-Min AI Market Calibration: Previous batch complete. Analyzing market for next batch in ${mins}m ${secs}s.`
       };
     }
 
@@ -1368,21 +1367,31 @@ export class DeltaAutoTraderEngine {
     // Sort descending by highest confluence and profit projection
     validCandidates.sort((a, b) => (b.analysis.projectedProfitUSD || b.score) - (a.analysis.projectedProfitUSD || a.score));
 
-    // 🎯 Pure 10m-1h Expected Profit Decision (No Sequence / No Alternating Bias):
-    // Execute whatever setup gives the highest profit expectation (BUY or SELL)
+    // 🎯 Progressive Asset Pipeline Execution:
+    // As assets are analyzed and validated, execute all qualified trades immediately up to the 5-trade limit!
+    const newlyExecuted: AutoTraderPosition[] = [];
     for (const cand of validCandidates) {
-      if (cand.analysis.isEntryValid) {
+      if (this.openPositions.length >= this.settings.maxConcurrentPositions) break;
+      if (cand.analysis.isEntryValid && cand.analysis.direction !== "NEUTRAL") {
         const res = this.evaluateAndExecuteAutoTrade(cand.sym, cand.candles15m, cand.candles1h, cand.candles4h, cand.currentPrice);
         if (res.success && res.position) {
-          console.log(`[AutoTrader] 🎯 AUTONOMOUS PROFIT TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice} (Score: ${res.position.confidenceScore}/100, Expected Profit: +$${cand.analysis.projectedProfitUSD})`);
-          return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
+          console.log(`[AutoTrader] 🎯 PROGRESSIVE ASSET TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice} (Score: ${res.position.confidenceScore}/100, Expected Profit: +$${cand.analysis.projectedProfitUSD})`);
+          newlyExecuted.push(res.position);
         }
       }
     }
 
+    if (newlyExecuted.length > 0) {
+      return {
+        executed: true,
+        message: `🎯 Progressive Execution: Placed ${newlyExecuted.length} confirmed trade(s) (${newlyExecuted.map(p => `${p.type} ${p.symbol}`).join(", ")}).`,
+        position: newlyExecuted[0]
+      };
+    }
+
     const topAsset = validCandidates[0];
     const topMsg = topAsset ? `Top Setup: ${topAsset.sym} (${topAsset.analysis.direction} · Score: ${topAsset.score}/100 · EV: +$${topAsset.analysis.projectedProfitUSD})` : "Analyzing 10 crypto assets...";
-    return { executed: false, message: `Waiting for high-conviction 80%+ profit setup. ${topMsg}` };
+    return { executed: false, message: `Scanned ${candidateSymbols.length} assets. Waiting for high-conviction 80%+ profit setup. ${topMsg}` };
   }
 
   public async getScanDiagnostics(): Promise<ScanDiagnosticReport> {
