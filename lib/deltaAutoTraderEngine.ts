@@ -237,7 +237,7 @@ export class DeltaAutoTraderEngine {
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 60,
+    minConfidenceThreshold: 55,
     maxConcurrentPositions: 5, // Up to 5 concurrent positions (Pipelined 5-min round-robin)
     inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
