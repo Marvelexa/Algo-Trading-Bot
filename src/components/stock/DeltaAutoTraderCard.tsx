@@ -613,14 +613,32 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
           {/* ACTIVE OPEN POSITIONS */}
           <div>
-            <h3 className="text-xs font-bold text-slate-300 mb-2 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Bot Open Positions ({positions.length} / {settings.maxConcurrentPositions})
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Active Bot Open Positions ({positions.length} / {settings.maxConcurrentPositions})
+              </h3>
+              {positions.length > 0 && (
+                <button
+                  onClick={() => {
+                    const res = deltaAutoTraderEngine.closeAllOpenPositions("MAX_TIME_60M");
+                    setPositions(deltaAutoTraderEngine.getOpenPositions());
+                    setRecords(deltaAutoTraderEngine.getClosedRecords());
+                    setStatus(deltaAutoTraderEngine.getStatus());
+                    setNotification(res.message);
+                    setTimeout(() => setNotification(null), 5000);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold text-[10px] transition flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                  Exit All Old Trades & Start Fresh 10m Batch
+                </button>
+              )}
+            </div>
 
             {positions.length === 0 ? (
               <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-400 text-xs">
                 <p className="font-bold text-slate-300 mb-1">No Active Positions Currently Open</p>
-                <p className="text-slate-500">The Delta Auto-Trader automatically executes when 15m+1h+4h timeframes align with a confidence score ≥ 70/100.</p>
+                <p className="text-slate-500">The Delta Auto-Trader automatically executes when 15m+1h+4h timeframes align with a confidence score ≥ 65/100.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -667,21 +685,19 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                       </div>
                     </div>
 
-                    {/* ⏱️ 2-3 HOURS TO 1-DAY POSITIONAL HOLDING TIMER */}
+                    {/* ⏱️ 10M - 60M PRECISION INTRADAY HOLDING TIMER */}
                     {(() => {
-                      const entryMs = new Date(pos.entryTimestamp).getTime() || (Date.now() - 3600000);
+                      const entryMs = pos.entryTimeMs || new Date(pos.entryTimestamp).getTime() || (Date.now() - 60000);
                       const diffMins = Math.max(1, Math.floor((Date.now() - entryMs) / 60000));
-                      const hours = Math.floor(diffMins / 60);
-                      const mins = diffMins % 60;
-                      const remainingHours = Math.max(0, 24 - hours);
+                      const remainingMins = Math.max(0, 60 - diffMins);
                       return (
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-indigo-500/20 text-[11px] font-mono">
                           <span className="text-amber-300 flex items-center gap-1.5 font-bold">
                             <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            Elapsed Hold Time: {hours}h {mins}m · Target Horizon: 2–3 Hours to 1 Day
+                            Elapsed Hold: {diffMins}m · Target Horizon: 10m to 1 Hour
                           </span>
                           <span className="text-slate-400">
-                            🛡️ 24h Force-Close Auto-Expiry: ~{remainingHours}h {60 - mins}m
+                            ⏰ 1h Auto-Horizon: ~{remainingMins}m remaining
                           </span>
                         </div>
                       );

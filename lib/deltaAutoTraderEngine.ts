@@ -300,9 +300,43 @@ export class DeltaAutoTraderEngine {
       this.settings.maxConcurrentPositions = 5;
       this.settings.minConfidenceThreshold = 65;
     }
-    if (Array.isArray(parsed.openPositions)) this.openPositions = parsed.openPositions;
+    if (Array.isArray(parsed.openPositions)) {
+      const now = Date.now();
+      // Auto-exit/prune old stale positions that were opened under old 4h/24h rules (> 60 mins old)
+      const validOpen: AutoTraderPosition[] = [];
+      for (const pos of parsed.openPositions) {
+        const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
+        const holdMins = (now - entryMs) / 60000;
+        if (holdMins >= 60) {
+          const actualExitPrice = pos.currentPrice || pos.entryPrice;
+          const pnlUSD = pos.type === "BUY"
+            ? (actualExitPrice - pos.entryPrice) * pos.quantity
+            : (pos.entryPrice - actualExitPrice) * pos.quantity;
+          const invested = pos.entryPrice * pos.quantity;
+          const pnlPct = invested > 0 ? Number(((pnlUSD / invested) * 100).toFixed(2)) : 0;
+          this.closedRecords.unshift({
+            id: pos.id,
+            symbol: pos.symbol,
+            type: pos.type,
+            quantity: pos.quantity,
+            entryPrice: pos.entryPrice,
+            exitPrice: actualExitPrice,
+            realizedPnLUSD: Number(pnlUSD.toFixed(2)),
+            realizedPnLPct: pnlPct,
+            confidenceScore: pos.confidenceScore || 75,
+            outcome: pnlUSD > 0.1 ? "WIN" : pnlUSD < -0.1 ? "LOSS" : "BREAKEVEN",
+            exitReason: "MAX_TIME_60M",
+            entryTimestamp: pos.entryTimestamp,
+            exitTimestamp: new Date().toISOString().replace("T", " ").substring(0, 16)
+          });
+        } else {
+          validOpen.push(pos);
+        }
+      }
+      this.openPositions = validOpen;
+    }
     if (Array.isArray(parsed.closedRecords)) {
-      // Clean up / Delete the 5 premature TIME_STALL_EXIT scratch records from earlier
+      // Clean up / Delete the premature TIME_STALL_EXIT scratch records from earlier
       this.closedRecords = parsed.closedRecords.filter((r: any) => r.exitReason !== "TIME_STALL_EXIT");
     }
     if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;
@@ -312,11 +346,30 @@ export class DeltaAutoTraderEngine {
     const validTodayRecords = this.closedRecords.filter(r => r.exitTimestamp && r.exitTimestamp.startsWith(this.todayDateStr));
     this.tradesTakenTodayCount = validTodayRecords.length + this.openPositions.length;
 
-    if (typeof parsed.currentBatchTradesCount === "number") this.currentBatchTradesCount = parsed.currentBatchTradesCount;
+    if (this.openPositions.length === 0) {
+      this.currentBatchTradesCount = 0;
+      this.batchCooldownExpiry = 0;
+    } else if (typeof parsed.currentBatchTradesCount === "number") {
+      this.currentBatchTradesCount = parsed.currentBatchTradesCount;
+    }
     if (typeof parsed.batchCooldownExpiry === "number") this.batchCooldownExpiry = parsed.batchCooldownExpiry;
     if (typeof parsed.currentCycleNumber === "number") this.currentCycleNumber = parsed.currentCycleNumber;
     if (typeof parsed.dailyStartCapitalUSD === "number") this.dailyStartCapitalUSD = parsed.dailyStartCapitalUSD;
     this.saveToStorage();
+  }
+
+  public closeAllOpenPositions(reason: AutoTraderClosedRecord["exitReason"] = "MAX_TIME_60M"): { count: number; message: string } {
+    const count = this.openPositions.length;
+    if (count === 0) return { count: 0, message: "No active open positions to close." };
+
+    const positionsToClose = [...this.openPositions];
+    for (const pos of positionsToClose) {
+      this.closePosition(pos.id, pos.currentPrice || pos.entryPrice, reason);
+    }
+    this.currentBatchTradesCount = 0;
+    this.batchCooldownExpiry = 0;
+    this.saveToStorage();
+    return { count, message: `Successfully exited all ${count} old position(s). Ready for fresh 10m-60m batch!` };
   }
 
   public saveToStorage() {
