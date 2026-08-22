@@ -854,7 +854,13 @@ export class DeltaAutoTraderEngine {
 
     const minEntryThreshold = this.settings.minConfidenceThreshold || 60;
 
-    if (totalBullScore > totalBearScore && buyProjectedProfitUSD > 0 && totalBullScore >= minEntryThreshold) {
+    // 🛡️ Strict Chop Guard: If ADX < 20 or score is below threshold, strictly set NEUTRAL & SKIP
+    if (adx4h < 20 || (totalBullScore < minEntryThreshold && totalBearScore < minEntryThreshold)) {
+      direction = "NEUTRAL";
+      overallScore = Math.max(totalBullScore, totalBearScore);
+      projectedProfitUSD = 0;
+      profitProbabilityPct = overallScore;
+    } else if (totalBullScore > totalBearScore && buyProjectedProfitUSD > 0 && totalBullScore >= minEntryThreshold) {
       direction = "BUY";
       overallScore = totalBullScore;
       projectedProfitUSD = buyProjectedProfitUSD;
@@ -867,16 +873,16 @@ export class DeltaAutoTraderEngine {
     } else {
       direction = "NEUTRAL";
       overallScore = Math.max(totalBullScore, totalBearScore);
-      projectedProfitUSD = totalBullScore >= totalBearScore ? buyProjectedProfitUSD : sellProjectedProfitUSD;
+      projectedProfitUSD = 0;
       profitProbabilityPct = overallScore;
     }
 
-    const isEntryValid = direction !== "NEUTRAL" && projectedProfitUSD > 0 && overallScore >= minEntryThreshold;
+    const isEntryValid = direction !== "NEUTRAL" && projectedProfitUSD > 0 && overallScore >= minEntryThreshold && adx4h >= 20;
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
     const reasoning = isEntryValid
       ? `🎯 10m-1h PROFIT FORECAST [${direction}]: Expected Gain ${projectedProfitUSD >= 0 ? "+" : ""}$${projectedProfitUSD} USD (${profitProbabilityPct}% Heuristic Score). 15m [${patternInfo.pattern}], 1h RSI ${rsi1h.toFixed(1)}, 4h ${fourHourTrend}.`
-      : `⏳ 10m AI SCAN: Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Edge insufficient for trade.`;
+      : `⏳ 10m AI SCAN [SKIP]: Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Edge insufficient (ADX ${adx4h.toFixed(1)}). Auto-skipping to next asset.`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
