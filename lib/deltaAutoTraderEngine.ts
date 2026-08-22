@@ -1096,40 +1096,36 @@ export class DeltaAutoTraderEngine {
       if (!this.settings.isEnabled) return;
       try {
         const trackedSymbols = CURATED_AUTO_TRADER_ASSETS.map(a => a.symbol);
+
+        // 1. Continuous Exit Checking & Trailing SL Engine for all open positions
         for (const sym of trackedSymbols) {
-          if (this.openPositions.length >= this.settings.maxConcurrentPositions) break;
           const livePriceObj = deltaExchangeEngine.getLivePrice(sym);
           const currentPrice = livePriceObj?.usd || 0;
           if (currentPrice > 0) {
-            // 1. Continuous Exit Checking (SL, TP, Trailing Stop, 24h Max Hold Time)
             this.updateLivePriceAndCheckExits(sym, currentPrice);
+          }
+        }
 
-            // 2. Multi-Timeframe Alignment Evaluation for Autonomous Entry
-            if (this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle() && this.currentBatchTradesCount < this.batchSize) {
-              const candles15m = await deltaExchangeEngine.fetchCandles(sym, "15m");
-              const candles1h = await deltaExchangeEngine.fetchCandles(sym, "1h");
-              const candles4h = await deltaExchangeEngine.fetchCandles(sym, "4h");
-
-              if (candles1h.length >= 5 && candles4h.length >= 5) {
-                const res = this.evaluateAndExecuteAutoTrade(sym, candles15m, candles1h, candles4h, currentPrice);
-                if (res.success && res.position) {
-                  console.log(`[DeltaAutoTraderDaemon] 🚀 AUTONOMOUS TRADE EXECUTED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
-                }
-              }
-            }
+        // 2. Fully Autonomous Multi-Timeframe Scan & Trade Execution
+        if (this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle() && this.currentBatchTradesCount < this.batchSize) {
+          const res = await this.scanAndExecuteNextTrade();
+          if (res.executed && res.position) {
+            console.log(`[DeltaAutoTraderDaemon] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
           }
         }
       } catch (err) {
-        // Background scan cycle
+        // Background scan cycle safeguard
       }
-    }, 15000);
+    }, 6000);
   }
 
   public async fetchCryptoCandles(symbol: string, interval: "15m" | "1h" | "4h" = "1h", limit: number = 30): Promise<OHLCVBar[]> {
     const base = symbol.toUpperCase().replace("USD", "").replace("USDT", "").trim();
     const binancePair = `${base}USDT`;
     try {
-      const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`);
+      const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`, {
+        signal: AbortSignal.timeout(2000)
+      });
       if (res.ok) {
         const raw: any[] = await res.json();
         if (Array.isArray(raw) && raw.length > 0) {
@@ -1194,76 +1190,83 @@ export class DeltaAutoTraderEngine {
     const openSymbols = new Set(this.openPositions.map(p => p.symbol.toUpperCase()));
     const candidateSymbols = tracked.filter(s => !openSymbols.has(s.toUpperCase()));
 
-    let bestCandidate: { sym: string; score: number; candles15m: any[]; candles1h: any[]; candles4h: any[]; currentPrice: number } | null = null;
-
-    for (const sym of candidateSymbols) {
-      try {
-        const [candles15m, candles1h, candles4h] = await Promise.all([
-          this.fetchCryptoCandles(sym, "15m", 30),
-          this.fetchCryptoCandles(sym, "1h", 30),
-          this.fetchCryptoCandles(sym, "4h", 30)
-        ]);
-
-        const currentPrice = candles1h[candles1h.length - 1]?.close || 0;
-        if (currentPrice > 0) {
-          const analysis = this.analyzeMultiTimeframe(sym, candles15m, candles1h, candles4h);
-          if (analysis.isEntryValid) {
-            const res = this.evaluateAndExecuteAutoTrade(sym, candles15m, candles1h, candles4h, currentPrice);
-            if (res.success && res.position) {
-              console.log(`[AutoTrader] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
-              return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
-            }
+    const candidateAnalyses = await Promise.all(
+      candidateSymbols.map(async (sym) => {
+        try {
+          const [candles15m, candles1h, candles4h] = await Promise.all([
+            this.fetchCryptoCandles(sym, "15m", 30),
+            this.fetchCryptoCandles(sym, "1h", 30),
+            this.fetchCryptoCandles(sym, "4h", 30)
+          ]);
+          const currentPrice = candles1h[candles1h.length - 1]?.close || 0;
+          if (currentPrice > 0) {
+            const analysis = this.analyzeMultiTimeframe(sym, candles15m, candles1h, candles4h);
+            return { sym, score: analysis.overallScore, analysis, candles15m, candles1h, candles4h, currentPrice };
           }
+        } catch (err) {}
+        return null;
+      })
+    );
 
-          if (!bestCandidate || analysis.overallScore > bestCandidate.score) {
-            bestCandidate = { sym, score: analysis.overallScore, candles15m, candles1h, candles4h, currentPrice };
-          }
+    const validCandidates = candidateAnalyses.filter((c): c is NonNullable<typeof c> => c !== null);
+    // Sort descending by confluence score
+    validCandidates.sort((a, b) => b.score - a.score);
+
+    for (const cand of validCandidates) {
+      if (cand.analysis.isEntryValid) {
+        const res = this.evaluateAndExecuteAutoTrade(cand.sym, cand.candles15m, cand.candles1h, cand.candles4h, cand.currentPrice);
+        if (res.success && res.position) {
+          console.log(`[AutoTrader] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
+          return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
         }
-      } catch (err) {}
+      }
     }
 
-    return { executed: false, message: "Scanning 10 crypto assets... Waiting for high-conviction 15m+1h+4h alignment (Score ≥ 70)." };
+    const topAsset = validCandidates[0];
+    const topMsg = topAsset ? `Top Setup: ${topAsset.sym} (${topAsset.analysis.direction} · Score: ${topAsset.score}/100)` : "Analyzing 10 crypto assets...";
+    return { executed: false, message: `Waiting for high-conviction 80%+ setup. ${topMsg}` };
   }
 
   public async getScanDiagnostics(): Promise<ScanDiagnosticReport> {
     const tracked = CURATED_AUTO_TRADER_ASSETS;
     const openSymbols = new Set(this.openPositions.map(p => p.symbol.toUpperCase()));
-    const assetScans: any[] = [];
-    let bestAsset: any = null;
 
-    for (const item of tracked) {
-      try {
-        const [candles15m, candles1h, candles4h] = await Promise.all([
-          this.fetchCryptoCandles(item.symbol, "15m", 30),
-          this.fetchCryptoCandles(item.symbol, "1h", 30),
-          this.fetchCryptoCandles(item.symbol, "4h", 30)
-        ]);
+    const scans = await Promise.all(
+      tracked.map(async (item) => {
+        try {
+          const [candles15m, candles1h, candles4h] = await Promise.all([
+            this.fetchCryptoCandles(item.symbol, "15m", 30),
+            this.fetchCryptoCandles(item.symbol, "1h", 30),
+            this.fetchCryptoCandles(item.symbol, "4h", 30)
+          ]);
+          const analysis = this.analyzeMultiTimeframe(item.symbol, candles15m, candles1h, candles4h);
+          const livePriceObj = deltaExchangeEngine.getLivePrice(item.symbol);
+          const price = livePriceObj?.usd && livePriceObj.usd > 0 ? livePriceObj.usd : (candles1h[candles1h.length - 1]?.close || 100);
 
-        const currentPrice = candles1h[candles1h.length - 1]?.close || this.getLivePriceUSD(item.symbol) || 100;
-        const analysis = this.analyzeMultiTimeframe(item.symbol, candles15m, candles1h, candles4h);
+          const isOpen = openSymbols.has(item.symbol.toUpperCase());
+          const status = isOpen ? "ALREADY_OPEN" : analysis.isEntryValid ? "READY_TO_FIRE" : analysis.overallScore >= 60 ? "WAITING_CONFLUENCE" : "CONSOLIDATION";
 
-        const isOpen = openSymbols.has(item.symbol.toUpperCase());
-        const status = isOpen ? "ALREADY_OPEN" : analysis.isEntryValid ? "READY_TO_FIRE" : analysis.overallScore >= 60 ? "WAITING_CONFLUENCE" : "CONSOLIDATION";
-
-        const scanObj = {
-          symbol: item.symbol,
-          name: item.name,
-          score: analysis.overallScore,
-          direction: analysis.direction,
-          status,
-          reason: analysis.reasoning,
-          fourHourTrend: analysis.fourHourTrend,
-          oneHourMomentum: analysis.oneHourMomentum,
-          fifteenMinTrigger: analysis.fifteenMinTrigger,
-          currentPrice
-        };
-        assetScans.push(scanObj);
-
-        if (!isOpen && (!bestAsset || scanObj.score > bestAsset.score)) {
-          bestAsset = scanObj;
+          return {
+            symbol: item.symbol,
+            name: item.name,
+            score: analysis.overallScore,
+            direction: analysis.direction,
+            status,
+            reason: analysis.reasoning,
+            fourHourTrend: analysis.fourHourTrend,
+            oneHourMomentum: analysis.oneHourMomentum,
+            fifteenMinTrigger: analysis.fifteenMinTrigger,
+            currentPrice: price
+          };
+        } catch (e) {
+          return null;
         }
-      } catch (err) {}
-    }
+      })
+    );
+
+    const assetScans = scans.filter((s): s is NonNullable<typeof s> => s !== null);
+    assetScans.sort((a, b) => b.score - a.score);
+    const bestAsset = assetScans.find(a => a.status !== "ALREADY_OPEN") || assetScans[0] || null;
 
     return {
       timestamp: new Date().toLocaleTimeString(),
