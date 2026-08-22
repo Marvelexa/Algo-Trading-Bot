@@ -897,36 +897,48 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                         <strong className="text-emerald-400 text-sm font-mono">${formatAssetPrice(pos.currentPrice)}</strong>
                         <span className="text-[9px] text-slate-500 block font-sans">₹{(pos.currentPrice * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR</span>
                       </div>
-                      <div className={`p-2.5 rounded-xl border ${pos.unrealizedPnLUSD >= 0 ? "bg-emerald-950/20 border-emerald-500/30" : "bg-rose-950/20 border-rose-500/30"}`}>
-                        <span className="text-[10px] text-slate-400 block">Live Floating P&L:</span>
-                        <strong className={`text-sm font-mono font-black ${pos.unrealizedPnLUSD >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                          {pos.unrealizedPnLUSD >= 0 ? "+" : ""}${pos.unrealizedPnLUSD.toFixed(2)} USD ({pos.unrealizedPnLPct >= 0 ? "+" : ""}{pos.unrealizedPnLPct}%)
-                        </strong>
-                        <span className={`text-[10px] font-sans font-bold block mt-0.5 ${pos.unrealizedPnLUSD >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                          ({pos.unrealizedPnLUSD >= 0 ? "+" : ""}₹{(pos.unrealizedPnLUSD * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR)
-                        </span>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                        <span className="text-[10px] text-slate-400 block">Stop-Loss (Trailing):</span>
-                        <strong className="text-rose-400 text-sm font-mono">${formatAssetPrice(pos.stopLossPrice)}</strong>
-                        <span className="text-[9px] text-amber-300 block font-sans">Target (+1.6R): ${formatAssetPrice(pos.targetPrice)}</span>
-                      </div>
+                      {(() => {
+                        const targetGainUSD = Math.abs(pos.targetPrice - pos.entryPrice) * pos.quantity;
+                        const targetGainINR = targetGainUSD * USD_TO_INR;
+                        return (
+                          <>
+                            <div className={`p-2.5 rounded-xl border ${pos.unrealizedPnLUSD >= 0 ? "bg-emerald-950/20 border-emerald-500/30" : "bg-rose-950/20 border-rose-500/30"}`}>
+                              <span className="text-[10px] text-slate-400 block">Live Running P&L:</span>
+                              <strong className={`text-sm font-mono font-black ${pos.unrealizedPnLUSD >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                {pos.unrealizedPnLUSD >= 0 ? "+" : ""}${pos.unrealizedPnLUSD.toFixed(2)} USD ({pos.unrealizedPnLPct >= 0 ? "+" : ""}{pos.unrealizedPnLPct}%)
+                              </strong>
+                              <span className={`text-[10px] font-sans font-bold block mt-0.5 ${pos.unrealizedPnLUSD >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                                ({pos.unrealizedPnLUSD >= 0 ? "+" : ""}₹{(pos.unrealizedPnLUSD * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR)
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                              <span className="text-[10px] text-slate-400 block">Stop-Loss (Trailing):</span>
+                              <strong className="text-rose-400 text-sm font-mono">${formatAssetPrice(pos.stopLossPrice)}</strong>
+                              <span className="text-[9px] text-amber-300 block font-sans font-bold mt-0.5">
+                                🎯 Target (+1.6R): ${formatAssetPrice(pos.targetPrice)} (+₹{targetGainINR.toFixed(0)} INR)
+                              </span>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
-                    {/* ⏱️ 2-4H to 24H V3 SWING HORIZON HOLDING TIMER */}
+                    {/* ⏱️ FAST 30M - 2H INTRADAY BURST TIMER */}
                     {(() => {
                       const entryMs = pos.entryTimeMs || new Date(pos.entryTimestamp).getTime() || (Date.now() - 60000);
                       const diffMins = Math.max(1, Math.floor((Date.now() - entryMs) / 60000));
                       const diffHours = Math.floor(diffMins / 60);
-                      const remainingHours = Math.max(0, 24 - diffHours);
+                      const remainingMins = Math.max(0, 120 - diffMins);
+                      const targetGainUSD = Math.abs(pos.targetPrice - pos.entryPrice) * pos.quantity;
+                      const targetGainINR = targetGainUSD * USD_TO_INR;
                       return (
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-indigo-500/20 text-[11px] font-mono">
                           <span className="text-amber-300 flex items-center gap-1.5 font-bold">
                             <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            Elapsed Hold: {diffHours > 0 ? `${diffHours}h ${diffMins % 60}m` : `${diffMins}m`} · Horizon: 2-4 Hours to 1 Day
+                            Active Hold: {diffHours > 0 ? `${diffHours}h ${diffMins % 60}m` : `${diffMins}m`} · Fast Intraday (Max 2h)
                           </span>
-                          <span className="text-slate-400">
-                            ⏰ 24h Max Hold: ~{remainingHours}h remaining
+                          <span className="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
+                            🎯 Potential Gain on Target Hit: +${targetGainUSD.toFixed(2)} USD (+₹{targetGainINR.toFixed(0)} INR)
                           </span>
                         </div>
                       );
