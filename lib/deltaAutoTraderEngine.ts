@@ -176,7 +176,7 @@ export class DeltaAutoTraderEngine {
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 5, // Strict 5 high-conviction trades per day
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 70, // 70/100 Multi-Timeframe Confluence Threshold
+    minConfidenceThreshold: 65, // 65/100 Multi-Timeframe Confluence Threshold
     maxConcurrentPositions: 5 // Max 5 quality positions
   };
 
@@ -298,7 +298,7 @@ export class DeltaAutoTraderEngine {
       this.settings = { ...this.settings, ...parsed.settings };
       this.settings.maxTradesPerDay = 5;
       this.settings.maxConcurrentPositions = 5;
-      this.settings.minConfidenceThreshold = 70;
+      this.settings.minConfidenceThreshold = 65;
     }
     if (Array.isArray(parsed.openPositions)) this.openPositions = parsed.openPositions;
     if (Array.isArray(parsed.closedRecords)) {
@@ -533,8 +533,15 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⏳ LOSS COOLDOWN ACTIVE: Paused for ${status.cooldownRemainingMins} more min(s) following recent loss.` };
     }
 
-    if (this.tradesTakenTodayCount >= this.settings.maxTradesPerDay) {
-      return { success: false, message: `✋ DAILY TRADE CAP REACHED: Already executed ${this.tradesTakenTodayCount}/${this.settings.maxTradesPerDay} trades today.` };
+    if (this.checkBatchCycle()) {
+      const remainingSeconds = Math.max(0, Math.ceil((this.batchCooldownExpiry - Date.now()) / 1000));
+      const mins = Math.floor(remainingSeconds / 60);
+      const secs = remainingSeconds % 60;
+      return { success: false, message: `🧠 10-Min AI Market Re-Calibration Active: Batch #${this.currentCycleNumber} complete. Resumes in ${mins}m ${secs}s.` };
+    }
+
+    if (this.currentBatchTradesCount >= this.batchSize) {
+      return { success: false, message: `Batch #${this.currentCycleNumber} full (${this.currentBatchTradesCount}/${this.batchSize} trades placed). Waiting for positions to close.` };
     }
 
     if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
@@ -951,7 +958,7 @@ export class DeltaAutoTraderEngine {
             this.updateLivePriceAndCheckExits(sym, currentPrice);
 
             // 2. Multi-Timeframe Alignment Evaluation for Autonomous Entry
-            if (this.openPositions.length < this.settings.maxConcurrentPositions && this.tradesTakenTodayCount < this.settings.maxTradesPerDay) {
+            if (this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle() && this.currentBatchTradesCount < this.batchSize) {
               const candles15m = await deltaExchangeEngine.fetchCandles(sym, "15m");
               const candles1h = await deltaExchangeEngine.fetchCandles(sym, "1h");
               const candles4h = await deltaExchangeEngine.fetchCandles(sym, "4h");
@@ -1124,9 +1131,6 @@ export class DeltaAutoTraderEngine {
 
   public async forceExecuteTrade(symbol: string): Promise<{ success: boolean; message: string; position?: AutoTraderPosition }> {
     this.checkDailyReset();
-    if (this.tradesTakenTodayCount >= this.settings.maxTradesPerDay) {
-      return { success: false, message: `Daily trade limit reached (${this.tradesTakenTodayCount}/${this.settings.maxTradesPerDay}).` };
-    }
     if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
       return { success: false, message: `Max open slots reached (${this.openPositions.length}/${this.settings.maxConcurrentPositions}).` };
     }
