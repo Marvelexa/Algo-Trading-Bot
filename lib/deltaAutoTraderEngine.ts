@@ -22,7 +22,7 @@ import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
 
 export const EXIT_MONITORING_INTERVAL_MS = 30_000; // 30s exit/trailing stop check for v3
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10_000; // 10s responsive evaluation for 5-min round-robin
-export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours Max Hold Window
+export const V3_MAX_HOLD_TIME_MS = 2 * 60 * 60 * 1000; // 2 Hours Fast Intraday Horizon Window
 
 export interface OHLCVBar {
   time: number;
@@ -1059,30 +1059,30 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.5R gain -> SL moved to Entry + 0.1R)
-        if (pnlUSD >= initialRisk * 0.50 && !pos.trailingStopActive) {
+        // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.35R gain -> SL moved to Entry + 0.1R buffer)
+        if (pnlUSD >= initialRisk * 0.35 && !pos.trailingStopActive) {
           pos.trailingStopActive = true;
           const rBufferPrice = (initialRisk * 0.10) / pos.quantity;
           const newSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rBufferPrice : pos.entryPrice - rBufferPrice);
           if ((pos.type === "BUY" && newSL < pos.currentPrice) || (pos.type === "SELL" && newSL > pos.currentPrice)) {
             pos.stopLossPrice = newSL;
-            triggeredLogs.push(`🔒 Tier 1 (+0.5R) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
+            triggeredLogs.push(`🔒 Tier 1 (+0.35R) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
           }
         }
 
-        // Tier 2: Dynamic Profit Lock Escalation (+1.0R gain -> SL moved to Entry + 0.5R)
-        if (pnlUSD >= initialRisk * 1.0) {
-          const rLockPrice = (initialRisk * 0.50) / pos.quantity;
+        // Tier 2: Dynamic Profit Lock Escalation (+0.75R gain -> SL moved to Entry + 0.4R guaranteed profit)
+        if (pnlUSD >= initialRisk * 0.75) {
+          const rLockPrice = (initialRisk * 0.40) / pos.quantity;
           const escalatedSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rLockPrice : pos.entryPrice - rLockPrice);
 
           if ((pos.type === "BUY" && escalatedSL > pos.stopLossPrice && escalatedSL < pos.currentPrice) ||
               (pos.type === "SELL" && escalatedSL < pos.stopLossPrice && escalatedSL > pos.currentPrice)) {
             pos.stopLossPrice = escalatedSL;
-            triggeredLogs.push(`💎 Tier 2 (+1.0R) Profit Lock for ${pos.symbol}: Guaranteed +0.5R locked @ $${pos.stopLossPrice}!`);
+            triggeredLogs.push(`💎 Tier 2 (+0.75R) Profit Lock for ${pos.symbol}: Guaranteed +0.4R locked @ $${pos.stopLossPrice}!`);
           }
         }
 
-        // Exit Check 1: Take-Profit Target Hit (1.6x ATR) — Immediate profit snipe
+        // Exit Check 1: Take-Profit Target Hit (1.5x ATR) — Fast profit snipe
         const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
         if (isTPHit) {
           const res = this.closePosition(pos.id, pos.currentPrice, "TARGET_HIT");
@@ -1090,10 +1090,10 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Exit Check 2: Dynamic Peak-Profit Retracement Exit (>= +0.8R peak and retraced >= 45%)
-        if (pos.highestProfitUSD >= initialRisk * 0.80 && pnlUSD <= (pos.highestProfitUSD * 0.55)) {
+        // Exit Check 2: Dynamic Peak-Profit Retracement Exit (>= +0.6R peak and retraced >= 40%)
+        if (pos.highestProfitUSD >= initialRisk * 0.60 && pnlUSD <= (pos.highestProfitUSD * 0.60)) {
           const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
-          triggeredLogs.push(`🎯 Peak-Profit (+0.8R) Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} before giving back profit!`);
+          triggeredLogs.push(`🎯 Peak-Profit (+0.6R) Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} before giving back profit!`);
           return;
         }
 
