@@ -52,20 +52,21 @@ export interface CuratedAsset {
   tag: string;
   minLot: number;
   decimals: number;
+  baselinePrice: number;
   description: string;
 }
 
 export const CURATED_AUTO_TRADER_ASSETS: CuratedAsset[] = [
-  { symbol: "BTCUSD", name: "Bitcoin", tag: "BTC", minLot: 0.001, decimals: 3, description: "Macro Leader" },
-  { symbol: "ETHUSD", name: "Ethereum", tag: "ETH", minLot: 0.01, decimals: 2, description: "Layer 1 Ecosystem" },
-  { symbol: "SOLUSD", name: "Solana", tag: "SOL", minLot: 0.1, decimals: 1, description: "High Momentum Beta" },
-  { symbol: "XRPUSD", name: "Ripple", tag: "XRP", minLot: 5, decimals: 0, description: "Payment Liquidity" },
-  { symbol: "BNBUSD", name: "Binance Coin", tag: "BNB", minLot: 0.05, decimals: 2, description: "Exchange Tier 1" },
-  { symbol: "DOGEUSD", name: "Dogecoin", tag: "DOGE", minLot: 50, decimals: 0, description: "High Volatility Meme" },
-  { symbol: "AVAXUSD", name: "Avalanche", tag: "AVAX", minLot: 0.2, decimals: 1, description: "Layer 1 Subnet" },
-  { symbol: "LINKUSD", name: "Chainlink", tag: "LINK", minLot: 0.5, decimals: 1, description: "Oracle Infrastructure" },
-  { symbol: "ADAUSD", name: "Cardano", tag: "ADA", minLot: 10, decimals: 0, description: "Layer 1 Smart Contracts" },
-  { symbol: "SUIUSD", name: "Sui", tag: "SUI", minLot: 5, decimals: 0, description: "Next-Gen Move L1" }
+  { symbol: "BTCUSD", name: "Bitcoin", tag: "BTC", minLot: 0.001, decimals: 3, baselinePrice: 68000, description: "Macro Leader" },
+  { symbol: "ETHUSD", name: "Ethereum", tag: "ETH", minLot: 0.01, decimals: 2, baselinePrice: 2450, description: "Layer 1 Ecosystem" },
+  { symbol: "SOLUSD", name: "Solana", tag: "SOL", minLot: 0.1, decimals: 1, baselinePrice: 95, description: "High Momentum Beta" },
+  { symbol: "XRPUSD", name: "Ripple", tag: "XRP", minLot: 5, decimals: 0, baselinePrice: 1.60, description: "Payment Liquidity" },
+  { symbol: "BNBUSD", name: "Binance Coin", tag: "BNB", minLot: 0.05, decimals: 2, baselinePrice: 710, description: "Exchange Tier 1" },
+  { symbol: "DOGEUSD", name: "Dogecoin", tag: "DOGE", minLot: 50, decimals: 0, baselinePrice: 0.095, description: "High Volatility Meme" },
+  { symbol: "AVAXUSD", name: "Avalanche", tag: "AVAX", minLot: 0.2, decimals: 1, baselinePrice: 18.5, description: "Layer 1 Subnet" },
+  { symbol: "LINKUSD", name: "Chainlink", tag: "LINK", minLot: 0.5, decimals: 1, baselinePrice: 14.2, description: "Oracle Infrastructure" },
+  { symbol: "ADAUSD", name: "Cardano", tag: "ADA", minLot: 10, decimals: 0, baselinePrice: 0.235, description: "Layer 1 Smart Contracts" },
+  { symbol: "SUIUSD", name: "Sui", tag: "SUI", minLot: 5, decimals: 0, baselinePrice: 1.85, description: "Next-Gen Move L1" }
 ];
 
 export interface AutoTraderSettings {
@@ -163,7 +164,7 @@ export interface ScanDiagnosticReport {
   }>;
 }
 
-const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V4";
+const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V5";
 const DEFAULT_CAPITAL_USD = 191.25; // User live Delta India account equity ($191.25 USD)
 
 export class DeltaAutoTraderEngine {
@@ -334,8 +335,17 @@ export class DeltaAutoTraderEngine {
       this.openPositions = validOpen;
     }
     if (Array.isArray(parsed.closedRecords)) {
-      // Clean up / Delete the premature TIME_STALL_EXIT scratch records from earlier
-      this.closedRecords = parsed.closedRecords.filter((r: any) => r.exitReason !== "TIME_STALL_EXIT");
+      // Clean up / Delete corrupted price anomaly records (e.g. ADA/DOGE bought at $100 due to cold-start fallback)
+      this.closedRecords = parsed.closedRecords.filter((r: any) => {
+        if (!r.symbol || !r.entryPrice || !r.exitPrice) return false;
+        if (r.exitReason === "TIME_STALL_EXIT") return false;
+        const baseline = this.getAssetBaselinePrice(r.symbol);
+        if (baseline > 0) {
+          if (r.entryPrice > baseline * 10 || r.entryPrice < baseline * 0.05) return false;
+          if (r.exitPrice > baseline * 10 || r.exitPrice < baseline * 0.05) return false;
+        }
+        return true;
+      });
     }
     if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;
     if (parsed.todayDateStr) this.todayDateStr = parsed.todayDateStr;
@@ -416,6 +426,20 @@ export class DeltaAutoTraderEngine {
   public roundPrice(price: number): number {
     const dec = this.getPriceDecimals(price);
     return Number(price.toFixed(dec));
+  }
+
+  public getAssetBaselinePrice(symbol: string): number {
+    const symUpper = symbol.toUpperCase();
+    const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === symUpper || symUpper.includes(a.tag));
+    return asset?.baselinePrice || 1.0;
+  }
+
+  public getLivePriceUSD(symbol: string): number {
+    const livePriceObj = deltaExchangeEngine.getLivePrice(symbol);
+    if (livePriceObj?.usd && livePriceObj.usd > 0) {
+      return livePriceObj.usd;
+    }
+    return this.getAssetBaselinePrice(symbol);
   }
 
   private calculateEMA(data: number[], period: number): number {
@@ -1138,7 +1162,7 @@ export class DeltaAutoTraderEngine {
     const binancePair = `${base}USDT`;
     try {
       const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`, {
-        signal: AbortSignal.timeout(2000)
+        signal: AbortSignal.timeout(3000)
       });
       if (res.ok) {
         const raw: any[] = await res.json();
@@ -1155,14 +1179,15 @@ export class DeltaAutoTraderEngine {
       }
     } catch (e) {}
 
-    // Dynamic Micro-Bar Fallback
-    const livePriceObj = deltaExchangeEngine.getLivePrice(symbol);
-    const price = livePriceObj?.usd && livePriceObj.usd > 0 ? livePriceObj.usd : 100;
+    // Dynamic Micro-Bar Fallback using realistic asset price benchmark (NEVER a flat 100!)
+    const baseline = this.getAssetBaselinePrice(symbol);
+    const livePrice = this.getLivePriceUSD(symbol);
+    const price = (livePrice > 0 && livePrice > baseline * 0.1 && livePrice < baseline * 10) ? livePrice : baseline;
     const bars: OHLCVBar[] = [];
     let p = price * 0.985;
     for (let i = limit; i >= 0; i--) {
       const change = (Math.random() - 0.47) * (price * 0.005);
-      p = Math.max(0.01, p + change);
+      p = Math.max(0.0001, p + change);
       bars.push({
         timestamp: new Date(Date.now() - i * (interval === "15m" ? 900000 : interval === "1h" ? 3600000 : 14400000)).toISOString().split("T")[0],
         open: p * 0.999,
@@ -1251,8 +1276,12 @@ export class DeltaAutoTraderEngine {
             this.fetchCryptoCandles(item.symbol, "4h", 30)
           ]);
           const analysis = this.analyzeMultiTimeframe(item.symbol, candles15m, candles1h, candles4h);
-          const livePriceObj = deltaExchangeEngine.getLivePrice(item.symbol);
-          const price = livePriceObj?.usd && livePriceObj.usd > 0 ? livePriceObj.usd : (candles1h[candles1h.length - 1]?.close || 100);
+          const baseline = this.getAssetBaselinePrice(item.symbol);
+          const livePrice = this.getLivePriceUSD(item.symbol);
+          const candleClose = candles1h[candles1h.length - 1]?.close;
+          const price = (livePrice > 0 && livePrice > baseline * 0.1 && livePrice < baseline * 10)
+            ? livePrice
+            : (candleClose && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
 
           const isOpen = openSymbols.has(item.symbol.toUpperCase());
           const status = isOpen ? "ALREADY_OPEN" : analysis.isEntryValid ? "READY_TO_FIRE" : analysis.overallScore >= 60 ? "WAITING_CONFLUENCE" : "CONSOLIDATION";
@@ -1303,7 +1332,12 @@ export class DeltaAutoTraderEngine {
     ]);
 
     const analysis = this.analyzeMultiTimeframe(symbol, candles15m, candles1h, candles4h);
-    const currentPrice = candles1h[candles1h.length - 1]?.close || this.getLivePriceUSD(symbol) || 100;
+    const baseline = this.getAssetBaselinePrice(symbol);
+    const livePrice = this.getLivePriceUSD(symbol);
+    const candleClose = candles1h[candles1h.length - 1]?.close;
+    const currentPrice = (livePrice > 0 && livePrice > baseline * 0.1 && livePrice < baseline * 10)
+      ? livePrice
+      : (candleClose && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
     
     // If neutral, default to trend direction or 4h momentum
     let tradeDirection: "BUY" | "SELL" = analysis.direction !== "NEUTRAL" ? analysis.direction : analysis.fourHourTrend === "BEARISH" ? "SELL" : "BUY";
