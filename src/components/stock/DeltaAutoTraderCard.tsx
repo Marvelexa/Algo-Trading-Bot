@@ -669,11 +669,13 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-emerald-300">🟢 10-COIN AI RADAR ACTIVE</span>
               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                Pipelined 5-Slot Capacity
+                {positions.length} / {settings.maxConcurrentPositions || 5} Active ({Math.max(0, (settings.maxConcurrentPositions || 5) - positions.length)} Open Slots Available to Fill)
               </span>
             </div>
             <p className="text-[11px] text-slate-300 font-sans mt-0.5">
-              5-min dedicated inspection per asset · Up to 5 concurrent positions running in parallel · Exit on profit/SL frees slot for next coin
+              {positions.length >= (settings.maxConcurrentPositions || 5)
+                ? `🎯 All 5/5 slots full (${positions.map(p => p.symbol).join(", ")}). Tracking trailing locks & targets.`
+                : `Currently holding ${positions.length} active trade(s). Actively reading next coins to fill the remaining ${Math.max(0, (settings.maxConcurrentPositions || 5) - positions.length)} slot(s) on valid breakout setups.`}
             </p>
           </div>
         </div>
