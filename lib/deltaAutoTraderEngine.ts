@@ -775,10 +775,10 @@ export class DeltaAutoTraderEngine {
     let botState: AutoTraderStatus["botState"] = "PAUSED";
     if (circuitBreakerActive) {
       botState = "CIRCUIT_BREAKER_HALT";
-    } else if (isCooldown) {
-      botState = "COOLDOWN_ACTIVE";
     } else if (this.settings.isEnabled) {
       botState = "RUNNING";
+    } else if (isCooldown) {
+      botState = "COOLDOWN_ACTIVE";
     }
 
     return {
@@ -809,6 +809,9 @@ export class DeltaAutoTraderEngine {
 
   public toggleBot(enabled?: boolean): boolean {
     this.settings.isEnabled = enabled !== undefined ? enabled : !this.settings.isEnabled;
+    if (this.settings.isEnabled) {
+      this.lastLossTimestamp = 0; // Clear cooldown so bot starts immediately
+    }
     this.saveToStorage();
     return this.settings.isEnabled;
   }

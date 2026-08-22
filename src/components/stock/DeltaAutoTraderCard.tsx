@@ -209,25 +209,33 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     }
   };
 
-  const handleToggleBot = () => {
+  const handleToggleBot = async () => {
     const nextState = deltaAutoTraderEngine.toggleBot();
+    const updatedStatus = deltaAutoTraderEngine.getStatus();
+    const updatedSettings = deltaAutoTraderEngine.getSettings();
+    setStatus(updatedStatus);
+    setSettings(updatedSettings);
     refreshData();
     setNotification(nextState ? "🟢 Delta Auto-Trader STARTED! 24/7 Multi-timeframe scanner is active." : "⏸️ Delta Auto-Trader PAUSED.");
     setTimeout(() => setNotification(null), 4000);
     if (nextState) {
-      // Trigger instant scan cycle on start
-      deltaAutoTraderEngine.scanAndExecuteNextTrade().then(res => {
+      try {
+        const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
         if (res.executed) {
           refreshData();
           setNotification(`🚀 AUTO-TRADE EXECUTED: ${res.message}`);
           setTimeout(() => setNotification(null), 5000);
         }
-      }).catch(() => {});
+      } catch (err) {}
     }
   };
 
   const handleToggleMode = () => {
     const nextMode = deltaAutoTraderEngine.toggleMode();
+    const updatedStatus = deltaAutoTraderEngine.getStatus();
+    const updatedSettings = deltaAutoTraderEngine.getSettings();
+    setStatus(updatedStatus);
+    setSettings(updatedSettings);
     refreshData();
     setNotification(`⚡ Execution Mode Switched to: ${nextMode} TRADING`);
     setTimeout(() => setNotification(null), 4000);
@@ -264,14 +272,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           <button
             onClick={handleToggleBot}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs transition shadow-lg flex items-center gap-2 ${
-              status.botState === "RUNNING"
+              settings.isEnabled || status.botState === "RUNNING"
                 ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30"
                 : status.botState === "CIRCUIT_BREAKER_HALT"
                 ? "bg-rose-950 text-rose-300 border border-rose-500/50 cursor-not-allowed"
                 : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
             }`}
           >
-            {status.botState === "RUNNING" ? (
+            {settings.isEnabled || status.botState === "RUNNING" ? (
               <> <Pause className="w-4 h-4" /> 🟢 AUTONOMOUS BOT RUNNING (Pause) </>
             ) : status.botState === "CIRCUIT_BREAKER_HALT" ? (
               <> <ShieldAlert className="w-4 h-4 text-rose-400" /> 🛑 CIRCUIT BREAKER HALTED </>
