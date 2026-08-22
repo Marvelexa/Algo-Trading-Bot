@@ -158,8 +158,7 @@ export const StockAnalysis: React.FC = () => {
   const [chartHistory, setChartHistory] = useState<OHLCVBar[]>([]);
   const [orderExecuted, setOrderExecuted] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "technical" | "fundamental" | "sentiment" | "macro">("all");
-  const [chartTab, setChartTab] = useState<"TRADINGVIEW_PRO" | "LIGHTWEIGHT">("LIGHTWEIGHT");
-  const [mainNavTab, setMainNavTab] = useState<"SCANNER" | "AI_BRAIN" | "DELTA_AUTOTRADER" | "ANGEL_WORKSTATION" | "PORTFOLIO" | "INSTITUTIONAL_NEWS">("SCANNER");
+  const [mainNavTab, setMainNavTab] = useState<"SCANNER" | "AI_BRAIN" | "DELTA_AUTOTRADER" | "ANGEL_WORKSTATION" | "PORTFOLIO" | "INSTITUTIONAL_NEWS" | "PNL_DASHBOARD">("SCANNER");
 
   // Personal Trading Disciplines State (In Rupees)
   const [executionMode, setExecutionMode] = useState<"PAPER_TRADING" | "LIVE_BROKER">("PAPER_TRADING");
@@ -664,10 +663,21 @@ export const StockAnalysis: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <button
+              onClick={() => setMainNavTab("PNL_DASHBOARD")}
+              className={`text-xs px-3.5 py-2 rounded-xl font-bold transition flex items-center gap-1.5 border shadow-lg ${
+                mainNavTab === "PNL_DASHBOARD" || mainNavTab === "DELTA_AUTOTRADER"
+                  ? "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white border-emerald-400 shadow-emerald-600/40 ring-2 ring-emerald-400/50"
+                  : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30"
+              }`}
+            >
+              <BarChart2 className="w-3.5 h-3.5 text-emerald-400" />
+              📊 Live P&L & Trades
+            </button>
             <button
               onClick={() => setIsPaperModalOpen(true)}
-              className="text-xs px-3.5 py-2 rounded-xl font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition flex items-center gap-1.5 shadow-md"
+              className="text-xs px-3.5 py-2 rounded-xl font-bold bg-slate-900 text-slate-300 border border-slate-700 hover:bg-slate-800 transition flex items-center gap-1.5 shadow-md"
             >
               <Wallet className="w-3.5 h-3.5 text-emerald-400" />
               💼 Paper Terminal (₹)
@@ -728,6 +738,17 @@ export const StockAnalysis: React.FC = () => {
                 <Menu className="w-4 h-4 text-white" />
                 Menu
               </span>
+              <button
+                onClick={() => setMainNavTab("PNL_DASHBOARD")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono transition shrink-0 flex items-center gap-1.5 shadow-md ${
+                  mainNavTab === "PNL_DASHBOARD" || mainNavTab === "DELTA_AUTOTRADER"
+                    ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border border-emerald-400 font-bold shadow-emerald-600/40"
+                    : "bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                📊 Live P&L & Trades
+              </button>
               <button
                 onClick={() => scrollToSection("section-categories")}
                 className="px-3 py-1.5 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-mono transition shrink-0 flex items-center gap-1.5 shadow-md shadow-amber-600/20"
@@ -1468,6 +1489,17 @@ export const StockAnalysis: React.FC = () => {
                 </button>
 
                 <button
+                  onClick={() => setMainNavTab("PNL_DASHBOARD")}
+                  className={`px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border ${
+                    mainNavTab === "PNL_DASHBOARD"
+                      ? "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-600/40 ring-2 ring-emerald-400/50"
+                      : "bg-emerald-950/40 text-emerald-300 border-emerald-500/40 hover:border-emerald-400 hover:text-white"
+                  }`}
+                >
+                  <BarChart2 className="w-4 h-4 text-emerald-400" /> 📊 Live P&L & All Trades
+                </button>
+
+                <button
                   onClick={() => setMainNavTab("AI_BRAIN")}
                   className={`px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border ${
                     mainNavTab === "AI_BRAIN"
@@ -1837,9 +1869,46 @@ export const StockAnalysis: React.FC = () => {
               </div>
             )}
 
-            {/* ⚡ PAGE 3: DELTA EXCHANGE AUTO-TRADER PAGE */}
-            {mainNavTab === "DELTA_AUTOTRADER" && (
+            {/* 📊 PAGE 3: LIVE P&L & AUTO-TRADER COMMAND CENTER */}
+            {(mainNavTab === "DELTA_AUTOTRADER" || mainNavTab === "PNL_DASHBOARD") && (
               <div className="w-full space-y-6">
+                {/* GLOBAL P&L BANNER */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-indigo-950/80 border border-emerald-500/40 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-lg">
+                      <BarChart2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black text-white flex items-center gap-2">
+                        📊 Live P&L & Autonomous Trades Dashboard
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          ALL 10 ASSETS LIVE
+                        </span>
+                      </h2>
+                      <p className="text-xs text-slate-300 font-mono">
+                        Consolidated real-time profit & loss tracking across all 10 crypto perpetual assets & paper orders.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setIsPaperModalOpen(true)}
+                      className="text-xs px-3.5 py-2 rounded-xl font-bold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 transition flex items-center gap-1.5 shadow-md"
+                    >
+                      <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                      🇮🇳 Paper Terminal (₹)
+                    </button>
+                    <button
+                      onClick={() => setMainNavTab("SCANNER")}
+                      className="text-xs px-3.5 py-2 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400 transition flex items-center gap-1.5 shadow-md shadow-indigo-600/30"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      Back to Scanner
+                    </button>
+                  </div>
+                </div>
+
                 <DeltaAutoTraderCard
                   ticker={data?.ticker || currentTicker}
                   currentPriceUSD={data?.currency === "USD" && (data?.currentPrice || 0) > 0 ? data.currentPrice : (brokerTickEngine.getLivePrice(data?.ticker || "BTCUSD") || 74900)}
