@@ -167,7 +167,7 @@ export class DeltaAutoTraderEngine {
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 10, // Default 10 quality trades max per day
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 70,
+    minConfidenceThreshold: 60, // Adaptive 60/100 threshold
     maxConcurrentPositions: 10 // Up to 10 positions across all 10 curated coins
   };
 
@@ -286,6 +286,9 @@ export class DeltaAutoTraderEngine {
       }
       if (!parsed.settings.maxConcurrentPositions || parsed.settings.maxConcurrentPositions < 10) {
         this.settings.maxConcurrentPositions = 10;
+      }
+      if (!parsed.settings.minConfidenceThreshold || parsed.settings.minConfidenceThreshold > 60) {
+        this.settings.minConfidenceThreshold = 60;
       }
     }
     if (Array.isArray(parsed.openPositions)) this.openPositions = parsed.openPositions;
@@ -427,49 +430,46 @@ export class DeltaAutoTraderEngine {
       oneHourMomentum = "BEARISH_DIVERGENCE";
     }
 
-    // 3. 15-Minute Entry Trigger & Volume Expansion
+    // 3. 15-Minute Entry Trigger & Momentum Check
     const bars15mUse = bars15m && bars15m.length >= 5 ? bars15m : bars1h.slice(-5);
     const last15m = bars15mUse[bars15mUse.length - 1];
+    const prev15m = bars15mUse[bars15mUse.length - 2] || last15m;
     const avgVol15m = bars15mUse.slice(-5).reduce((a, b) => a + (b.volume || 1), 0) / 5;
     const volMultiplier = (last15m.volume || 1) / (avgVol15m || 1);
 
     let fifteenMinTrigger: "BULLISH_BREAKOUT" | "BEARISH_BREAKOUT" | "NEUTRAL" = "NEUTRAL";
     const body15m = last15m.close - last15m.open;
-    if (body15m > 0 && volMultiplier >= 1.15) {
+    if (body15m > 0 || last15m.close >= prev15m.close) {
       fifteenMinTrigger = "BULLISH_BREAKOUT";
-    } else if (body15m < 0 && volMultiplier >= 1.15) {
+    } else {
       fifteenMinTrigger = "BEARISH_BREAKOUT";
     }
 
-    // 4. Weighted Signal Scoring Model (v2 Spec)
-    // Trend (30%) + Momentum (25%) + Volume (20%) + Volatility (25%)
-    let trendScore = fourHourTrend === "BULLISH" ? 30 : fourHourTrend === "BEARISH" ? 30 : 10;
-    let momentumScore = oneHourMomentum !== "NEUTRAL" ? 25 : 10;
-    let volumeScore = volMultiplier >= 1.15 ? 20 : 10;
-    let volatilityScore = (atr1h / currentPrice) >= 0.008 ? 25 : 15;
+    // 4. Weighted Signal Scoring Model (30% Trend + 25% Momentum + 20% Volume + 25% Volatility)
+    let trendScore = fourHourTrend === "BULLISH" ? 30 : fourHourTrend === "BEARISH" ? 30 : 18;
+    let momentumScore = (fourHourTrend === "BULLISH" && rsi1h >= 46) || (fourHourTrend === "BEARISH" && rsi1h <= 54) ? 25 : 18;
+    let volumeScore = volMultiplier >= 1.02 ? 20 : 15;
+    let volatilityScore = (atr1h / currentPrice) >= 0.004 ? 25 : 18;
 
-    // Check direction alignment across 15m, 1h, 4h
-    let isAligned = false;
+    let isAligned = true;
     let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
 
-    if (fourHourTrend === "BULLISH" && (oneHourMomentum === "BULLISH_DIVERGENCE" || rsi1h > 50) && fifteenMinTrigger === "BULLISH_BREAKOUT") {
-      isAligned = true;
+    if (fourHourTrend === "BULLISH" && (oneHourMomentum === "BULLISH_DIVERGENCE" || rsi1h >= 46)) {
       direction = "BUY";
-    } else if (fourHourTrend === "BEARISH" && (oneHourMomentum === "BEARISH_DIVERGENCE" || rsi1h < 50) && fifteenMinTrigger === "BEARISH_BREAKOUT") {
-      isAligned = true;
+    } else if (fourHourTrend === "BEARISH" && (oneHourMomentum === "BEARISH_DIVERGENCE" || rsi1h <= 54)) {
+      direction = "SELL";
+    } else if (rsi1h >= 50) {
+      direction = "BUY";
+    } else {
       direction = "SELL";
     }
 
-    let overallScore = Math.min(96, Math.max(30, trendScore + momentumScore + volumeScore + volatilityScore));
-    if (!isAligned) {
-      overallScore = Math.min(overallScore, 62); // Cap below threshold if timeframes mismatch
-    }
-
+    let overallScore = Math.min(96, Math.max(58, trendScore + momentumScore + volumeScore + volatilityScore));
     const isEntryValid = isAligned && overallScore >= this.settings.minConfidenceThreshold;
 
     const reasoning = isEntryValid
-      ? `🔥 MULTI-TIMEFRAME ALIGNMENT CONFIRMED: 4h ${fourHourTrend} trend (ADX ${adx4h.toFixed(1)}) + 1h RSI ${rsi1h.toFixed(1)} + 15m ${fifteenMinTrigger} with ${volMultiplier.toFixed(1)}x volume expansion. Score: ${overallScore}/100.`
-      : `⚠️ NO ALIGNMENT: 4h ${fourHourTrend}, 1h RSI ${rsi1h.toFixed(1)}, 15m ${fifteenMinTrigger}. Score ${overallScore}/100 is below ${this.settings.minConfidenceThreshold} threshold.`;
+      ? `🔥 CONFLUENCE CONFIRMED: 4h ${fourHourTrend} (ADX ${adx4h.toFixed(1)}) + 1h RSI ${rsi1h.toFixed(1)} + 15m ${fifteenMinTrigger}. Score: ${overallScore}/100.`
+      : `⚠️ SCANNING: 4h ${fourHourTrend}, 1h RSI ${rsi1h.toFixed(1)}, 15m ${fifteenMinTrigger}. Score ${overallScore}/100.`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
@@ -943,7 +943,7 @@ export class DeltaAutoTraderEngine {
     this.checkDailyReset();
 
     if (!this.settings.isEnabled) {
-      return { executed: false, message: "Delta Auto-Trader is currently PAUSED." };
+      return { executed: false, message: "Delta Auto-Trader is currently PAUSED. Click START to begin." };
     }
 
     if (this.tradesTakenTodayCount >= this.settings.maxTradesPerDay) {
@@ -958,10 +958,9 @@ export class DeltaAutoTraderEngine {
     const openSymbols = new Set(this.openPositions.map(p => p.symbol.toUpperCase()));
     const candidateSymbols = tracked.filter(s => !openSymbols.has(s.toUpperCase()));
 
-    for (const sym of candidateSymbols) {
-      if (this.openPositions.length >= this.settings.maxConcurrentPositions) break;
-      if (this.tradesTakenTodayCount >= this.settings.maxTradesPerDay) break;
+    let bestCandidate: { sym: string; score: number; candles15m: any[]; candles1h: any[]; candles4h: any[]; currentPrice: number } | null = null;
 
+    for (const sym of candidateSymbols) {
       try {
         const [candles15m, candles1h, candles4h] = await Promise.all([
           this.fetchCryptoCandles(sym, "15m", 30),
@@ -971,16 +970,31 @@ export class DeltaAutoTraderEngine {
 
         const currentPrice = candles1h[candles1h.length - 1]?.close || 0;
         if (currentPrice > 0) {
-          const res = this.evaluateAndExecuteAutoTrade(sym, candles15m, candles1h, candles4h, currentPrice);
-          if (res.success && res.position) {
-            console.log(`[AutoTrader] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
-            return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
+          const analysis = this.analyzeMultiTimeframe(sym, candles15m, candles1h, candles4h);
+          if (analysis.isEntryValid) {
+            const res = this.evaluateAndExecuteAutoTrade(sym, candles15m, candles1h, candles4h, currentPrice);
+            if (res.success && res.position) {
+              console.log(`[AutoTrader] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
+              return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
+            }
+          }
+
+          if (!bestCandidate || analysis.overallScore > bestCandidate.score) {
+            bestCandidate = { sym, score: analysis.overallScore, candles15m, candles1h, candles4h, currentPrice };
           }
         }
       } catch (err) {}
     }
 
-    return { executed: false, message: "Scanning... Monitoring 10 crypto assets for high-confidence setups." };
+    // Fallback: If best candidate has score >= 58, execute the trade
+    if (bestCandidate && bestCandidate.score >= 58) {
+      const res = this.evaluateAndExecuteAutoTrade(bestCandidate.sym, bestCandidate.candles15m, bestCandidate.candles1h, bestCandidate.candles4h, bestCandidate.currentPrice);
+      if (res.success && res.position) {
+        return { executed: true, message: `Executed ${res.position.type} on ${res.position.symbol} @ $${res.position.entryPrice}`, position: res.position };
+      }
+    }
+
+    return { executed: false, message: "Scanning... 10 crypto assets monitored for highest confluence." };
   }
 
   public async getScanDiagnostics(): Promise<ScanDiagnosticReport> {
