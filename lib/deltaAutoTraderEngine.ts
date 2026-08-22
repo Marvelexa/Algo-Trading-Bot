@@ -224,7 +224,7 @@ export interface ScanDiagnosticReport {
 }
 
 const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V9";
-const DEFAULT_CAPITAL_USD = 191.25; // User live Delta India account equity ($191.25 USD)
+const DEFAULT_CAPITAL_USD = 195.80; // ₹16,350 INR ($195.80 USD)
 
 export class DeltaAutoTraderEngine {
   private settings: AutoTraderSettings = {
@@ -232,7 +232,7 @@ export class DeltaAutoTraderEngine {
     isEnabled: false,
     initialCapitalUSD: DEFAULT_CAPITAL_USD,
     currentCapitalUSD: DEFAULT_CAPITAL_USD,
-    riskPerTradePct: 1.5,
+    riskPerTradePct: 2.0,
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,

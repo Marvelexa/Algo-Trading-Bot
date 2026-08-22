@@ -110,7 +110,7 @@ async function runTestSuite() {
   const btcPrice = 76900;
   const btcSLDist = 76900 * 0.015; // ~$1153.50
   const btcLot = deltaAutoTraderEngine.calculateDynamicLotSize("BTCUSD", btcPrice, btcSLDist);
-  const maxAllowedRisk = 191.25 * 0.025; // ~$4.78
+  const maxAllowedRisk = 195.80 * 0.025; // ~$4.90
 
   assert(btcLot.initialRiskUSD <= maxAllowedRisk + 0.20, "Dynamic lot initial risk strictly respects equity risk cap", `Initial Risk: $${btcLot.initialRiskUSD} USD (Qty: ${btcLot.quantity} BTC)`);
 

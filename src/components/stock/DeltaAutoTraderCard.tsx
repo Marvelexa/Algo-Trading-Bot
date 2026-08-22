@@ -50,9 +50,9 @@ const DEFAULT_STATUS: AutoTraderStatus = {
 const DEFAULT_SETTINGS: AutoTraderSettings = {
   mode: "PAPER",
   isEnabled: false,
-  initialCapitalUSD: 191.25,
-  currentCapitalUSD: 191.25,
-  riskPerTradePct: 1.5,
+  initialCapitalUSD: 195.80,
+  currentCapitalUSD: 195.80,
+  riskPerTradePct: 2.0,
   maxDailyLossPct: 3.0,
   maxTradesPerDay: 10,
   maxConcurrentPositions: 5,
