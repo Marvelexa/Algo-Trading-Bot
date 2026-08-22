@@ -372,17 +372,19 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </div>
         </div>
 
-        {/* BATCH CYCLE & TRADES */}
+        {/* ROLLING 5-SLOT PIPELINE */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
           <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">
-            Batch Cycle #{status.batchCycle?.cycleNumber || 1}
+            Rolling Slot Pipeline
           </span>
           <div>
             <span className="text-xl font-black text-amber-300 block">
-              {status.batchCycle?.currentBatchTrades ?? 0} / 5 Trades
+              {positions.length} / {settings.maxConcurrentPositions} Active Slots
             </span>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              🔄 5-Trade Loop · 10m AI Analysis Cooldown
+              {status.batchCycle?.isCoolingDown
+                ? `🧠 10m AI Analysis (${Math.max(0, settings.maxConcurrentPositions - positions.length)} free)`
+                : `⚡ 5-Slot Continuous Pipeline`}
             </span>
           </div>
         </div>
@@ -395,7 +397,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               {status.winRatePct}%
             </span>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              {status.winningTradesToday} Wins / {status.losingTradesToday} Losses (Target: 55-65%)
+              {status.winningTradesToday} Wins / {status.losingTradesToday} Losses (Target: 80%+)
             </span>
           </div>
         </div>
@@ -428,19 +430,32 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-purple-300">🧠 10-MIN AI MARKET RE-CALIBRATION ACTIVE</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 border border-purple-500/40 font-bold">
-                  Batch #{status.batchCycle.cycleNumber} Complete (5/5 Trades)
+                  {positions.length} Active · {Math.max(0, settings.maxConcurrentPositions - positions.length)} Vacant Slot(s)
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 font-sans mt-0.5">
-                Market volatility is settling. AI Multi-Timeframe Brain is re-analyzing 4h/1h/15m charts to arm the next 5-trade high-conviction batch.
+                {positions.length > 0
+                  ? `${positions.length} ongoing trade(s) running toward 1h profit target. AI is re-analyzing 15m/1h/4h charts to fill ${Math.max(0, settings.maxConcurrentPositions - positions.length)} new slot(s).`
+                  : "All trades exited. AI is re-analyzing 15m/1h/4h charts across 10 assets to arm fresh high-conviction trades."}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <div className="px-3.5 py-2 rounded-xl bg-purple-900/40 border border-purple-500/40 text-purple-200 font-bold text-xs flex items-center gap-1.5 font-mono shadow-inner">
               <Clock className="w-4 h-4 text-purple-400 animate-spin" />
-              Next Batch in: {Math.floor((status.batchCycle.cooldownRemainingSeconds || 0) / 60)}m {((status.batchCycle.cooldownRemainingSeconds || 0) % 60).toString().padStart(2, "0")}s
+              Filling in: {Math.floor((status.batchCycle.cooldownRemainingSeconds || 0) / 60)}m {((status.batchCycle.cooldownRemainingSeconds || 0) % 60).toString().padStart(2, "0")}s
             </div>
+            <button
+              onClick={() => {
+                deltaAutoTraderEngine.skipBatchCooldown();
+                setStatus(deltaAutoTraderEngine.getStatus());
+                setNotification("⚡ 10-Min AI Analysis completed early! Filling available slots now...");
+                setTimeout(() => setNotification(null), 4000);
+              }}
+              className="px-3 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/60 border border-purple-500/40 text-purple-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+            >
+              ⚡ Fill Slots Now
+            </button>
           </div>
         </div>
       )}

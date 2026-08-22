@@ -191,11 +191,9 @@ export class DeltaAutoTraderEngine {
   private analysisCache: Map<string, MultiTimeframeAnalysis> = new Map();
   private stoppedAssetCooldowns: Map<string, number> = new Map(); // Asset re-entry cooldown after SL
   private isScanningLoopActive: boolean = false;
-  // 🔄 5-Trade Batch Cycle with 10-Minute AI Market Re-Calibration
-  private currentBatchTradesCount: number = 0;
-  private batchSize: number = 5;
+  // 🔄 Rolling 5-Slot Pipeline with 10-Minute AI Market Re-Calibration per Slot/Batch
+  private slotReentryCooldownExpiry: number = 0;
   private batchCooldownMinutes: number = 10;
-  private batchCooldownExpiry: number = 0;
   private currentCycleNumber: number = 1;
 
   private cryptoNewsList: CryptoNewsItem[] = [
@@ -346,13 +344,8 @@ export class DeltaAutoTraderEngine {
     const validTodayRecords = this.closedRecords.filter(r => r.exitTimestamp && r.exitTimestamp.startsWith(this.todayDateStr));
     this.tradesTakenTodayCount = validTodayRecords.length + this.openPositions.length;
 
-    if (this.openPositions.length === 0) {
-      this.currentBatchTradesCount = 0;
-      this.batchCooldownExpiry = 0;
-    } else if (typeof parsed.currentBatchTradesCount === "number") {
-      this.currentBatchTradesCount = parsed.currentBatchTradesCount;
-    }
-    if (typeof parsed.batchCooldownExpiry === "number") this.batchCooldownExpiry = parsed.batchCooldownExpiry;
+    if (typeof parsed.slotReentryCooldownExpiry === "number") this.slotReentryCooldownExpiry = parsed.slotReentryCooldownExpiry;
+    else if (typeof parsed.batchCooldownExpiry === "number") this.slotReentryCooldownExpiry = parsed.batchCooldownExpiry;
     if (typeof parsed.currentCycleNumber === "number") this.currentCycleNumber = parsed.currentCycleNumber;
     if (typeof parsed.dailyStartCapitalUSD === "number") this.dailyStartCapitalUSD = parsed.dailyStartCapitalUSD;
     this.saveToStorage();
@@ -366,20 +359,23 @@ export class DeltaAutoTraderEngine {
     for (const pos of positionsToClose) {
       this.closePosition(pos.id, pos.currentPrice || pos.entryPrice, reason);
     }
-    this.currentBatchTradesCount = 0;
-    this.batchCooldownExpiry = 0;
+    this.slotReentryCooldownExpiry = 0;
     this.saveToStorage();
-    return { count, message: `Successfully exited all ${count} old position(s). Ready for fresh 10m-60m batch!` };
+    return { count, message: `Successfully exited all ${count} old position(s). Ready for fresh 5-slot continuous cycle!` };
   }
 
   public resetSystemCleanly(): { success: boolean; message: string } {
     this.openPositions = [];
     this.settings.isEnabled = false;
-    this.currentBatchTradesCount = 0;
-    this.batchCooldownExpiry = 0;
+    this.slotReentryCooldownExpiry = 0;
     this.currentCycleNumber = 1;
     this.saveToStorage();
     return { success: true, message: "🧹 System reset: All open trades cleared, bot is PAUSED (OFF). Ready for fresh start!" };
+  }
+
+  public skipBatchCooldown(): void {
+    this.slotReentryCooldownExpiry = 0;
+    this.saveToStorage();
   }
 
   public saveToStorage() {
@@ -391,8 +387,7 @@ export class DeltaAutoTraderEngine {
       todayDateStr: this.todayDateStr,
       tradesTakenTodayCount: this.tradesTakenTodayCount,
       dailyStartCapitalUSD: this.dailyStartCapitalUSD,
-      currentBatchTradesCount: this.currentBatchTradesCount,
-      batchCooldownExpiry: this.batchCooldownExpiry,
+      slotReentryCooldownExpiry: this.slotReentryCooldownExpiry,
       currentCycleNumber: this.currentCycleNumber
     };
 
@@ -702,19 +697,16 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⏳ LOSS COOLDOWN ACTIVE: Paused for ${status.cooldownRemainingMins} more min(s) following recent loss.` };
     }
 
+    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
+      return { success: false, message: `🔒 ALL 5 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
+    }
+
     if (this.checkBatchCycle()) {
-      const remainingSeconds = Math.max(0, Math.ceil((this.batchCooldownExpiry - Date.now()) / 1000));
+      const remainingSeconds = Math.max(0, Math.ceil((this.slotReentryCooldownExpiry - Date.now()) / 1000));
       const mins = Math.floor(remainingSeconds / 60);
       const secs = remainingSeconds % 60;
-      return { success: false, message: `🧠 10-Min AI Market Re-Calibration Active: Batch #${this.currentCycleNumber} complete. Resumes in ${mins}m ${secs}s.` };
-    }
-
-    if (this.currentBatchTradesCount >= this.batchSize) {
-      return { success: false, message: `Batch #${this.currentCycleNumber} full (${this.currentBatchTradesCount}/${this.batchSize} trades placed). Waiting for positions to close.` };
-    }
-
-    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
-      return { success: false, message: `🔒 MAX POSITIONS LIMIT: Already holding ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active position.` };
+      const vacant = this.settings.maxConcurrentPositions - this.openPositions.length;
+      return { success: false, message: `🧠 10-Min AI Market Re-Calibration: ${this.openPositions.length}/5 active positions running. Filling ${vacant} vacant slot(s) in ${mins}m ${secs}s.` };
     }
 
     const analysis = this.analyzeMultiTimeframe(symbol, bars15m, bars1h, bars4h);
@@ -764,7 +756,6 @@ export class DeltaAutoTraderEngine {
     };
 
     this.openPositions.unshift(position);
-    this.currentBatchTradesCount++;
     this.tradesTakenTodayCount++;
     this.saveToStorage();
 
@@ -932,9 +923,13 @@ export class DeltaAutoTraderEngine {
     this.openPositions = this.openPositions.filter(p => p.id !== positionId);
     this.closedRecords.unshift(record);
 
-    // If all 5 trades of current batch have completed and closed, trigger 10-Minute Market Analysis
-    if (this.currentBatchTradesCount >= this.batchSize && this.openPositions.length === 0) {
-      this.batchCooldownExpiry = Date.now() + (this.batchCooldownMinutes * 60 * 1000);
+    // 🧠 Whenever a position closes and frees up a slot, arm the 10-Minute AI Market Analysis Calibration
+    // for the vacated slots (while the other active positions continue running undisturbed!)
+    const now = Date.now();
+    if (this.openPositions.length < this.settings.maxConcurrentPositions) {
+      if (this.slotReentryCooldownExpiry === 0 || now >= this.slotReentryCooldownExpiry) {
+        this.slotReentryCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
+      }
     }
 
     this.saveToStorage();
@@ -962,24 +957,21 @@ export class DeltaAutoTraderEngine {
 
   public checkBatchCycle(): boolean {
     const now = Date.now();
-    // If currently in 10-minute cooldown
-    if (this.batchCooldownExpiry > 0) {
-      if (now >= this.batchCooldownExpiry) {
-        // 10-Minute Market Analysis & Cooldown complete! Start next 5-trade batch!
-        this.batchCooldownExpiry = 0;
-        this.currentBatchTradesCount = 0;
+    // If all 5 slots are currently occupied, no new trades are needed
+    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
+      return false;
+    }
+
+    // If currently in 10-minute cooldown for vacant slots
+    if (this.slotReentryCooldownExpiry > 0) {
+      if (now >= this.slotReentryCooldownExpiry) {
+        // 10-Minute AI Analysis Complete! Re-enable automatic filling of vacant slots
+        this.slotReentryCooldownExpiry = 0;
         this.currentCycleNumber++;
         this.saveToStorage();
         return false;
       }
-      return true;
-    }
-
-    // Check if 5 trades of current batch completed and all positions closed
-    if (this.currentBatchTradesCount >= this.batchSize && this.openPositions.length === 0) {
-      this.batchCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
-      this.saveToStorage();
-      return true;
+      return true; // Still in 10-min analysis cooldown
     }
 
     return false;
@@ -989,8 +981,8 @@ export class DeltaAutoTraderEngine {
     this.checkDailyReset();
     const now = Date.now();
     const isBatchCooling = this.checkBatchCycle();
-    const batchCooldownRemainingSeconds = isBatchCooling && this.batchCooldownExpiry > 0
-      ? Math.max(0, Math.ceil((this.batchCooldownExpiry - now) / 1000))
+    const batchCooldownRemainingSeconds = isBatchCooling && this.slotReentryCooldownExpiry > 0
+      ? Math.max(0, Math.ceil((this.slotReentryCooldownExpiry - now) / 1000))
       : 0;
 
     const todayRecords = this.closedRecords.filter(r => r.exitTimestamp.startsWith(this.todayDateStr));
@@ -1033,8 +1025,8 @@ export class DeltaAutoTraderEngine {
       newsFreezeActive: this.newsFreezeActive,
       lastAnalysisTimestamp: new Date().toLocaleTimeString(),
       batchCycle: {
-        currentBatchTrades: this.currentBatchTradesCount,
-        maxBatchTrades: this.batchSize,
+        currentBatchTrades: this.openPositions.length,
+        maxBatchTrades: this.settings.maxConcurrentPositions,
         cycleNumber: this.currentCycleNumber,
         isCoolingDown: isBatchCooling,
         cooldownRemainingSeconds: batchCooldownRemainingSeconds,
@@ -1128,8 +1120,8 @@ export class DeltaAutoTraderEngine {
           }
         }
 
-        // 2. Fully Autonomous Multi-Timeframe Scan & Trade Execution
-        if (this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle() && this.currentBatchTradesCount < this.batchSize) {
+        // 2. Fully Autonomous Multi-Timeframe Scan & Rolling Slot Replenishment
+        if (this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle()) {
           const res = await this.scanAndExecuteNextTrade();
           if (res.executed && res.position) {
             console.log(`[DeltaAutoTraderDaemon] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
@@ -1190,22 +1182,19 @@ export class DeltaAutoTraderEngine {
       return { executed: false, message: "Delta Auto-Trader is currently PAUSED. Click START to begin." };
     }
 
+    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
+      return { executed: false, message: `All 5 pipeline slots active (${this.openPositions.length}/${this.settings.maxConcurrentPositions} positions running).` };
+    }
+
     if (this.checkBatchCycle()) {
-      const remainingSeconds = Math.max(0, Math.ceil((this.batchCooldownExpiry - Date.now()) / 1000));
+      const remainingSeconds = Math.max(0, Math.ceil((this.slotReentryCooldownExpiry - Date.now()) / 1000));
       const mins = Math.floor(remainingSeconds / 60);
       const secs = remainingSeconds % 60;
+      const vacant = this.settings.maxConcurrentPositions - this.openPositions.length;
       return {
         executed: false,
-        message: `🧠 10-Min AI Market Re-Calibration Active: Batch #${this.currentCycleNumber} (5 trades) completed. Resumes in ${mins}m ${secs}s.`
+        message: `🧠 10-Min AI Market Re-Calibration: ${this.openPositions.length}/5 active positions running. Filling ${vacant} vacant slot(s) in ${mins}m ${secs}s.`
       };
-    }
-
-    if (this.currentBatchTradesCount >= this.batchSize) {
-      return { executed: false, message: `Batch #${this.currentCycleNumber} full (${this.currentBatchTradesCount}/${this.batchSize} trades placed). Waiting for trades to close.` };
-    }
-
-    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
-      return { executed: false, message: `Max open slots reached (${this.openPositions.length}/${this.settings.maxConcurrentPositions} positions active).` };
     }
 
     const tracked = CURATED_AUTO_TRADER_ASSETS.map(a => a.symbol);
