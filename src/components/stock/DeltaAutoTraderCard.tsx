@@ -476,16 +476,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-purple-300">
-                  {positions.length === 0 ? "🧠 10-MIN PRE-TRADE AI MARKET ANALYSIS ACTIVE" : "🧠 10-MIN AI ROLLING RE-CALIBRATION ACTIVE"}
+                  🧠 10-MIN POST-BATCH AI MARKET CALIBRATION
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 border border-purple-500/40 font-bold">
-                  {positions.length === 0 ? "Initial 10m Warmup" : `${positions.length} Active · ${Math.max(0, settings.maxConcurrentPositions - positions.length)} Vacant`}
+                  Batch Complete (0 Active)
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 font-sans mt-0.5">
-                {positions.length === 0
-                  ? "Bot started! AI is deep-scanning 15m & 1h candles across 10 crypto assets for 10 minutes to confirm momentum and avoid fake breakouts before placing trade #1."
-                  : `${positions.length} ongoing trade(s) running toward 1h profit target. AI is re-analyzing 15m/1h/4h charts to fill ${Math.max(0, settings.maxConcurrentPositions - positions.length)} vacant slot(s).`}
+                Previous trade batch finished. AI is deep-scanning 15m & 1h multi-timeframe candles across 10 crypto assets for 10 minutes to calibrate optimal setups before starting the next batch of up to 5 trades.
               </p>
             </div>
           </div>

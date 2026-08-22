@@ -784,12 +784,11 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `🔒 ALL 5 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
     }
 
-    if (this.checkBatchCycle()) {
+    if (this.openPositions.length === 0 && this.checkBatchCycle()) {
       const remainingSeconds = Math.max(0, Math.ceil((this.slotReentryCooldownExpiry - Date.now()) / 1000));
       const mins = Math.floor(remainingSeconds / 60);
       const secs = remainingSeconds % 60;
-      const vacant = this.settings.maxConcurrentPositions - this.openPositions.length;
-      return { success: false, message: `🧠 10-Min AI Market Re-Calibration: ${this.openPositions.length}/5 active positions running. Filling ${vacant} vacant slot(s) in ${mins}m ${secs}s.` };
+      return { success: false, message: `🧠 10-Min AI Market Calibration: Previous batch complete. Analyzing market for next batch of up to 5 trades in ${mins}m ${secs}s.` };
     }
 
     const analysis = this.analyzeMultiTimeframe(symbol, bars15m, bars1h, bars4h);
@@ -1028,13 +1027,15 @@ export class DeltaAutoTraderEngine {
     this.openPositions = this.openPositions.filter(p => p.id !== positionId);
     this.closedRecords.unshift(record);
 
-    // 🧠 Whenever a position closes and frees up a slot, arm the 10-Minute AI Market Analysis Calibration
-    // for the vacated slots (while the other active positions continue running undisturbed!)
+    // 🧠 Batch Completion Rule:
+    // Only when ALL open trades of the current batch have closed (openPositions.length === 0),
+    // start the 10-Minute AI Market Analysis Calibration for the NEXT batch of up to 5 trades!
+    // When trades are still active (e.g. 1 to 4 trades running), NO cooldown blocks the remaining trades!
     const now = Date.now();
-    if (this.openPositions.length < this.settings.maxConcurrentPositions) {
-      if (this.slotReentryCooldownExpiry === 0 || now >= this.slotReentryCooldownExpiry) {
-        this.slotReentryCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
-      }
+    if (this.openPositions.length === 0) {
+      this.slotReentryCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
+    } else {
+      this.slotReentryCooldownExpiry = 0;
     }
 
     this.saveToStorage();
@@ -1062,24 +1063,23 @@ export class DeltaAutoTraderEngine {
 
   public checkBatchCycle(): boolean {
     const now = Date.now();
-    // If all 5 slots are currently occupied, no new trades are needed
-    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
+    // If any positions are currently active, trades are running normally — cooldown is NOT active!
+    if (this.openPositions.length > 0) {
       return false;
     }
 
     // 🛡️ Tab/Device Sleep & Wakeup Protection:
     // If device was asleep or tab was inactive for > 45s, do NOT execute blind stale trades on wakeup!
-    // Re-arm a full active 10-minute candle analysis window from the wake moment.
     if (this.lastActiveTickTimestamp > 0 && (now - this.lastActiveTickTimestamp) > 45000 && this.slotReentryCooldownExpiry > 0) {
       console.warn(`[DeltaAutoTrader] ⚠️ Tab Sleep Detected (${Math.round((now - this.lastActiveTickTimestamp) / 1000)}s inactive). Resetting 10-Min Pre-Trade AI analysis countdown for safe entry.`);
       this.slotReentryCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
     }
     this.lastActiveTickTimestamp = now;
 
-    // If currently in 10-minute cooldown for vacant slots
+    // If currently in 10-minute cooldown after batch completed:
     if (this.slotReentryCooldownExpiry > 0) {
       if (now >= this.slotReentryCooldownExpiry) {
-        // 10-Minute AI Analysis Complete! Re-enable automatic filling of vacant slots
+        // 10-Minute AI Analysis Complete! Re-enable automatic execution of next batch of up to 5 trades
         this.slotReentryCooldownExpiry = 0;
         this.currentCycleNumber++;
         this.saveToStorage();
