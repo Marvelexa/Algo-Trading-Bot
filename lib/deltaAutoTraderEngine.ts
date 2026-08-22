@@ -1163,12 +1163,8 @@ export class DeltaAutoTraderEngine {
     this.settings.isEnabled = enabled !== undefined ? enabled : !this.settings.isEnabled;
     if (this.settings.isEnabled && !prevEnabled) {
       this.lastLossTimestamp = 0;
-      // 🧠 Mandatory 10-Minute Pre-Trade Deep Analysis Window
-      // Gives the AI 10 full minutes to observe candles and calibrate before firing trade #1
-      const now = Date.now();
-      if (this.openPositions.length === 0) {
-        this.slotReentryCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
-      }
+      this.slotReentryCooldownExpiry = 0; // Immediate active progressive scanning & execution
+      this.scanAndExecuteNextTrade().catch(() => {});
     }
     this.saveToStorage();
     return this.settings.isEnabled;

@@ -181,11 +181,26 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
       } catch (e) {}
     }, 2000);
 
+    // 🤖 Autonomous Progressive Opportunity Scanner: Scans & Executes Ready Coins Continuously
+    const autoScanInterval = setInterval(async () => {
+      if (settings.isEnabled) {
+        try {
+          const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+          if (res.executed) {
+            refreshData();
+            setNotification(`🚀 AUTO-TRADE EXECUTED: ${res.message}`);
+            setTimeout(() => setNotification(null), 5000);
+          }
+        } catch (e) {}
+      }
+    }, 4000);
+
     return () => {
       brokerTickEngine.off("tick", onTick);
       clearInterval(syncInterval);
       clearInterval(localInterval);
       clearInterval(serverPollInterval);
+      clearInterval(autoScanInterval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (wakeLockSentinel && typeof wakeLockSentinel.release === "function") {
         wakeLockSentinel.release().catch(() => {});
