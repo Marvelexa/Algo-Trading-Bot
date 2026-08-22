@@ -847,24 +847,32 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                      <div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
                         <span className="text-[10px] text-slate-400 block">Entry Price:</span>
-                        <strong className="text-slate-200">${formatAssetPrice(pos.entryPrice)}</strong>
+                        <strong className="text-slate-200 text-sm font-mono">${formatAssetPrice(pos.entryPrice)}</strong>
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Live Mark Price:</span>
-                        <strong className="text-emerald-400">${formatAssetPrice(pos.currentPrice)}</strong>
+                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-indigo-500/20">
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                          Live Mark Price:
+                        </span>
+                        <strong className="text-emerald-400 text-sm font-mono">${formatAssetPrice(pos.currentPrice)}</strong>
+                        <span className="text-[9px] text-slate-500 block font-sans">₹{(pos.currentPrice * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR</span>
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Unrealized P&L:</span>
-                        <strong className={pos.unrealizedPnLUSD >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                          ${pos.unrealizedPnLUSD >= 0 ? "+" : ""}{pos.unrealizedPnLUSD.toFixed(2)} ({pos.unrealizedPnLPct}%)
+                      <div className={`p-2.5 rounded-xl border ${pos.unrealizedPnLUSD >= 0 ? "bg-emerald-950/20 border-emerald-500/30" : "bg-rose-950/20 border-rose-500/30"}`}>
+                        <span className="text-[10px] text-slate-400 block">Live Floating P&L:</span>
+                        <strong className={`text-sm font-mono font-black ${pos.unrealizedPnLUSD >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                          {pos.unrealizedPnLUSD >= 0 ? "+" : ""}${pos.unrealizedPnLUSD.toFixed(2)} USD ({pos.unrealizedPnLPct >= 0 ? "+" : ""}{pos.unrealizedPnLPct}%)
                         </strong>
+                        <span className={`text-[10px] font-sans font-bold block mt-0.5 ${pos.unrealizedPnLUSD >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          ({pos.unrealizedPnLUSD >= 0 ? "+" : ""}₹{(pos.unrealizedPnLUSD * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR)
+                        </span>
                       </div>
-                      <div>
+                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
                         <span className="text-[10px] text-slate-400 block">Stop-Loss (Trailing):</span>
-                        <strong className="text-rose-400">${formatAssetPrice(pos.stopLossPrice)}</strong>
+                        <strong className="text-rose-400 text-sm font-mono">${formatAssetPrice(pos.stopLossPrice)}</strong>
+                        <span className="text-[9px] text-amber-300 block font-sans">Target (+1.6R): ${formatAssetPrice(pos.targetPrice)}</span>
                       </div>
                     </div>
 
@@ -888,8 +896,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                     })()}
 
                     {pos.trailingStopActive && (
-                      <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 font-mono flex items-center gap-1.5">
-                        🔒 Trailing Stop Active: Tier {pos.trailingStopTier || 1} Risk-Free Lock (+{pos.trailingStopTier === 2 ? "0.5R Guaranteed Profit" : "0.1R Breakeven Buffer"})!
+                      <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-[11px] text-emerald-300 font-mono flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                        <strong>🔒 Trailing Stop Active:</strong> Tier {pos.trailingStopTier || 1} Risk-Free Lock (+{pos.trailingStopTier === 2 ? "0.5R Guaranteed Profit Locked" : "0.1R Breakeven Buffer Locked"})!
                       </div>
                     )}
                   </div>

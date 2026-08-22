@@ -149,38 +149,52 @@ class DeltaExchangeEngine {
     return this.usdInrRate;
   }
 
+  private productsFetchPromise: Promise<DeltaProduct[]> | null = null;
+
   // ────────────────────────────────────────────
   // REST API: Fetch All Products
   // ────────────────────────────────────────────
   public async fetchProducts(): Promise<DeltaProduct[]> {
-    try {
-      const path = "/v2/products";
-      const res = await fetch(`${BASE_URL}/products`, {
-        headers: { "Content-Type": "application/json", "User-Agent": "DeltaExchangeEngine/1.0" }
-      });
-      if (!res.ok) {
-        console.warn(`[DeltaExchange] ❌ Products fetch failed: HTTP ${res.status}`);
-        return [];
-      }
-      const json: any = await res.json();
-      const products: DeltaProduct[] = json?.result || json || [];
-
-      this.products.clear();
-      this.productIdMap.clear();
-      let count = 0;
-      for (const p of products) {
-        if (p.state === "live" && p.symbol) {
-          this.products.set(p.symbol.toUpperCase(), p);
-          this.productIdMap.set(p.id, p);
-          count++;
-        }
-      }
-      console.log(`[DeltaExchange] 📦 Loaded ${count} live products from Delta Exchange India`);
-      return products.filter(p => p.state === "live");
-    } catch (e: any) {
-      console.warn(`[DeltaExchange] ❌ Products fetch error: ${e.message}`);
-      return [];
+    if (this.products.size > 0) {
+      return Array.from(this.products.values());
     }
+    if (this.productsFetchPromise) {
+      return this.productsFetchPromise;
+    }
+
+    this.productsFetchPromise = (async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/products`, {
+          headers: { "Content-Type": "application/json", "User-Agent": "DeltaExchangeEngine/1.0" }
+        });
+        if (!res.ok) {
+          console.warn(`[DeltaExchange] ❌ Products fetch failed: HTTP ${res.status}`);
+          return [];
+        }
+        const json: any = await res.json();
+        const products: DeltaProduct[] = json?.result || json || [];
+
+        this.products.clear();
+        this.productIdMap.clear();
+        let count = 0;
+        for (const p of products) {
+          if (p.state === "live" && p.symbol) {
+            this.products.set(p.symbol.toUpperCase(), p);
+            this.productIdMap.set(p.id, p);
+            count++;
+          }
+        }
+        console.log(`[DeltaExchange] 📦 Loaded ${count} live products from Delta Exchange India`);
+        return products.filter(p => p.state === "live");
+      } catch (e: any) {
+        console.warn(`[DeltaExchange] ❌ Products fetch error: ${e.message}`);
+        return [];
+      } finally {
+        this.productsFetchPromise = null;
+      }
+    })();
+
+    return this.productsFetchPromise;
   }
 
   // ────────────────────────────────────────────

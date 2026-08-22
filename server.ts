@@ -679,6 +679,31 @@ async function startServer() {
   // ============================================================================
   let isDaemonExecutionLocked = false;
 
+  // ⚡ 0. High-Frequency Real-Time Market Ticker Stream & Live P&L Updater (every 2.5s)
+  try {
+    deltaExchangeEngine.connectWebSocket();
+  } catch (e) {}
+
+  setInterval(async () => {
+    try {
+      // Fetch live market mark prices from Delta Exchange
+      await deltaExchangeEngine.fetchAllTickers();
+
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      if (fullState.openPositions.length > 0) {
+        for (const pos of fullState.openPositions) {
+          const livePriceObj = deltaExchangeEngine.getLivePrice(pos.symbol);
+          const currentPrice = livePriceObj?.usd || 0;
+          if (currentPrice > 0) {
+            deltaAutoTraderEngine.updateLivePriceAndCheckExits(pos.symbol, currentPrice);
+          }
+        }
+      }
+    } catch (e) {
+      // Quiet ticker catch
+    }
+  }, 2500);
+
   // 1. Exit & Trailing Stop Monitoring Daemon (every 30s for v3 swing horizon)
   setInterval(async () => {
     if (isDaemonExecutionLocked) return;

@@ -723,6 +723,13 @@ export class DeltaAutoTraderEngine {
       rsi1h: 50,
       atr1h: 100,
       volumeMultiplier: 1.0,
+      dataSource: "DELTA",
+      subScores: {
+        trend: 15,
+        momentum: 15,
+        pattern: 10,
+        volume: 10
+      },
       reasoning: "Scanning multi-timeframe candle market data..."
     };
 
