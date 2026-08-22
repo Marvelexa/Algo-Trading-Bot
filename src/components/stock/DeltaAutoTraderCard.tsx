@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { deltaAutoTraderEngine, AutoTraderPosition, AutoTraderClosedRecord, AutoTraderSettings, AutoTraderStatus, MultiTimeframeAnalysis, CryptoNewsItem, CURATED_AUTO_TRADER_ASSETS, CuratedAsset } from "../../../lib/deltaAutoTraderEngine";
 import { brokerTickEngine } from "../../../lib/brokerTickEngine";
-import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2 } from "lucide-react";
+import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2, Zap } from "lucide-react";
 
 interface DeltaAutoTraderCardProps {
   ticker?: string;
