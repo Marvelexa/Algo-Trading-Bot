@@ -1611,19 +1611,19 @@ export class DeltaAutoTraderEngine {
       }
     }
 
-    // 4. No genuine high-conviction setup found -> Gracefully SKIP and advance to next coin in 10-asset circular loop!
-    const skippedSymbol = sym;
+    // 4. No genuine high-conviction setup found -> Place on WAITING / STANDBY and advance to next coin in 10-asset circular loop!
+    const waitingSymbol = sym;
     this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
     this.inspectionStartTimeMs = now;
     const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
 
-    const skipMsg = `ℹ️ 5-Min Inspection for ${skippedSymbol} completed: Market in consolidation (Score: ${analysis.overallScore}/100, EV: $${analysis.projectedProfitUSD}). Skipped without forcing trade. Started 5-min reading on Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) [${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} slots active].`;
-    console.log(`[AutoTrader] ${skipMsg}`);
+    const waitingMsg = `⏳ ${waitingSymbol} placed in WAITING / WATCHLIST: Consolidation detected (Score: ${analysis.overallScore}/100, EV: $${analysis.projectedProfitUSD}). Reading next Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) [${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} active]. When cycle returns and ${waitingSymbol} breaks out, it will be traded.`;
+    console.log(`[AutoTrader] ${waitingMsg}`);
     this.saveToStorage();
 
     return {
       executed: false,
-      message: skipMsg
+      message: waitingMsg
     };
   }
 
