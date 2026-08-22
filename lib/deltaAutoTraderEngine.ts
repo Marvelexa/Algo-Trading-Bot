@@ -123,6 +123,37 @@ export interface MultiTimeframeAnalysis {
   spreadPct?: number;
 }
 
+export interface ScanDiagnosticReport {
+  timestamp: string;
+  totalAssets: number;
+  openSlots: number;
+  tradesToday: number;
+  maxTrades: number;
+  bestAsset: {
+    symbol: string;
+    name: string;
+    score: number;
+    direction: "BUY" | "SELL" | "NEUTRAL";
+    reason: string;
+    fourHourTrend: string;
+    oneHourMomentum: string;
+    fifteenMinTrigger: string;
+    currentPrice: number;
+  } | null;
+  assetScans: Array<{
+    symbol: string;
+    name: string;
+    score: number;
+    direction: "BUY" | "SELL" | "NEUTRAL";
+    status: "READY_TO_FIRE" | "WAITING_CONFLUENCE" | "CONSOLIDATION" | "ALREADY_OPEN";
+    reason: string;
+    fourHourTrend: string;
+    oneHourMomentum: string;
+    fifteenMinTrigger: string;
+    currentPrice: number;
+  }>;
+}
+
 const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V2";
 const DEFAULT_CAPITAL_USD = 191.25; // User live Delta India account equity ($191.25 USD)
 
@@ -950,6 +981,130 @@ export class DeltaAutoTraderEngine {
     }
 
     return { executed: false, message: "Scanning... Monitoring 10 crypto assets for high-confidence setups." };
+  }
+
+  public async getScanDiagnostics(): Promise<ScanDiagnosticReport> {
+    const tracked = CURATED_AUTO_TRADER_ASSETS;
+    const openSymbols = new Set(this.openPositions.map(p => p.symbol.toUpperCase()));
+    const assetScans: any[] = [];
+    let bestAsset: any = null;
+
+    for (const item of tracked) {
+      try {
+        const [candles15m, candles1h, candles4h] = await Promise.all([
+          this.fetchCryptoCandles(item.symbol, "15m", 30),
+          this.fetchCryptoCandles(item.symbol, "1h", 30),
+          this.fetchCryptoCandles(item.symbol, "4h", 30)
+        ]);
+
+        const currentPrice = candles1h[candles1h.length - 1]?.close || this.getLivePriceUSD(item.symbol) || 100;
+        const analysis = this.analyzeMultiTimeframe(item.symbol, candles15m, candles1h, candles4h);
+
+        const isOpen = openSymbols.has(item.symbol.toUpperCase());
+        const status = isOpen ? "ALREADY_OPEN" : analysis.isEntryValid ? "READY_TO_FIRE" : analysis.overallScore >= 60 ? "WAITING_CONFLUENCE" : "CONSOLIDATION";
+
+        const scanObj = {
+          symbol: item.symbol,
+          name: item.name,
+          score: analysis.overallScore,
+          direction: analysis.direction,
+          status,
+          reason: analysis.reasoning,
+          fourHourTrend: analysis.fourHourTrend,
+          oneHourMomentum: analysis.oneHourMomentum,
+          fifteenMinTrigger: analysis.fifteenMinTrigger,
+          currentPrice
+        };
+        assetScans.push(scanObj);
+
+        if (!isOpen && (!bestAsset || scanObj.score > bestAsset.score)) {
+          bestAsset = scanObj;
+        }
+      } catch (err) {}
+    }
+
+    return {
+      timestamp: new Date().toLocaleTimeString(),
+      totalAssets: tracked.length,
+      openSlots: this.settings.maxConcurrentPositions - this.openPositions.length,
+      tradesToday: this.tradesTakenTodayCount,
+      maxTrades: this.settings.maxTradesPerDay,
+      bestAsset,
+      assetScans
+    };
+  }
+
+  public async forceExecuteTrade(symbol: string): Promise<{ success: boolean; message: string; position?: AutoTraderPosition }> {
+    this.checkDailyReset();
+    if (this.tradesTakenTodayCount >= this.settings.maxTradesPerDay) {
+      return { success: false, message: `Daily trade limit reached (${this.tradesTakenTodayCount}/${this.settings.maxTradesPerDay}).` };
+    }
+    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
+      return { success: false, message: `Max open slots reached (${this.openPositions.length}/${this.settings.maxConcurrentPositions}).` };
+    }
+
+    const [candles15m, candles1h, candles4h] = await Promise.all([
+      this.fetchCryptoCandles(symbol, "15m", 30),
+      this.fetchCryptoCandles(symbol, "1h", 30),
+      this.fetchCryptoCandles(symbol, "4h", 30)
+    ]);
+
+    const analysis = this.analyzeMultiTimeframe(symbol, candles15m, candles1h, candles4h);
+    const currentPrice = candles1h[candles1h.length - 1]?.close || this.getLivePriceUSD(symbol) || 100;
+    
+    // If neutral, default to trend direction or 4h momentum
+    let tradeDirection: "BUY" | "SELL" = analysis.direction !== "NEUTRAL" ? analysis.direction : analysis.fourHourTrend === "BEARISH" ? "SELL" : "BUY";
+
+    const atr = analysis.atr1h || (currentPrice * 0.012);
+    const realisticAtr = Math.max(currentPrice * 0.008, Math.min(currentPrice * 0.018, atr));
+    const slDistance = Number((realisticAtr * 0.95).toFixed(2));
+    const tpDistance = Number((realisticAtr * 1.5).toFixed(2));
+
+    const stopLossPrice = tradeDirection === "BUY" ? Number((currentPrice - slDistance).toFixed(2)) : Number((currentPrice + slDistance).toFixed(2));
+    const targetPrice = tradeDirection === "BUY" ? Number((currentPrice + tpDistance).toFixed(2)) : Number((currentPrice - tpDistance).toFixed(2));
+
+    const lotInfo = this.calculateDynamicLotSize(symbol, currentPrice, slDistance);
+    const now = Date.now();
+
+    const position: AutoTraderPosition = {
+      id: `DAT-${now}-${Math.floor(1000 + Math.random() * 9000)}`,
+      symbol: symbol.toUpperCase(),
+      type: tradeDirection,
+      quantity: lotInfo.quantity,
+      entryPrice: Number(currentPrice.toFixed(2)),
+      currentPrice: Number(currentPrice.toFixed(2)),
+      stopLossPrice,
+      targetPrice,
+      initialRiskUSD: lotInfo.initialRiskUSD,
+      atrValue: Number(realisticAtr.toFixed(2)),
+      confidenceScore: Math.max(72, analysis.overallScore),
+      unrealizedPnLUSD: 0,
+      unrealizedPnLPct: 0,
+      trailingStopActive: false,
+      highestProfitUSD: 0,
+      timeframeAlignment: "Forced Instant Execution · Real-Time Market Alignment",
+      entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 16),
+      maxHoldTimeExpiry: now + (24 * 60 * 60 * 1000)
+    };
+
+    this.openPositions.unshift(position);
+    this.tradesTakenTodayCount++;
+    this.saveToStorage();
+
+    if (this.settings.mode === "LIVE") {
+      deltaExchangeEngine.placeOrder(
+        symbol,
+        position.type === "BUY" ? "buy" : "sell",
+        position.quantity,
+        currentPrice
+      ).catch(err => console.warn("[DeltaAutoTrader] Live execution warning:", err));
+    }
+
+    return {
+      success: true,
+      message: `🚀 INSTANT TRADE PLACED: ${position.type} ${position.symbol} @ $${position.entryPrice} (SL: $${position.stopLossPrice}, TP: $${position.targetPrice})`,
+      position
+    };
   }
 
   public getOpenPositions(): AutoTraderPosition[] {
