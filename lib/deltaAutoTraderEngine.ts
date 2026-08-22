@@ -170,7 +170,7 @@ export interface ScanDiagnosticReport {
   }>;
 }
 
-const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V5";
+const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V6";
 const DEFAULT_CAPITAL_USD = 191.25; // User live Delta India account equity ($191.25 USD)
 
 export class DeltaAutoTraderEngine {
@@ -382,11 +382,16 @@ export class DeltaAutoTraderEngine {
 
   public resetSystemCleanly(): { success: boolean; message: string } {
     this.openPositions = [];
+    this.closedRecords = [];
     this.settings.isEnabled = false;
+    this.settings.currentCapitalUSD = this.settings.initialCapitalUSD;
+    this.dailyStartCapitalUSD = this.settings.initialCapitalUSD;
+    this.tradesTakenTodayCount = 0;
+    this.lastLossTimestamp = 0;
     this.slotReentryCooldownExpiry = 0;
     this.currentCycleNumber = 1;
     this.saveToStorage();
-    return { success: true, message: "🧹 System reset: All open trades cleared, bot is PAUSED (OFF). Ready for fresh start!" };
+    return { success: true, message: "🧹 System reset: All P&L, trade records & open positions cleared. Bot is PAUSED (OFF). Ready for fresh start!" };
   }
 
   public skipBatchCooldown(): void {
