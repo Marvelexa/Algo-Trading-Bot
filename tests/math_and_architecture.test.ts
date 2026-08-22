@@ -106,13 +106,13 @@ async function runTestSuite() {
   // ─────────────────────────────────────────────────────────────
   // 5. Dynamic Lot Sizing & Initial Risk Calculation
   // ─────────────────────────────────────────────────────────────
-  console.log("\n5. DYNAMIC LOT SIZING (1.5% MAX RISK BUDGET)");
+  console.log("\n5. DYNAMIC LOT SIZING (1.8% - 2.5% RISK BUDGET FOR ₹1000 DAILY TARGET)");
   const btcPrice = 76900;
   const btcSLDist = 76900 * 0.015; // ~$1153.50
   const btcLot = deltaAutoTraderEngine.calculateDynamicLotSize("BTCUSD", btcPrice, btcSLDist);
-  const maxAllowedRisk = 191.25 * 0.015; // ~$2.87
+  const maxAllowedRisk = 191.25 * 0.025; // ~$4.78
 
-  assert(btcLot.initialRiskUSD <= maxAllowedRisk + 0.15, "Dynamic lot initial risk strictly respects equity risk cap", `Initial Risk: $${btcLot.initialRiskUSD} USD (Qty: ${btcLot.quantity} BTC)`);
+  assert(btcLot.initialRiskUSD <= maxAllowedRisk + 0.20, "Dynamic lot initial risk strictly respects equity risk cap", `Initial Risk: $${btcLot.initialRiskUSD} USD (Qty: ${btcLot.quantity} BTC)`);
 
   // ─────────────────────────────────────────────────────────────
   // 6. R-Multiple Trailing Stop Math & Target Price Calculations

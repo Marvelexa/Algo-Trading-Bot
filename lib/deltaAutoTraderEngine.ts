@@ -92,16 +92,16 @@ export interface CuratedAsset {
 }
 
 export const CURATED_AUTO_TRADER_ASSETS: CuratedAsset[] = [
-  { symbol: "BTCUSD", name: "Bitcoin", tag: "BTC", minLot: 0.001, decimals: 1, baselinePrice: 76900, description: "Macro Leader" },
-  { symbol: "ETHUSD", name: "Ethereum", tag: "ETH", minLot: 0.01, decimals: 2, baselinePrice: 2406, description: "Layer 1 Ecosystem" },
+  { symbol: "BTCUSD", name: "Bitcoin", tag: "BTC", minLot: 0.001, decimals: 4, baselinePrice: 76900, description: "Macro Leader" },
+  { symbol: "ETHUSD", name: "Ethereum", tag: "ETH", minLot: 0.01, decimals: 3, baselinePrice: 2406, description: "Layer 1 Ecosystem" },
   { symbol: "SOLUSD", name: "Solana", tag: "SOL", minLot: 0.1, decimals: 2, baselinePrice: 93.0, description: "High Momentum Beta" },
-  { symbol: "XRPUSD", name: "Ripple", tag: "XRP", minLot: 5, decimals: 4, baselinePrice: 1.438, description: "Payment Liquidity" },
+  { symbol: "XRPUSD", name: "Ripple", tag: "XRP", minLot: 10, decimals: 0, baselinePrice: 1.438, description: "Payment Liquidity" },
   { symbol: "BNBUSD", name: "Binance Coin", tag: "BNB", minLot: 0.05, decimals: 2, baselinePrice: 688.7, description: "Exchange Tier 1" },
-  { symbol: "DOGEUSD", name: "Dogecoin", tag: "DOGE", minLot: 50, decimals: 5, baselinePrice: 0.0897, description: "High Volatility Meme" },
-  { symbol: "AVAXUSD", name: "Avalanche", tag: "AVAX", minLot: 0.2, decimals: 3, baselinePrice: 7.434, description: "Layer 1 Subnet" },
-  { symbol: "LINKUSD", name: "Chainlink", tag: "LINK", minLot: 0.5, decimals: 3, baselinePrice: 11.50, description: "Oracle Infrastructure" },
-  { symbol: "ADAUSD", name: "Cardano", tag: "ADA", minLot: 10, decimals: 4, baselinePrice: 0.221, description: "Layer 1 Smart Contracts" },
-  { symbol: "SUIUSD", name: "Sui", tag: "SUI", minLot: 5, decimals: 4, baselinePrice: 0.8125, description: "Next-Gen Move L1" }
+  { symbol: "DOGEUSD", name: "Dogecoin", tag: "DOGE", minLot: 100, decimals: 0, baselinePrice: 0.0897, description: "High Volatility Meme" },
+  { symbol: "AVAXUSD", name: "Avalanche", tag: "AVAX", minLot: 0.5, decimals: 2, baselinePrice: 7.434, description: "Layer 1 Subnet" },
+  { symbol: "LINKUSD", name: "Chainlink", tag: "LINK", minLot: 0.5, decimals: 2, baselinePrice: 11.50, description: "Oracle Infrastructure" },
+  { symbol: "ADAUSD", name: "Cardano", tag: "ADA", minLot: 50, decimals: 0, baselinePrice: 0.221, description: "Layer 1 Smart Contracts" },
+  { symbol: "SUIUSD", name: "Sui", tag: "SUI", minLot: 20, decimals: 0, baselinePrice: 0.8125, description: "Next-Gen Move L1" }
 ];
 
 export interface AutoTraderSettings {
