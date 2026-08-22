@@ -134,10 +134,10 @@ export class DeltaAutoTraderEngine {
     currentCapitalUSD: DEFAULT_CAPITAL_USD,
     riskPerTradePct: 1.5,
     maxDailyLossPct: 3.0,
-    maxTradesPerDay: 5, // Default 5 trades max per day
+    maxTradesPerDay: 10, // Default 10 quality trades max per day
     cooldownMinutesAfterLoss: 45,
     minConfidenceThreshold: 70,
-    maxConcurrentPositions: 5
+    maxConcurrentPositions: 10 // Up to 10 positions across all 10 curated coins
   };
 
   private openPositions: AutoTraderPosition[] = [];
@@ -248,7 +248,15 @@ export class DeltaAutoTraderEngine {
 
   private applyParsedState(parsed: any) {
     if (!parsed) return;
-    if (parsed.settings) this.settings = { ...this.settings, ...parsed.settings };
+    if (parsed.settings) {
+      this.settings = { ...this.settings, ...parsed.settings };
+      if (!parsed.settings.maxTradesPerDay || parsed.settings.maxTradesPerDay < 10) {
+        this.settings.maxTradesPerDay = 10;
+      }
+      if (!parsed.settings.maxConcurrentPositions || parsed.settings.maxConcurrentPositions < 10) {
+        this.settings.maxConcurrentPositions = 10;
+      }
+    }
     if (Array.isArray(parsed.openPositions)) this.openPositions = parsed.openPositions;
     if (Array.isArray(parsed.closedRecords)) this.closedRecords = parsed.closedRecords;
     if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;

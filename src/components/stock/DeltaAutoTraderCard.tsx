@@ -779,12 +779,23 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1">Max Trades Per Day Cap (Default 5 trades):</label>
+              <label className="block text-slate-400 mb-1">Max Trades Per Day Cap (Default 10 trades):</label>
               <input
                 type="number"
                 disabled={isSettingsLocked}
                 value={settings.maxTradesPerDay}
                 onChange={e => deltaAutoTraderEngine.updateSettings({ maxTradesPerDay: Number(e.target.value) })}
+                className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white ${isSettingsLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">Max Concurrent Positions (Default 10 slots):</label>
+              <input
+                type="number"
+                disabled={isSettingsLocked}
+                value={settings.maxConcurrentPositions}
+                onChange={e => deltaAutoTraderEngine.updateSettings({ maxConcurrentPositions: Number(e.target.value) })}
                 className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white ${isSettingsLocked ? "opacity-50 cursor-not-allowed" : ""}`}
               />
             </div>
