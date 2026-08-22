@@ -163,7 +163,7 @@ export interface ScanDiagnosticReport {
   }>;
 }
 
-const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V3";
+const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V4";
 const DEFAULT_CAPITAL_USD = 191.25; // User live Delta India account equity ($191.25 USD)
 
 export class DeltaAutoTraderEngine {
@@ -411,6 +411,18 @@ export class DeltaAutoTraderEngine {
     }
   }
 
+  public getPriceDecimals(price: number): number {
+    if (price >= 100) return 2;
+    if (price >= 1) return 3;
+    if (price >= 0.01) return 4;
+    return 6;
+  }
+
+  public roundPrice(price: number): number {
+    const dec = this.getPriceDecimals(price);
+    return Number(price.toFixed(dec));
+  }
+
   private calculateEMA(data: number[], period: number): number {
     if (!data || data.length === 0) return 0;
     if (data.length < period) {
@@ -421,7 +433,7 @@ export class DeltaAutoTraderEngine {
     for (let i = period; i < data.length; i++) {
       ema = data[i] * k + ema * (1 - k);
     }
-    return Number(ema.toFixed(2));
+    return this.roundPrice(ema);
   }
 
   private calculateRSI(data: number[], period: number = 14): number {
@@ -440,7 +452,7 @@ export class DeltaAutoTraderEngine {
   }
 
   private calculateATR(bars: OHLCVBar[], period: number = 14): number {
-    if (!bars || bars.length < 2) return 10;
+    if (!bars || bars.length < 2) return 0.5;
     const trs: number[] = [];
     for (let i = 1; i < bars.length; i++) {
       const h = bars[i].high;
@@ -451,7 +463,7 @@ export class DeltaAutoTraderEngine {
     }
     const slice = trs.slice(-period);
     const atr = slice.reduce((a, b) => a + b, 0) / slice.length;
-    return Number(atr.toFixed(2));
+    return this.roundPrice(atr);
   }
 
   private calculateADX(bars: OHLCVBar[], period: number = 14): number {
@@ -711,17 +723,17 @@ export class DeltaAutoTraderEngine {
     }
 
     const price = currentPriceUSD > 0 ? currentPriceUSD : bars1h[bars1h.length - 1].close;
-    const atr = analysis.atr1h || (price * 0.01);
+    const atr = analysis.atr1h && analysis.atr1h > 0 ? analysis.atr1h : (price * 0.012);
 
-    // 🎯 REALISTIC LOGICAL DISTANCES:
-    // Tight SL (0.8x - 1.0x ATR / ~0.8% - 1.0%) & Realistic Target (1.3x - 1.6x ATR / ~1.2% - 1.6%)
-    // (e.g. For $76k BTC: SL = ~$650, TP = ~$950 - not an unrealistic $2,600!)
-    const realisticAtr = Math.max(price * 0.008, Math.min(price * 0.018, atr));
-    const slDistance = Number((realisticAtr * 0.95).toFixed(2));
-    const tpDistance = Number((realisticAtr * 1.5).toFixed(2));
+    // 🎯 REALISTIC LOGICAL DISTANCES (1:2 R:R Ratio):
+    // SL = 0.95x ATR (~0.8% - 1.2%) & TP = 1.5x ATR (~1.5% - 2.0%)
+    const realisticAtr = Math.max(price * 0.008, Math.min(price * 0.025, atr));
+    const slDistance = realisticAtr * 0.95;
+    const tpDistance = realisticAtr * 1.5;
 
-    const stopLossPrice = analysis.direction === "BUY" ? Number((price - slDistance).toFixed(2)) : Number((price + slDistance).toFixed(2));
-    const targetPrice = analysis.direction === "BUY" ? Number((price + tpDistance).toFixed(2)) : Number((price - tpDistance).toFixed(2));
+    const stopLossPrice = this.roundPrice(analysis.direction === "BUY" ? price - slDistance : price + slDistance);
+    const targetPrice = this.roundPrice(analysis.direction === "BUY" ? price + tpDistance : price - tpDistance);
+    const entryPrice = this.roundPrice(price);
 
     // 🎯 DYNAMIC LOT SIZING BASED ON LIVE ACCOUNT BALANCE (1.5% Risk)
     const lotInfo = this.calculateDynamicLotSize(symbol, price, slDistance);
@@ -734,12 +746,12 @@ export class DeltaAutoTraderEngine {
       symbol: symbol.toUpperCase(),
       type: analysis.direction === "BUY" ? "BUY" : "SELL",
       quantity,
-      entryPrice: Number(price.toFixed(2)),
-      currentPrice: Number(price.toFixed(2)),
+      entryPrice,
+      currentPrice: entryPrice,
       stopLossPrice,
       targetPrice,
       initialRiskUSD,
-      atrValue: Number(realisticAtr.toFixed(2)),
+      atrValue: this.roundPrice(realisticAtr),
       confidenceScore: analysis.overallScore,
       unrealizedPnLUSD: 0,
       unrealizedPnLPct: 0,
@@ -784,7 +796,7 @@ export class DeltaAutoTraderEngine {
     this.openPositions.forEach(pos => {
       const posClean = pos.symbol.toUpperCase().replace("USDT", "").replace("USD", "").trim();
       if (pos.symbol === symbol || symbol.includes(pos.symbol) || pos.symbol.includes(symbol) || cleanSym === posClean) {
-        pos.currentPrice = Number(currentPriceUSD.toFixed(2));
+        pos.currentPrice = this.roundPrice(currentPriceUSD);
 
         // P&L Calculation
         const pnlUSD = pos.type === "BUY"
@@ -807,18 +819,18 @@ export class DeltaAutoTraderEngine {
         // Move SL to Breakeven + small profit buffer to make trade 100% risk-free
         if (pnlUSD >= (pos.atrValue * 0.4 * pos.quantity) && !pos.trailingStopActive) {
           pos.trailingStopActive = true;
-          pos.stopLossPrice = pos.type === "BUY"
-            ? Number((pos.entryPrice + pos.atrValue * 0.15).toFixed(2))
-            : Number((pos.entryPrice - pos.atrValue * 0.15).toFixed(2));
+          pos.stopLossPrice = this.roundPrice(pos.type === "BUY"
+            ? pos.entryPrice + pos.atrValue * 0.15
+            : pos.entryPrice - pos.atrValue * 0.15);
           triggeredLogs.push(`🔒 Tier 1 Trailing Stop Activated for ${pos.symbol}: SL moved to breakeven/profit @ $${pos.stopLossPrice}!`);
         }
 
         // Tier 2: Dynamic Profit Lock Escalation (+0.9% / 1.0x ATR gain)
         // Escalate SL to lock in +0.5x ATR of guaranteed profit
         if (pnlUSD >= (pos.atrValue * 0.9 * pos.quantity)) {
-          const escalatedSL = pos.type === "BUY"
-            ? Number((pos.entryPrice + pos.atrValue * 0.5).toFixed(2))
-            : Number((pos.entryPrice - pos.atrValue * 0.5).toFixed(2));
+          const escalatedSL = this.roundPrice(pos.type === "BUY"
+            ? pos.entryPrice + pos.atrValue * 0.5
+            : pos.entryPrice - pos.atrValue * 0.5);
 
           if ((pos.type === "BUY" && escalatedSL > pos.stopLossPrice) || (pos.type === "SELL" && escalatedSL < pos.stopLossPrice)) {
             pos.stopLossPrice = escalatedSL;
@@ -826,7 +838,7 @@ export class DeltaAutoTraderEngine {
           }
         }
 
-        // Exit Check 1: Realistic Take-Profit Hit (Realistic 1.3-1.6x ATR)
+        // Exit Check 1: Realistic Take-Profit Hit (1.5x ATR)
         const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
         if (isTPHit) {
           const res = this.closePosition(pos.id, pos.currentPrice, "TARGET_HIT");
@@ -882,7 +894,7 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: "Position not found." };
     }
 
-    const actualExitPrice = Number((exitPriceUSD || pos.currentPrice || pos.entryPrice).toFixed(2));
+    const actualExitPrice = this.roundPrice(exitPriceUSD || pos.currentPrice || pos.entryPrice);
     const pnlUSD = pos.type === "BUY"
       ? (actualExitPrice - pos.entryPrice) * pos.quantity
       : (pos.entryPrice - actualExitPrice) * pos.quantity;
@@ -1307,13 +1319,14 @@ export class DeltaAutoTraderEngine {
     // If neutral, default to trend direction or 4h momentum
     let tradeDirection: "BUY" | "SELL" = analysis.direction !== "NEUTRAL" ? analysis.direction : analysis.fourHourTrend === "BEARISH" ? "SELL" : "BUY";
 
-    const atr = analysis.atr1h || (currentPrice * 0.012);
-    const realisticAtr = Math.max(currentPrice * 0.008, Math.min(currentPrice * 0.018, atr));
-    const slDistance = Number((realisticAtr * 0.95).toFixed(2));
-    const tpDistance = Number((realisticAtr * 1.5).toFixed(2));
+    const atr = analysis.atr1h && analysis.atr1h > 0 ? analysis.atr1h : (currentPrice * 0.012);
+    const realisticAtr = Math.max(currentPrice * 0.008, Math.min(currentPrice * 0.025, atr));
+    const slDistance = realisticAtr * 0.95;
+    const tpDistance = realisticAtr * 1.5;
 
-    const stopLossPrice = tradeDirection === "BUY" ? Number((currentPrice - slDistance).toFixed(2)) : Number((currentPrice + slDistance).toFixed(2));
-    const targetPrice = tradeDirection === "BUY" ? Number((currentPrice + tpDistance).toFixed(2)) : Number((currentPrice - tpDistance).toFixed(2));
+    const stopLossPrice = this.roundPrice(tradeDirection === "BUY" ? currentPrice - slDistance : currentPrice + slDistance);
+    const targetPrice = this.roundPrice(tradeDirection === "BUY" ? currentPrice + tpDistance : currentPrice - tpDistance);
+    const entryPrice = this.roundPrice(currentPrice);
 
     const lotInfo = this.calculateDynamicLotSize(symbol, currentPrice, slDistance);
     const now = Date.now();
@@ -1323,12 +1336,12 @@ export class DeltaAutoTraderEngine {
       symbol: symbol.toUpperCase(),
       type: tradeDirection,
       quantity: lotInfo.quantity,
-      entryPrice: Number(currentPrice.toFixed(2)),
-      currentPrice: Number(currentPrice.toFixed(2)),
+      entryPrice,
+      currentPrice: entryPrice,
       stopLossPrice,
       targetPrice,
       initialRiskUSD: lotInfo.initialRiskUSD,
-      atrValue: Number(realisticAtr.toFixed(2)),
+      atrValue: this.roundPrice(realisticAtr),
       confidenceScore: Math.max(72, analysis.overallScore),
       unrealizedPnLUSD: 0,
       unrealizedPnLPct: 0,

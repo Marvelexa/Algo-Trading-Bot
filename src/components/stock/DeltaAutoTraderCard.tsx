@@ -33,6 +33,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const USD_TO_INR = 83.50;
   const isSettingsLocked = positions.length > 0;
 
+  const formatAssetPrice = (price: number): string => {
+    if (!price || isNaN(price)) return "0.00";
+    if (price >= 100) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (price >= 1) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+    if (price >= 0.01) return price.toFixed(4);
+    return price.toFixed(6);
+  };
+
   const syncAllLivePrices = async () => {
     try {
       // 1. Fetch live prices from Binance Public API (single fast request for all pairs)
@@ -664,11 +672,11 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                       <div>
                         <span className="text-[10px] text-slate-400 block">Entry Price:</span>
-                        <strong className="text-slate-200">${pos.entryPrice.toLocaleString()}</strong>
+                        <strong className="text-slate-200">${formatAssetPrice(pos.entryPrice)}</strong>
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 block">Live Mark Price:</span>
-                        <strong className="text-emerald-400">${pos.currentPrice.toLocaleString()}</strong>
+                        <strong className="text-emerald-400">${formatAssetPrice(pos.currentPrice)}</strong>
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 block">Unrealized P&L:</span>
@@ -678,7 +686,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 block">ATR Stop-Loss:</span>
-                        <strong className="text-rose-400">${pos.stopLossPrice.toLocaleString()}</strong>
+                        <strong className="text-rose-400">${formatAssetPrice(pos.stopLossPrice)}</strong>
                       </div>
                     </div>
 
@@ -745,7 +753,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                         {rec.type}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-slate-300">${rec.entryPrice} ➔ ${rec.exitPrice}</td>
+                    <td className="py-3 px-3 text-slate-300 font-mono">${formatAssetPrice(rec.entryPrice)} ➔ ${formatAssetPrice(rec.exitPrice)}</td>
                     <td className="py-3 px-3 font-bold">
                       <span className={rec.realizedPnLUSD >= 0 ? "text-emerald-400" : "text-rose-400"}>
                         ${rec.realizedPnLUSD >= 0 ? "+" : ""}{rec.realizedPnLUSD.toFixed(2)} ({rec.realizedPnLPct}%)
