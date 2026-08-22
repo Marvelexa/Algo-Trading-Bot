@@ -170,7 +170,7 @@ export interface ScanDiagnosticReport {
   }>;
 }
 
-const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V7";
+const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V8";
 const DEFAULT_CAPITAL_USD = 191.25; // User live Delta India account equity ($191.25 USD)
 
 export class DeltaAutoTraderEngine {
@@ -797,7 +797,11 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⏳ WAIT MODE: ${analysis.reasoning}` };
     }
 
-    const price = currentPriceUSD > 0 ? currentPriceUSD : bars1h[bars1h.length - 1].close;
+    const baseline = this.getAssetBaselinePrice(symbol);
+    const liveTick = deltaExchangeEngine.getLivePrice(symbol)?.usd || this.getLivePriceUSD(symbol);
+    const price = (liveTick > 0 && liveTick > baseline * 0.1 && liveTick < baseline * 10)
+      ? liveTick
+      : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
     const atr = analysis.atr1h && analysis.atr1h > 0 ? analysis.atr1h : (price * 0.012);
 
     // 🎯 REALISTIC LOGICAL DISTANCES (1:2 R:R Ratio):
@@ -1350,7 +1354,13 @@ export class DeltaAutoTraderEngine {
             this.fetchCryptoCandles(sym, "1h", 30),
             this.fetchCryptoCandles(sym, "4h", 30)
           ]);
-          const currentPrice = candles1h[candles1h.length - 1]?.close || 0;
+          const baseline = this.getAssetBaselinePrice(sym);
+          const livePrice = deltaExchangeEngine.getLivePrice(sym)?.usd || this.getLivePriceUSD(sym);
+          const candleClose = candles15m[candles15m.length - 1]?.close || candles1h[candles1h.length - 1]?.close || 0;
+          const currentPrice = (livePrice > 0 && livePrice > baseline * 0.1 && livePrice < baseline * 10)
+            ? livePrice
+            : (candleClose > 0 && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
+
           if (currentPrice > 0) {
             const analysis = this.analyzeMultiTimeframe(sym, candles15m, candles1h, candles4h);
             return { sym, score: analysis.overallScore, analysis, candles15m, candles1h, candles4h, currentPrice };

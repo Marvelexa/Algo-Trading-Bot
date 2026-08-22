@@ -293,7 +293,7 @@ class DeltaExchangeEngine {
 
   private parseCandles(raw: any[]): DeltaCandle[] {
     if (!Array.isArray(raw)) return [];
-    return raw.map((c: any) => ({
+    const parsed = raw.map((c: any) => ({
       time: c.time || c.t || 0,
       open: parseFloat(c.open || c.o || "0"),
       high: parseFloat(c.high || c.h || "0"),
@@ -301,6 +301,9 @@ class DeltaExchangeEngine {
       close: parseFloat(c.close || c.c || "0"),
       volume: parseFloat(c.volume || c.v || "0")
     })).filter(c => c.close > 0);
+    // ⏰ Ensure candles are strictly sorted in chronological order (oldest -> newest)
+    parsed.sort((a, b) => a.time - b.time);
+    return parsed;
   }
 
   // ────────────────────────────────────────────
