@@ -602,6 +602,15 @@ async function startServer() {
     }
   });
 
+  app.post("/api/autotrader/skip-inspection", (req, res) => {
+    try {
+      const result = deltaAutoTraderEngine.skipCurrentAssetInspection();
+      return res.json({ ...result, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.post("/api/autotrader/force", async (req, res) => {
     try {
       const { symbol } = req.body;

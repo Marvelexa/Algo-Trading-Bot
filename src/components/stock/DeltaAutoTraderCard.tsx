@@ -216,6 +216,19 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     }
   };
 
+  const handleSkipInspection = async () => {
+    try {
+      const res = await fetch("/api/autotrader/skip-inspection", { method: "POST" });
+      const data = await res.json();
+      if (data?.message) {
+        setNotification(data.message);
+      }
+      fetchServerState();
+    } catch (e) {
+      setNotification("⚠️ Skip request failed.");
+    }
+  };
+
   const handleToggleBot = async () => {
     const nextState = !settings.isEnabled;
     setNotification(nextState ? "🟢 Starting 24/7 Cloud Auto-Trader Server Daemon..." : "⏸️ Pausing Delta Auto-Trader...");
@@ -426,19 +439,19 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </div>
         </div>
 
-        {/* ROLLING 5-SLOT PIPELINE */}
+        {/* SEQUENTIAL 1-SLOT PIPELINE */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
           <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">
-            Rolling Slot Pipeline
+            Execution Mode
           </span>
           <div>
             <span className="text-xl font-black text-amber-300 block">
-              {positions.length} / {settings.maxConcurrentPositions} Active Slots
+              {positions.length > 0 ? "1/1 Position Active" : "0/1 (Sequential)"}
             </span>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              {status.batchCycle?.isCoolingDown
-                ? `🧠 10m AI Analysis (${Math.max(0, settings.maxConcurrentPositions - positions.length)} free)`
-                : `⚡ 5-Slot Continuous Pipeline`}
+              {positions.length > 0
+                ? `🛡️ Holding ${positions[0].symbol} Profit Target`
+                : `🔍 Inspecting #${(status.currentInspection?.assetIndex ?? 0) + 1}/10 (${status.currentInspection?.tag || "BTC"})`}
             </span>
           </div>
         </div>
@@ -473,44 +486,83 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         </div>
       </div>
 
-      {/* 🧠 10-MIN CONTINUOUS ROLLING AI ANALYSIS & PROGRESSIVE OPPORTUNITY SCANNER */}
-      {settings.isEnabled && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950 via-purple-950 to-indigo-950 border border-indigo-500/50 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xl animate-fade-in">
+      {/* 🔄 5-MINUTE DEDICATED ROUND-ROBIN ASSET READING & PROFIT QUEUE */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-indigo-950/70 to-slate-950 border border-indigo-500/50 shadow-2xl space-y-3 animate-fade-in">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-              <Brain className="w-5 h-5 animate-pulse" />
+            <span className="p-3 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+              <Clock className={`w-6 h-6 ${settings.isEnabled && positions.length === 0 ? "animate-spin" : ""}`} />
             </span>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-indigo-200">
-                  🧠 10-MIN CONTINUOUS ROLLING AI MARKET SCANNER
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-200">
+                  🔄 10-Asset Round-Robin Queue
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                  Instant Execution Active
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono font-bold">
+                  Asset #{(status.currentInspection?.assetIndex ?? 0) + 1} of 10: {status.currentInspection?.name || "Bitcoin"} ({status.currentInspection?.symbol || "BTCUSD"})
                 </span>
+                {positions.length > 0 ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+                    🚀 ACTIVE TRADE RUNNING
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 animate-pulse">
+                    ⏳ 5-MIN READING WINDOW
+                  </span>
+                )}
               </div>
-              <p className="text-[11px] text-slate-300 font-sans mt-0.5">
-                AI continuously monitors 15m, 1h & 4h candles across 10 coins. As soon as any stock confirms a <strong>BUY or SELL signal (at 1m, 2m, etc.)</strong>, it executes on-the-spot without waiting for the 10m counter!
+              <p className="text-[11px] text-slate-300 font-sans mt-1">
+                {positions.length > 0
+                  ? `Position active on ${positions[0].symbol}. Once profit is booked (+1.6R / trailing stops), engine immediately advances to next coin in sequence.`
+                  : `Dedicated 5-minute price action & candle confirmation on ${status.currentInspection?.symbol || "BTCUSD"}. If valid setup appears ➔ Executes trade; if flat/choppy ➔ Skips to next coin safely without forcing losses.`}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="px-3.5 py-2 rounded-xl bg-indigo-900/40 border border-indigo-500/40 text-indigo-200 font-bold text-xs flex items-center gap-1.5 font-mono shadow-inner">
-              <Clock className="w-4 h-4 text-indigo-400 animate-spin" />
-              10m Cycle: {Math.floor((status.batchCycle?.cooldownRemainingSeconds || 300) / 60)}m {((status.batchCycle?.cooldownRemainingSeconds || 300) % 60).toString().padStart(2, "0")}s
-            </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+            {positions.length === 0 && (
+              <button
+                onClick={handleSkipInspection}
+                className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                title="Skip this coin and start 5-min inspection on next coin in queue"
+              >
+                ⏭️ Skip to Next ({status.currentInspection?.nextSymbol || "ETHUSD"})
+              </button>
+            )}
             <button
               onClick={handleManualScan}
               disabled={isScanning}
-              className="px-3 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/60 border border-indigo-500/40 text-indigo-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl bg-indigo-600/40 hover:bg-indigo-600/70 border border-indigo-500/50 text-indigo-100 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Zap className="w-3.5 h-3.5 text-amber-300" />
-              ⚡ Scan & Trade Now
+              ⚡ Evaluate & Fire
             </button>
           </div>
         </div>
-      )}
+
+        {/* 5-MINUTE COUNTDOWN & SIGNAL PROGRESS BAR */}
+        {positions.length === 0 && settings.isEnabled && (
+          <div className="pt-2 border-t border-indigo-950/80 space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-mono text-slate-300">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+                Inspection Time Remaining: <strong className="text-amber-300">{Math.floor((status.currentInspection?.inspectionRemainingSeconds || 300) / 60)}m {((status.currentInspection?.inspectionRemainingSeconds || 300) % 60).toString().padStart(2, "0")}s</strong>
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Live Bias: <strong className={status.currentInspection?.currentDirection === "BUY" ? "text-emerald-400" : status.currentInspection?.currentDirection === "SELL" ? "text-rose-400" : "text-slate-400"}>{status.currentInspection?.currentDirection || "ANALYZING"}</strong> · Score: <strong className="text-indigo-300">{status.currentInspection?.currentScore || "--"}/100</strong> · EV: <strong className="text-emerald-300">+${status.currentInspection?.currentEVUSD ? status.currentInspection.currentEVUSD.toFixed(2) : "0.00"}</strong>
+              </span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-slate-900 overflow-hidden border border-indigo-950">
+              <div
+                className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-1000"
+                style={{
+                  width: `${Math.max(5, Math.min(100, (((status.currentInspection?.inspectionTotalSeconds || 300) - (status.currentInspection?.inspectionRemainingSeconds || 300)) / (status.currentInspection?.inspectionTotalSeconds || 300)) * 100))}%`
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 📡 ACTIVE AUTONOMOUS RADAR STATUS BAR */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-indigo-950/70 to-slate-950 border border-indigo-500/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
@@ -523,21 +575,21 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-emerald-300">🟢 10-COIN AI RADAR ACTIVE</span>
               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                Code 100% Armed & Safe
+                Sequential Discipline Guarded
               </span>
             </div>
             <p className="text-[11px] text-slate-300 font-sans mt-0.5">
-              Continuous scan active on 10 Coins · Waiting for 15m+1h+4h Confluence (Score ≥ 70) to prevent false breakout losses
+              5-min dedicated inspection per asset · 1 position at a time · Automatic profit capture (+1.6R / Trailing lock) ➔ Advance to next asset in loop
             </p>
           </div>
         </div>
 
         <button
           onClick={handleOpenRadarModal}
-          className="px-3.5 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 shrink-0"
+          className="px-3.5 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
         >
           <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
-          📡 View 10-Coin Radar & Why Waiting
+          📡 View 10-Coin Radar Diagnostics
         </button>
       </div>
 

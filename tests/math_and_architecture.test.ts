@@ -171,6 +171,21 @@ async function runTestSuite() {
     assert(typeof record?.adxValue === "number", "Record logs entry ADX value", `ADX: ${record?.adxValue}`);
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // 9. Sequential 10-Coin 5-Minute Inspection Queue & Single-Slot Discipline
+  // ─────────────────────────────────────────────────────────────
+  console.log("\n9. SEQUENTIAL 10-COIN 5-MIN INSPECTION QUEUE");
+  const postCloseStatus = deltaAutoTraderEngine.getStatus();
+  assert(postCloseStatus.currentInspection !== undefined, "currentInspection state is populated", `Asset: ${postCloseStatus.currentInspection?.symbol}`);
+  assert(postCloseStatus.currentInspection?.inspectionTotalSeconds === 300, "5-Minute inspection window configured (300s)", `inspectionTotalSeconds: ${postCloseStatus.currentInspection?.inspectionTotalSeconds}s`);
+  assert(deltaAutoTraderEngine.getSettings().maxConcurrentPositions === 1, "Max concurrent positions strictly locked to 1 (Sequential)", `maxConcurrentPositions: ${deltaAutoTraderEngine.getSettings().maxConcurrentPositions}`);
+
+  const curSymbol = postCloseStatus.currentInspection.symbol;
+  const skipRes = deltaAutoTraderEngine.skipCurrentAssetInspection();
+  const nextStatus = deltaAutoTraderEngine.getStatus();
+  assert(skipRes.success === true, "skipCurrentAssetInspection executes successfully", skipRes.message);
+  assert(nextStatus.currentInspection.symbol !== curSymbol, "Queue advanced to next coin in 10-asset circular loop", `Previous: ${curSymbol} ➔ Next: ${nextStatus.currentInspection.symbol}`);
+
   console.log("\n================================================================================");
   console.log(`🏁 TEST SUITE COMPLETE: ${passed} Passed, ${failed} Failed`);
   console.log("================================================================================");

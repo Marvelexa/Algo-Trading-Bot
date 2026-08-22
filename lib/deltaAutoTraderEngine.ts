@@ -112,9 +112,10 @@ export interface AutoTraderSettings {
   riskPerTradePct: number; // e.g. 1.5%
   maxDailyLossPct: number; // e.g. 3.0%
   maxTradesPerDay: number; // e.g. 10
-  maxConcurrentPositions: number; // e.g. 5
+  maxConcurrentPositions: number; // 1 position max (sequential single-asset focus)
   cooldownMinutesAfterLoss: number; // e.g. 45
   minConfidenceThreshold: number; // e.g. 60
+  inspectionWindowMinutes: number; // 5 minutes dedicated inspection window per coin
 }
 
 export interface AutoTraderStatus {
@@ -133,6 +134,19 @@ export interface AutoTraderStatus {
   fundingRateWarning: string | null;
   newsFreezeActive: boolean;
   lastAnalysisTimestamp: string;
+  currentInspection: {
+    assetIndex: number;
+    symbol: string;
+    name: string;
+    tag: string;
+    inspectionRemainingSeconds: number;
+    inspectionTotalSeconds: number;
+    status: "INSPECTING" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED";
+    nextSymbol: string;
+    currentScore: number;
+    currentDirection: "BUY" | "SELL" | "NEUTRAL";
+    currentEVUSD: number;
+  };
   batchCycle: {
     currentBatchTrades: number;
     maxBatchTrades: number;
@@ -220,10 +234,11 @@ export class DeltaAutoTraderEngine {
     currentCapitalUSD: DEFAULT_CAPITAL_USD,
     riskPerTradePct: 1.5,
     maxDailyLossPct: 3.0,
-    maxTradesPerDay: 5, // Strict 5 high-conviction trades per day
+    maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 78, // 78/100 Multi-Timeframe High-Conviction Confluence (80%+ Target)
-    maxConcurrentPositions: 5 // Max 5 quality positions
+    minConfidenceThreshold: 60,
+    maxConcurrentPositions: 1, // Single-asset sequential focus
+    inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
 
   private openPositions: AutoTraderPosition[] = [];
@@ -237,7 +252,9 @@ export class DeltaAutoTraderEngine {
   private analysisCache: Map<string, MultiTimeframeAnalysis> = new Map();
   private stoppedAssetCooldowns: Map<string, number> = new Map(); // Asset re-entry cooldown after SL
   private isScanningLoopActive: boolean = false;
-  // 🔄 Rolling 5-Slot Pipeline with 10-Minute AI Market Re-Calibration per Slot/Batch
+  // 🔄 Sequential 10-Coin Round-Robin Engine (5-min inspection per coin)
+  private currentAssetIndex: number = 0;
+  private inspectionStartTimeMs: number = 0;
   private slotReentryCooldownExpiry: number = 0;
   private batchCooldownMinutes: number = 10;
   private currentCycleNumber: number = 1;
@@ -1154,11 +1171,13 @@ export class DeltaAutoTraderEngine {
 
     const now = Date.now();
     if (this.openPositions.length === 0) {
-      this.slotReentryCooldownExpiry = now + (this.batchCooldownMinutes * 60 * 1000);
+      // 🎯 Automatically advance sequential pointer to next coin in 10-asset sequence!
+      this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+      this.inspectionStartTimeMs = now;
+      const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
+      console.log(`[AutoTrader] 🔄 Trade closed on ${pos.symbol}. Advanced queue to Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) - 5-min inspection started.`);
       // Check if deferred midnight daily reset can now take place
       this.checkDailyReset();
-    } else {
-      this.slotReentryCooldownExpiry = 0;
     }
 
     this.saveToStorage();
@@ -1266,6 +1285,36 @@ export class DeltaAutoTraderEngine {
     const cycleElapsedSeconds = Math.floor((now / 1000) % rollingCycleTotalSeconds);
     const rollingCycleRemainingSeconds = rollingCycleTotalSeconds - cycleElapsedSeconds;
 
+    const inspectionTotalSeconds = (this.settings.inspectionWindowMinutes || 5) * 60;
+    const inspectionElapsedSeconds = this.inspectionStartTimeMs > 0 ? Math.floor((now - this.inspectionStartTimeMs) / 1000) : 0;
+    const inspectionRemainingSeconds = Math.max(0, inspectionTotalSeconds - inspectionElapsedSeconds);
+
+    const safeIndex = this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length;
+    const currentAsset = CURATED_AUTO_TRADER_ASSETS[safeIndex];
+    const nextAsset = CURATED_AUTO_TRADER_ASSETS[(safeIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length];
+    const cachedAnalysis = this.analysisCache.get(currentAsset.symbol);
+
+    let inspectionStatus: "INSPECTING" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED" = "INSPECTING";
+    if (!this.settings.isEnabled) {
+      inspectionStatus = "PAUSED";
+    } else if (this.openPositions.length > 0) {
+      inspectionStatus = "HOLDING_ACTIVE_POSITION";
+    }
+
+    const currentInspection = {
+      assetIndex: safeIndex,
+      symbol: currentAsset.symbol,
+      name: currentAsset.name,
+      tag: currentAsset.tag,
+      inspectionRemainingSeconds: this.openPositions.length > 0 ? 0 : inspectionRemainingSeconds,
+      inspectionTotalSeconds,
+      status: inspectionStatus,
+      nextSymbol: nextAsset.symbol,
+      currentScore: cachedAnalysis?.overallScore || 0,
+      currentDirection: cachedAnalysis?.direction || "NEUTRAL",
+      currentEVUSD: cachedAnalysis?.projectedProfitUSD || 0
+    };
+
     return {
       botState,
       mode: this.settings.mode,
@@ -1282,6 +1331,7 @@ export class DeltaAutoTraderEngine {
       fundingRateWarning: null,
       newsFreezeActive: this.newsFreezeActive,
       lastAnalysisTimestamp: new Date().toLocaleTimeString(),
+      currentInspection,
       batchCycle: {
         currentBatchTrades: this.openPositions.length,
         maxBatchTrades: this.settings.maxConcurrentPositions,
@@ -1467,77 +1517,101 @@ export class DeltaAutoTraderEngine {
       return { executed: false, message: "Delta Auto-Trader is currently PAUSED. Click START to begin." };
     }
 
-    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
-      return { executed: false, message: `All 5 pipeline slots active (${this.openPositions.length}/${this.settings.maxConcurrentPositions} positions running).` };
+    if (this.getStatus().circuitBreakerActive) {
+      return { executed: false, message: "🛑 Daily Loss Circuit Breaker Active. Trading halted to preserve capital." };
     }
 
-    if (this.openPositions.length === 0 && this.checkBatchCycle()) {
-      const remainingSeconds = Math.max(0, Math.ceil((this.slotReentryCooldownExpiry - Date.now()) / 1000));
-      const mins = Math.floor(remainingSeconds / 60);
-      const secs = remainingSeconds % 60;
+    // 1. Single-Asset Focus Rule: If an active position is already open, do not enter parallel trades!
+    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
+      const active = this.openPositions[0];
       return {
         executed: false,
-        message: `🧠 10-Min AI Market Calibration: Previous batch complete. Analyzing market for next batch in ${mins}m ${secs}s.`
+        message: `🛡️ 1-Position Focus Active: Monitoring ${active.symbol} (${active.type} @ $${active.entryPrice}) for profit capture (+0.5R/1.0R trailing lock, +1.6R target).`
       };
     }
 
-    const tracked = CURATED_AUTO_TRADER_ASSETS.map(a => a.symbol);
-    const openSymbols = new Set(this.openPositions.map(p => p.symbol.toUpperCase()));
-    const candidateSymbols = tracked.filter(s => !openSymbols.has(s.toUpperCase()));
+    const now = Date.now();
+    if (this.inspectionStartTimeMs === 0) {
+      this.inspectionStartTimeMs = now;
+    }
 
-    const candidateAnalyses = await Promise.all(
-      candidateSymbols.map(async (sym) => {
-        try {
-          const [candles15m, candles1h, candles4h] = await Promise.all([
-            this.fetchCryptoCandles(sym, "15m", 30),
-            this.fetchCryptoCandles(sym, "1h", 30),
-            this.fetchCryptoCandles(sym, "4h", 30)
-          ]);
-          const baseline = this.getAssetBaselinePrice(sym);
-          const livePrice = deltaExchangeEngine.getLivePrice(sym)?.usd || this.getLivePriceUSD(sym);
-          const candleClose = candles15m[candles15m.length - 1]?.close || candles1h[candles1h.length - 1]?.close || 0;
-          const currentPrice = (livePrice > 0 && livePrice > baseline * 0.1 && livePrice < baseline * 10)
-            ? livePrice
-            : (candleClose > 0 && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
+    const inspectionWindowMs = (this.settings.inspectionWindowMinutes || 5) * 60 * 1000;
+    const inspectionElapsedMs = now - this.inspectionStartTimeMs;
+    const inspectionRemainingSec = Math.max(0, Math.ceil((inspectionWindowMs - inspectionElapsedMs) / 1000));
 
-          if (currentPrice > 0) {
-            const analysis = this.analyzeMultiTimeframe(sym, candles15m, candles1h, candles4h);
-            return { sym, score: analysis.overallScore, analysis, candles15m, candles1h, candles4h, currentPrice };
-          }
-        } catch (err) {}
-        return null;
-      })
-    );
+    const safeIndex = this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length;
+    const currentAsset = CURATED_AUTO_TRADER_ASSETS[safeIndex];
+    const sym = currentAsset.symbol;
 
-    const validCandidates = candidateAnalyses.filter((c): c is NonNullable<typeof c> => c !== null);
-    // Sort descending by highest confluence and profit projection
-    validCandidates.sort((a, b) => (b.analysis.projectedProfitUSD || b.score) - (a.analysis.projectedProfitUSD || a.score));
+    // Fetch live candles for the currently inspected asset
+    let candles15m: OHLCVBar[] = [];
+    let candles1h: OHLCVBar[] = [];
+    let candles4h: OHLCVBar[] = [];
+    try {
+      [candles15m, candles1h, candles4h] = await Promise.all([
+        this.fetchCryptoCandles(sym, "15m", 30),
+        this.fetchCryptoCandles(sym, "1h", 30),
+        this.fetchCryptoCandles(sym, "4h", 30)
+      ]);
+    } catch (e) {}
 
-    // 🎯 Progressive Asset Pipeline Execution:
-    // As assets are analyzed and validated, execute all qualified trades immediately up to the 5-trade limit!
-    const newlyExecuted: AutoTraderPosition[] = [];
-    for (const cand of validCandidates) {
-      if (this.openPositions.length >= this.settings.maxConcurrentPositions) break;
-      if (cand.analysis.isEntryValid && cand.analysis.direction !== "NEUTRAL") {
-        const res = this.evaluateAndExecuteAutoTrade(cand.sym, cand.candles15m, cand.candles1h, cand.candles4h, cand.currentPrice);
-        if (res.success && res.position) {
-          console.log(`[AutoTrader] 🎯 PROGRESSIVE ASSET TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice} (Score: ${res.position.confidenceScore}/100, Expected Profit: +$${cand.analysis.projectedProfitUSD})`);
-          newlyExecuted.push(res.position);
-        }
+    const analysis = this.analyzeMultiTimeframe(sym, candles15m, candles1h, candles4h);
+    const baseline = this.getAssetBaselinePrice(sym);
+    const livePrice = deltaExchangeEngine.getLivePrice(sym)?.usd || this.getLivePriceUSD(sym);
+    const candleClose = candles15m[candles15m.length - 1]?.close || candles1h[candles1h.length - 1]?.close || 0;
+    const currentPrice = (livePrice > 0 && livePrice > baseline * 0.1 && livePrice < baseline * 10)
+      ? livePrice
+      : (candleClose > 0 && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
+
+    // 2. 5-Minute Observation Window in Progress:
+    if (inspectionElapsedMs < inspectionWindowMs) {
+      const mins = Math.floor(inspectionRemainingSec / 60);
+      const secs = inspectionRemainingSec % 60;
+      return {
+        executed: false,
+        message: `⏳ 5-Min Asset Reading in Progress: [Asset #${safeIndex + 1}/10: ${currentAsset.tag} (${sym})]. Reading price action & 15m/1h/4h signals (${mins}m ${secs}s remaining). Live Score: ${analysis.overallScore}/100, Direction: ${analysis.direction}.`
+      };
+    }
+
+    // 3. 5-Minute Inspection Window Completed! Evaluate Trade Decision:
+    if (analysis.isEntryValid && analysis.direction !== "NEUTRAL" && analysis.projectedProfitUSD > 0) {
+      const res = this.evaluateAndExecuteAutoTrade(sym, candles15m, candles1h, candles4h, currentPrice);
+      if (res.success && res.position) {
+        console.log(`[AutoTrader] 🚀 5-MIN INSPECTION COMPLETE: Placed ${res.position.type} trade on ${sym} @ $${res.position.entryPrice} (Score: ${analysis.overallScore}/100, Expected Profit: +$${analysis.projectedProfitUSD})!`);
+        return {
+          executed: true,
+          message: `🚀 5-Min Inspection Complete: Executed ${res.position.type} on ${sym} @ $${res.position.entryPrice} (Score: ${analysis.overallScore}/100)!`,
+          position: res.position
+        };
       }
     }
 
-    if (newlyExecuted.length > 0) {
-      return {
-        executed: true,
-        message: `🎯 Progressive Execution: Placed ${newlyExecuted.length} confirmed trade(s) (${newlyExecuted.map(p => `${p.type} ${p.symbol}`).join(", ")}).`,
-        position: newlyExecuted[0]
-      };
-    }
+    // 4. No genuine high-conviction setup found -> Gracefully SKIP and advance to next coin in 10-asset circular loop!
+    const skippedSymbol = sym;
+    this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+    this.inspectionStartTimeMs = now;
+    const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
 
-    const topAsset = validCandidates[0];
-    const topMsg = topAsset ? `Top Setup: ${topAsset.sym} (${topAsset.analysis.direction} · Score: ${topAsset.score}/100 · EV: +$${topAsset.analysis.projectedProfitUSD})` : "Analyzing 10 crypto assets...";
-    return { executed: false, message: `Scanned ${candidateSymbols.length} assets. Waiting for high-conviction 80%+ profit setup. ${topMsg}` };
+    const skipMsg = `ℹ️ 5-Min Inspection for ${skippedSymbol} completed: Market in consolidation (Score: ${analysis.overallScore}/100, EV: $${analysis.projectedProfitUSD}). Skipped without forcing bad trade. Started 5-min reading on Asset #${this.currentAssetIndex + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}).`;
+    console.log(`[AutoTrader] ${skipMsg}`);
+    this.saveToStorage();
+
+    return {
+      executed: false,
+      message: skipMsg
+    };
+  }
+
+  public skipCurrentAssetInspection(): { success: boolean; message: string } {
+    const prev = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length];
+    this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+    this.inspectionStartTimeMs = Date.now();
+    const next = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
+    this.saveToStorage();
+    return {
+      success: true,
+      message: `⏭️ Skipped ${prev.tag} inspection. Started 5-min inspection on Asset #${this.currentAssetIndex + 1}/10: ${next.tag} (${next.symbol}).`
+    };
   }
 
   public async getScanDiagnostics(): Promise<ScanDiagnosticReport> {
