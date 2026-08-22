@@ -262,7 +262,13 @@ class DeltaExchangeEngine {
       }
 
       const now = Math.floor(Date.now() / 1000);
-      const start = startTime || (now - 86400); // Default: last 24 hours
+      let defaultLookback = 86400 * 2; // 2 days default
+      if (resolution === "4h" || resolution === "240") {
+        defaultLookback = 86400 * 14; // 14 days for 4h
+      } else if (resolution === "1h" || resolution === "60") {
+        defaultLookback = 86400 * 5; // 5 days for 1h
+      }
+      const start = startTime || (now - defaultLookback);
       const end = endTime || now;
 
       const queryParams = `?symbol=${encodeURIComponent(product.symbol)}&resolution=${resolution}&start=${start}&end=${end}`;
