@@ -481,43 +481,40 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         </div>
       </div>
 
-      {/* 🧠 10-MIN MARKET ANALYSIS & RE-CALIBRATION BANNER */}
-      {status.batchCycle?.isCoolingDown && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950 via-indigo-950 to-purple-950 border border-purple-500/50 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xl animate-fade-in">
+      {/* 🧠 10-MIN CONTINUOUS ROLLING AI ANALYSIS & PROGRESSIVE OPPORTUNITY SCANNER */}
+      {settings.isEnabled && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950 via-purple-950 to-indigo-950 border border-indigo-500/50 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xl animate-fade-in">
           <div className="flex items-center gap-3">
-            <span className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+            <span className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
               <Brain className="w-5 h-5 animate-pulse" />
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-purple-300">
-                  🧠 10-MIN POST-BATCH AI MARKET CALIBRATION
+                <span className="text-xs font-bold text-indigo-200">
+                  🧠 10-MIN CONTINUOUS ROLLING AI MARKET SCANNER
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 border border-purple-500/40 font-bold">
-                  Batch Complete (0 Active)
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                  Instant Execution Active
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 font-sans mt-0.5">
-                Previous trade batch finished. AI is deep-scanning 15m & 1h multi-timeframe candles across 10 crypto assets for 10 minutes to calibrate optimal setups before starting the next batch of up to 5 trades.
+                AI continuously monitors 15m, 1h & 4h candles across 10 coins. As soon as any stock confirms a <strong>BUY or SELL signal (at 1m, 2m, etc.)</strong>, it executes on-the-spot without waiting for the 10m counter!
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <div className="px-3.5 py-2 rounded-xl bg-purple-900/40 border border-purple-500/40 text-purple-200 font-bold text-xs flex items-center gap-1.5 font-mono shadow-inner">
-              <Clock className="w-4 h-4 text-purple-400 animate-spin" />
-              Filling in: {Math.floor((status.batchCycle.cooldownRemainingSeconds || 0) / 60)}m {((status.batchCycle.cooldownRemainingSeconds || 0) % 60).toString().padStart(2, "0")}s
+            <div className="px-3.5 py-2 rounded-xl bg-indigo-900/40 border border-indigo-500/40 text-indigo-200 font-bold text-xs flex items-center gap-1.5 font-mono shadow-inner">
+              <Clock className="w-4 h-4 text-indigo-400 animate-spin" />
+              10m Cycle: {Math.floor((status.batchCycle?.cooldownRemainingSeconds || 300) / 60)}m {((status.batchCycle?.cooldownRemainingSeconds || 300) % 60).toString().padStart(2, "0")}s
             </div>
             <button
-              onClick={() => {
-                deltaAutoTraderEngine.skipBatchCooldown();
-                fetch("/api/autotrader/skip-cooldown", { method: "POST" }).catch(() => {});
-                setStatus(deltaAutoTraderEngine.getStatus());
-                setNotification("⚡ 10-Min AI Analysis completed early! Filling available slots now...");
-                setTimeout(() => setNotification(null), 4000);
-              }}
-              className="px-3 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/60 border border-purple-500/40 text-purple-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+              onClick={handleManualScan}
+              disabled={isScanning}
+              className="px-3 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/60 border border-indigo-500/40 text-indigo-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
             >
-              ⚡ Fill Slots Now
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              ⚡ Scan & Trade Now
             </button>
           </div>
         </div>

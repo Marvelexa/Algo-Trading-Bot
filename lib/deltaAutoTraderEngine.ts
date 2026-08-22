@@ -1129,6 +1129,10 @@ export class DeltaAutoTraderEngine {
       botState = "COOLDOWN_ACTIVE";
     }
 
+    const rollingCycleTotalSeconds = this.batchCooldownMinutes * 60; // 600s
+    const cycleElapsedSeconds = Math.floor((now / 1000) % rollingCycleTotalSeconds);
+    const rollingCycleRemainingSeconds = rollingCycleTotalSeconds - cycleElapsedSeconds;
+
     return {
       botState,
       mode: this.settings.mode,
@@ -1148,8 +1152,8 @@ export class DeltaAutoTraderEngine {
         maxBatchTrades: this.settings.maxConcurrentPositions,
         cycleNumber: this.currentCycleNumber,
         isCoolingDown: isBatchCooling,
-        cooldownRemainingSeconds: batchCooldownRemainingSeconds,
-        cooldownTotalSeconds: this.batchCooldownMinutes * 60
+        cooldownRemainingSeconds: isBatchCooling && batchCooldownRemainingSeconds > 0 ? batchCooldownRemainingSeconds : rollingCycleRemainingSeconds,
+        cooldownTotalSeconds: rollingCycleTotalSeconds
       }
     };
   }
