@@ -810,35 +810,45 @@ export class DeltaAutoTraderEngine {
     const last1h = bars1h[bars1h.length - 1];
     const currentPrice = last1h.close || 64000;
 
-    // 1. 4-Hour Macro Trend Detection (EMA 9, 21, 50 Ribbon)
+    // 1. 4-Hour Macro Trend Detection (EMA 9, 21, 50 Ribbon + Structural Highs/Lows)
     const closes4h = bars4h.map(b => b.close);
     const ema9_4h = this.calculateEMA(closes4h, 9);
     const ema21_4h = this.calculateEMA(closes4h, 21);
     const ema50_4h = this.calculateEMA(closes4h, 50);
     const adx4h = this.calculateADX(bars4h);
 
+    const is4hLowerHighs = closes4h.length >= 4 && closes4h[closes4h.length - 1] < closes4h[closes4h.length - 4];
+    const is4hHigherLows = closes4h.length >= 4 && closes4h[closes4h.length - 1] > closes4h[closes4h.length - 4];
+
     let fourHourTrend: "BULLISH" | "BEARISH" | "SIDEWAYS" = "SIDEWAYS";
     let bullTrendPoints = 0;
     let bearTrendPoints = 0;
 
-    if (currentPrice > ema21_4h && ema9_4h >= ema21_4h) {
-      fourHourTrend = "BULLISH";
-      bullTrendPoints = 28;
-    } else if (currentPrice < ema21_4h && ema9_4h <= ema21_4h) {
+    if (currentPrice < ema21_4h && ema9_4h <= ema21_4h && is4hLowerHighs) {
+      // Strong Bearish Downtrend
       fourHourTrend = "BEARISH";
-      bearTrendPoints = 28;
-    } else if (currentPrice > ema21_4h) {
+      bearTrendPoints = 35;
+      bullTrendPoints = 0; // Strictly zero bullish points in a heavy downtrend
+    } else if (currentPrice > ema21_4h && ema9_4h >= ema21_4h && is4hHigherLows) {
+      // Strong Bullish Uptrend
       fourHourTrend = "BULLISH";
-      bullTrendPoints = 20;
-    } else if (currentPrice < ema21_4h) {
+      bullTrendPoints = 35;
+      bearTrendPoints = 0; // Strictly zero bearish points in a heavy uptrend
+    } else if (currentPrice < ema21_4h || currentPrice < ema50_4h) {
       fourHourTrend = "BEARISH";
-      bearTrendPoints = 20;
+      bearTrendPoints = 25;
+      bullTrendPoints = 5;
+    } else if (currentPrice > ema21_4h && currentPrice > ema50_4h) {
+      fourHourTrend = "BULLISH";
+      bullTrendPoints = 25;
+      bearTrendPoints = 5;
     } else {
-      bullTrendPoints = 12;
-      bearTrendPoints = 12;
+      fourHourTrend = "SIDEWAYS";
+      bullTrendPoints = 10;
+      bearTrendPoints = 10;
     }
 
-    // 2. 1-Hour Momentum & MACD / RSI Confluence
+    // 2. 1-Hour Momentum & MACD / RSI Confluence (Strict Multi-Timeframe Alignment)
     const closes1h = bars1h.map(b => b.close);
     const rsi1h = this.calculateRSI(closes1h, 14);
     const atr1h = this.calculateATR(bars1h, 14);
@@ -850,50 +860,52 @@ export class DeltaAutoTraderEngine {
     let bullMomPoints = 0;
     let bearMomPoints = 0;
 
-    // Bullish Conditions:
-    if (rsi1h >= 46 && rsi1h <= 68 && macd1h.histogram >= 0 && ema9_1h >= ema21_1h) {
-      bullMomPoints = 28;
+    const is1hBullish = rsi1h >= 48 && macd1h.histogram >= 0 && ema9_1h >= ema21_1h;
+    const is1hBearish = rsi1h <= 52 && macd1h.histogram <= 0 && ema9_1h <= ema21_1h;
+
+    if (is1hBullish) {
+      bullMomPoints = rsi1h >= 55 ? 30 : 22;
       oneHourMomentum = "BULLISH_DIVERGENCE";
-    } else if (rsi1h < 38) {
-      bullMomPoints = 25; // Deep oversold reversal
-      oneHourMomentum = "BULLISH_DIVERGENCE";
-    } else if (rsi1h > 50) {
-      bullMomPoints = 16;
+    } else if (is1hBearish) {
+      bearMomPoints = rsi1h <= 45 ? 30 : 22;
+      oneHourMomentum = "BEARISH_DIVERGENCE";
+    } else {
+      oneHourMomentum = "NEUTRAL";
+      bullMomPoints = 5;
+      bearMomPoints = 5;
     }
 
-    // Bearish Conditions:
-    if (rsi1h >= 32 && rsi1h <= 54 && macd1h.histogram <= 0 && ema9_1h <= ema21_1h) {
-      bearMomPoints = 28;
-      oneHourMomentum = "BEARISH_DIVERGENCE";
-    } else if (rsi1h > 68) {
-      bearMomPoints = 26; // Overbought exhaustion / short opportunity
-      oneHourMomentum = "BEARISH_DIVERGENCE";
-    } else if (rsi1h < 50) {
-      bearMomPoints = 16;
-    }
-
-    // 3. 15-Minute Multi-Candle Pattern Recognition
+    // 3. 15-Minute Multi-Candle Pattern Recognition & Trigger
     const bars15mUse = bars15m && bars15m.length >= 5 ? bars15m : bars1h.slice(-5);
     const patternInfo = this.detect15mCandlePattern(bars15mUse);
     const avgVol15m = bars15mUse.slice(-5).reduce((a, b) => a + (b.volume || 1), 0) / 5;
     const last15m = bars15mUse[bars15mUse.length - 1];
     const volMultiplier = (last15m.volume || 1) / (avgVol15m || 1);
-    const volBonus = volMultiplier >= 1.2 ? 22 : volMultiplier >= 0.95 ? 16 : 10;
+    const volBonus = volMultiplier >= 1.2 ? 20 : volMultiplier >= 0.95 ? 12 : 5;
 
-    let bullPatternPoints = patternInfo.signal === "BULLISH" ? patternInfo.score : 6;
-    let bearPatternPoints = patternInfo.signal === "BEARISH" ? patternInfo.score : 6;
+    let bullPatternPoints = (patternInfo.signal === "BULLISH" && is1hBullish) ? patternInfo.score : 0;
+    let bearPatternPoints = (patternInfo.signal === "BEARISH" && is1hBearish) ? patternInfo.score : 0;
 
-    // ADX Trend Strength Filter: If market is consolidating with low ADX (< 20), penalize directional points
+    // ADX Trend Strength Filter: If market is consolidating with low ADX (< 18), strictly penalize
     if (adx4h < 18) {
-      bullTrendPoints = Math.min(bullTrendPoints, 10);
-      bearTrendPoints = Math.min(bearTrendPoints, 10);
-      bullMomPoints = Math.min(bullMomPoints, 10);
-      bearMomPoints = Math.min(bearMomPoints, 10);
+      bullTrendPoints = Math.min(bullTrendPoints, 5);
+      bearTrendPoints = Math.min(bearTrendPoints, 5);
+      bullMomPoints = Math.min(bullMomPoints, 5);
+      bearMomPoints = Math.min(bearMomPoints, 5);
     }
 
-    // Total Bullish vs Bearish Confluence Scores
-    const totalBullScore = Math.min(98, Math.max(20, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus));
-    const totalBearScore = Math.min(98, Math.max(20, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus));
+    // 🎯 Strict 3-Timeframe Confluence: BUY only if 4h is BULLISH AND 1h is BULLISH AND 15m is BULLISH!
+    // SELL only if 4h is BEARISH AND 1h is BEARISH AND 15m is BEARISH!
+    const is3TimeframeBullConfluence = fourHourTrend === "BULLISH" && is1hBullish && patternInfo.signal === "BULLISH";
+    const is3TimeframeBearConfluence = fourHourTrend === "BEARISH" && is1hBearish && patternInfo.signal === "BEARISH";
+
+    const totalBullScore = is3TimeframeBullConfluence
+      ? Math.min(98, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus)
+      : Math.min(48, Math.max(10, bullTrendPoints + bullMomPoints));
+
+    const totalBearScore = is3TimeframeBearConfluence
+      ? Math.min(98, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus)
+      : Math.min(48, Math.max(10, bearTrendPoints + bearMomPoints));
 
     // 🎯 10-Minute to 1-Hour Horizon Expected Profit Forecasting (Pure True Signed EV Calculation)
     const safeAtr = (atr1h > 0 && atr1h < currentPrice * 0.15) ? atr1h : (currentPrice * 0.015);
