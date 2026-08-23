@@ -609,6 +609,163 @@ class DeltaExchangeEngine {
     }
   }
 
+  public async setBracketOrder(
+    symbol: string,
+    stopLossPrice?: number,
+    takeProfitPrice?: number
+  ): Promise<any> {
+    if (!this.apiKey || !this.apiSecret) {
+      return { success: false, message: "Delta Exchange API Key missing." };
+    }
+    try {
+      if (this.products.size === 0) {
+        await this.fetchProducts();
+      }
+      const symUpper = (symbol || "").toUpperCase().trim();
+      const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("-", "").trim();
+      let product = this.products.get(symUpper)
+        || this.products.get(`${cleanTag}USD`)
+        || this.products.get(`${cleanTag}USDT`)
+        || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || p.symbol?.toUpperCase() === `${cleanTag}USD` || p.symbol?.toUpperCase() === `${cleanTag}USDT`);
+
+      const productId = product ? product.id : 27;
+      const path = "/v2/orders/bracket";
+      const bodyData: any = {
+        product_id: productId,
+        product_symbol: product?.symbol || symUpper,
+        bracket_stop_trigger_method: "last_traded_price"
+      };
+
+      if (stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice > 0) {
+        bodyData.stop_loss_order = {
+          order_type: "market_order",
+          stop_price: stopLossPrice.toString()
+        };
+      }
+      if (takeProfitPrice && !isNaN(takeProfitPrice) && takeProfitPrice > 0) {
+        bodyData.take_profit_order = {
+          order_type: "market_order",
+          stop_price: takeProfitPrice.toString()
+        };
+      }
+
+      const bodyStr = JSON.stringify(bodyData);
+      const headers = this.getAuthHeaders("POST", path, "", bodyStr);
+
+      const response = await fetch(`https://api.india.delta.exchange${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers
+        },
+        body: bodyStr
+      });
+      const data = await response.json();
+      console.log(`[DeltaExchange] 🎯 Native Bracket Order set on ${symbol}: SL=$${stopLossPrice}, TP=$${takeProfitPrice}`, data);
+      return data;
+    } catch (err) {
+      console.error("[DeltaExchange] Bracket order error:", err);
+      return { success: false, error: err };
+    }
+  }
+
+  public async updateBracketOrder(
+    symbol: string,
+    stopLossPrice?: number,
+    takeProfitPrice?: number
+  ): Promise<any> {
+    if (!this.apiKey || !this.apiSecret) {
+      return { success: false, message: "Delta Exchange API Key missing." };
+    }
+    try {
+      if (this.products.size === 0) {
+        await this.fetchProducts();
+      }
+      const symUpper = (symbol || "").toUpperCase().trim();
+      const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("-", "").trim();
+      let product = this.products.get(symUpper)
+        || this.products.get(`${cleanTag}USD`)
+        || this.products.get(`${cleanTag}USDT`)
+        || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || p.symbol?.toUpperCase() === `${cleanTag}USD` || p.symbol?.toUpperCase() === `${cleanTag}USDT`);
+
+      const productId = product ? product.id : 27;
+      const path = "/v2/orders/bracket";
+      const bodyData: any = {
+        product_id: productId,
+        product_symbol: product?.symbol || symUpper,
+        bracket_stop_trigger_method: "last_traded_price"
+      };
+
+      if (stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice > 0) {
+        bodyData.stop_loss_order = {
+          order_type: "market_order",
+          stop_price: stopLossPrice.toString()
+        };
+      }
+      if (takeProfitPrice && !isNaN(takeProfitPrice) && takeProfitPrice > 0) {
+        bodyData.take_profit_order = {
+          order_type: "market_order",
+          stop_price: takeProfitPrice.toString()
+        };
+      }
+
+      const bodyStr = JSON.stringify(bodyData);
+      const headers = this.getAuthHeaders("PUT", path, "", bodyStr);
+
+      const response = await fetch(`https://api.india.delta.exchange${path}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers
+        },
+        body: bodyStr
+      });
+      const data = await response.json();
+      console.log(`[DeltaExchange] 🔄 Native Bracket Order modified via Modify API (PUT /v2/orders/bracket) on ${symbol}: SL=$${stopLossPrice}, TP=$${takeProfitPrice}`, data);
+      return data;
+    } catch (err) {
+      console.error("[DeltaExchange] Bracket order update error:", err);
+      return { success: false, error: err };
+    }
+  }
+
+  public async cancelBracketOrder(symbol: string): Promise<any> {
+    if (!this.apiKey || !this.apiSecret) {
+      return { success: false, message: "Delta Exchange API Key missing." };
+    }
+    try {
+      if (this.products.size === 0) {
+        await this.fetchProducts();
+      }
+      const symUpper = (symbol || "").toUpperCase().trim();
+      const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("-", "").trim();
+      let product = this.products.get(symUpper)
+        || this.products.get(`${cleanTag}USD`)
+        || this.products.get(`${cleanTag}USDT`)
+        || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || p.symbol?.toUpperCase() === `${cleanTag}USD` || p.symbol?.toUpperCase() === `${cleanTag}USDT`);
+
+      const productId = product ? product.id : 27;
+      const path = "/v2/orders/bracket";
+      const bodyData: any = {
+        product_id: productId
+      };
+      const bodyStr = JSON.stringify(bodyData);
+      const headers = this.getAuthHeaders("DELETE", path, "", bodyStr);
+
+      const response = await fetch(`https://api.india.delta.exchange${path}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers
+        },
+        body: bodyStr
+      });
+      return await response.json();
+    } catch (e) {
+      return { success: false, error: e };
+    }
+  }
+
   public async fetchLivePositions(): Promise<any[]> {
     if (!this.apiKey || !this.apiSecret) {
       return [];

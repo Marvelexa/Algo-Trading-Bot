@@ -1147,6 +1147,9 @@ export class DeltaAutoTraderEngine {
         // 🎯 DYNAMIC STEP-UP TARGET RATCHET & MULTI-TIER PROFIT LADDER ENGINE
         // (e.g. Goal 1 Achieved -> Ratchet Target to 120 -> 140+ with Trailing SL Locked Behind Price)
         // ────────────────────────────────────────────
+        const prevSL = pos.stopLossPrice;
+        const prevTP = pos.targetPrice;
+
         const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
         if (isTPHit) {
           pos.ratchetTier = (pos.ratchetTier || 0) + 1;
@@ -1194,6 +1197,13 @@ export class DeltaAutoTraderEngine {
             pos.trailingStopActive = true;
             pos.lockedProfitUSD = Number(dynamicLockUSD.toFixed(2));
           }
+        }
+
+        // 🔄 Live Exchange Bracket Synchronization: If SL or TP moved, modify the active bracket order on Delta Exchange via PUT /v2/orders/bracket
+        if (this.settings.mode === "LIVE" && (pos.stopLossPrice !== prevSL || pos.targetPrice !== prevTP)) {
+          deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(err => {
+            console.warn(`[DeltaAutoTrader] Error updating live bracket order on ${pos.symbol}:`, err);
+          });
         }
 
         // Exit Check 2: Dynamic Peak Retracement Exit (If price retraces >= 35% from highest peak profit)
@@ -1301,8 +1311,9 @@ export class DeltaAutoTraderEngine {
     this.openPositions = this.openPositions.filter(p => p.id !== positionId);
     this.closedRecords.unshift(record);
 
-    // If LIVE mode, trigger exit order on Delta Exchange API to close real market position
+    // If LIVE mode, cancel pending bracket order first and trigger exit order on Delta Exchange API to close real market position
     if (this.settings.mode === "LIVE") {
+      deltaExchangeEngine.cancelBracketOrder(pos.symbol).catch(() => {});
       deltaExchangeEngine.placeOrder(
         pos.symbol,
         pos.type === "BUY" ? "sell" : "buy",
