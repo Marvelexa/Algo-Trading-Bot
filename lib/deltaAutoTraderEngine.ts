@@ -1060,14 +1060,20 @@ export class DeltaAutoTraderEngine {
     this.openPositions.unshift(position);
     this.tradesTakenTodayCount++;
     this.saveToStorage();
-    // If LIVE mode, trigger execution on Delta Exchange API
+    // If LIVE mode, trigger execution on Delta Exchange API and sync exact exchange fill price
     if (this.settings.mode === "LIVE") {
       deltaExchangeEngine.placeOrder(
         symbol,
         position.type === "BUY" ? "buy" : "sell",
-        quantity,
-        price
-      ).catch(err => console.warn("[DeltaAutoTrader] Live execution warning:", err));
+        quantity
+      ).then(orderRes => {
+        const fillPrice = parseFloat(orderRes?.result?.average_fill_price || orderRes?.result?.limit_price);
+        if (fillPrice && !isNaN(fillPrice) && fillPrice > 0) {
+          position.entryPrice = fillPrice;
+          this.saveToStorage();
+          console.log(`[DeltaAutoTrader] 🎯 Synced exact exchange fill price for ${symbol}: $${fillPrice}`);
+        }
+      }).catch(err => console.warn("[DeltaAutoTrader] Live execution warning:", err));
     }
 
     return {
