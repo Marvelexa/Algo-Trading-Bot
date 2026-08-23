@@ -664,7 +664,7 @@ async function startServer() {
 
   app.post("/api/autotrader/scan", async (req, res) => {
     try {
-      const result = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+      const result = await deltaAutoTraderEngine.scanAndExecuteNextTrade(true);
       return res.json({ ...result, state: deltaAutoTraderEngine.getLiveFullState() });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
