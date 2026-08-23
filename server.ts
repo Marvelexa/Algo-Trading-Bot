@@ -700,6 +700,13 @@ async function startServer() {
   // ⚡ 0. High-Frequency Real-Time Market Ticker Stream & Live P&L Updater (every 2.5s)
   try {
     deltaExchangeEngine.connectWebSocket();
+    // Hook direct realtime streaming ticks for sub-second P&L updates
+    brokerTickEngine.on("tick", (tick: any) => {
+      if (tick && tick.symbol && tick.price > 0) {
+        const cleanSym = tick.symbol.toUpperCase().replace("-", "").trim();
+        deltaAutoTraderEngine.updateLivePriceAndCheckExits(cleanSym, tick.price);
+      }
+    });
   } catch (e) {}
 
   setInterval(async () => {
@@ -710,8 +717,12 @@ async function startServer() {
       const fullState = deltaAutoTraderEngine.getLiveFullState();
       if (fullState.openPositions.length > 0) {
         for (const pos of fullState.openPositions) {
-          const livePriceObj = deltaExchangeEngine.getLivePrice(pos.symbol);
-          const currentPrice = livePriceObj?.usd || 0;
+          const cleanTag = pos.symbol.toUpperCase().replace("USDT", "").replace("USD", "").replace("-", "").trim();
+          const currentPrice = deltaAutoTraderEngine.getLivePriceUSD(pos.symbol)
+            || deltaExchangeEngine.getLivePrice(pos.symbol)?.usd
+            || brokerTickEngine.getLastKnownPrice(pos.symbol)
+            || brokerTickEngine.getLastKnownPrice(`${cleanTag}-USD`)
+            || brokerTickEngine.getLastKnownPrice(`${cleanTag}USD`);
           if (currentPrice > 0) {
             deltaAutoTraderEngine.updateLivePriceAndCheckExits(pos.symbol, currentPrice);
           }
@@ -731,8 +742,12 @@ async function startServer() {
       if (fullState.settings.isEnabled && fullState.openPositions.length > 0) {
         const trackedSymbols = CURATED_AUTO_TRADER_ASSETS.map(a => a.symbol);
         for (const sym of trackedSymbols) {
-          const livePriceObj = deltaExchangeEngine.getLivePrice(sym);
-          const currentPrice = livePriceObj?.usd || 0;
+          const cleanTag = sym.toUpperCase().replace("USDT", "").replace("USD", "").replace("-", "").trim();
+          const currentPrice = deltaAutoTraderEngine.getLivePriceUSD(sym)
+            || deltaExchangeEngine.getLivePrice(sym)?.usd
+            || brokerTickEngine.getLastKnownPrice(sym)
+            || brokerTickEngine.getLastKnownPrice(`${cleanTag}-USD`)
+            || brokerTickEngine.getLastKnownPrice(`${cleanTag}USD`);
           if (currentPrice > 0) {
             deltaAutoTraderEngine.updateLivePriceAndCheckExits(sym, currentPrice);
           }

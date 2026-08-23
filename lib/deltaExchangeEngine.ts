@@ -237,15 +237,23 @@ class DeltaExchangeEngine {
       const json: any = await res.json();
       const tickers: DeltaTicker[] = json?.result || [];
       for (const t of tickers) {
-        if (t.symbol && t.mark_price) {
+        if (t.symbol && (t.mark_price || t.close)) {
           const priceUSD = parseFloat(t.mark_price) || parseFloat(t.close) || 0;
-          const priceINR = Number((priceUSD * this.usdInrRate).toFixed(2));
-          this.lastPrices.set(t.symbol.toUpperCase(), {
-            usd: priceUSD,
-            inr: priceINR,
-            volume: t.volume || 0,
-            timestamp: Date.now()
-          });
+          if (priceUSD > 0) {
+            const priceINR = Number((priceUSD * this.usdInrRate).toFixed(2));
+            const symUpper = t.symbol.toUpperCase().trim();
+            const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("_", "").replace("-", "").trim();
+            const rec = {
+              usd: priceUSD,
+              inr: priceINR,
+              volume: t.volume || 0,
+              timestamp: Date.now()
+            };
+            this.lastPrices.set(symUpper, rec);
+            this.lastPrices.set(`${cleanTag}USD`, rec);
+            this.lastPrices.set(`${cleanTag}USDT`, rec);
+            this.lastPrices.set(cleanTag, rec);
+          }
         }
       }
       return tickers;
@@ -457,18 +465,25 @@ class DeltaExchangeEngine {
       const volume = parseFloat(msg.volume || msg.payload?.volume || "0");
 
       if (symbol && priceUSD > 0) {
+        const symUpper = symbol.toUpperCase().trim();
+        const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("_", "").replace("-", "").trim();
         const priceINR = Number((priceUSD * this.usdInrRate).toFixed(2));
-        this.lastPrices.set(symbol.toUpperCase(), {
+        const record = {
           usd: priceUSD,
           inr: priceINR,
           volume,
           timestamp: Date.now()
-        });
+        };
+        this.lastPrices.set(symUpper, record);
+        this.lastPrices.set(`${cleanTag}USD`, record);
+        this.lastPrices.set(`${cleanTag}USDT`, record);
+        this.lastPrices.set(cleanTag, record);
 
         // Notify all tick listeners
         for (const listener of this.tickListeners) {
           try {
             listener(symbol, priceINR, priceUSD, volume);
+            listener(`${cleanTag}USD`, priceINR, priceUSD, volume);
           } catch (e) {}
         }
       }
@@ -505,7 +520,14 @@ class DeltaExchangeEngine {
   // Price Accessors
   // ────────────────────────────────────────────
   public getLivePrice(symbol: string): { usd: number; inr: number; volume: number; timestamp: number } | null {
-    return this.lastPrices.get(symbol.toUpperCase()) || null;
+    if (!symbol) return null;
+    const symUpper = symbol.toUpperCase().trim();
+    const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("_", "").replace("-", "").trim();
+    return this.lastPrices.get(symUpper)
+      || this.lastPrices.get(`${cleanTag}USD`)
+      || this.lastPrices.get(`${cleanTag}USDT`)
+      || this.lastPrices.get(cleanTag)
+      || null;
   }
 
   public getAllPrices(): Map<string, { usd: number; inr: number; volume: number; timestamp: number }> {

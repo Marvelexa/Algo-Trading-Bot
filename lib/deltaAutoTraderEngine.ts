@@ -560,10 +560,28 @@ export class DeltaAutoTraderEngine {
   }
 
   public getLivePriceUSD(symbol: string): number {
-    const livePriceObj = deltaExchangeEngine.getLivePrice(symbol);
+    if (!symbol) return 1.0;
+    const symUpper = symbol.toUpperCase().trim();
+    const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("_", "").replace("-", "").trim();
+
+    // 1. Check Delta Exchange Engine cache (with alias resolution)
+    const livePriceObj = deltaExchangeEngine.getLivePrice(symUpper)
+      || deltaExchangeEngine.getLivePrice(`${cleanTag}USD`)
+      || deltaExchangeEngine.getLivePrice(`${cleanTag}USDT`)
+      || deltaExchangeEngine.getLivePrice(cleanTag);
     if (livePriceObj?.usd && livePriceObj.usd > 0) {
       return livePriceObj.usd;
     }
+
+    // 2. Check local latestPrices map
+    const local = this.latestPrices.get(symUpper)
+      || this.latestPrices.get(`${cleanTag}USD`)
+      || this.latestPrices.get(`${cleanTag}USDT`)
+      || this.latestPrices.get(cleanTag);
+    if (local && local > 0) {
+      return local;
+    }
+
     return this.getAssetBaselinePrice(symbol);
   }
 
