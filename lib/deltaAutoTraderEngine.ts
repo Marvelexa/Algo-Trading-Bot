@@ -1256,6 +1256,15 @@ export class DeltaAutoTraderEngine {
     this.openPositions = this.openPositions.filter(p => p.id !== positionId);
     this.closedRecords.unshift(record);
 
+    // If LIVE mode, trigger exit order on Delta Exchange API to close real market position
+    if (this.settings.mode === "LIVE") {
+      deltaExchangeEngine.placeOrder(
+        pos.symbol,
+        pos.type === "BUY" ? "sell" : "buy",
+        pos.quantity
+      ).catch(err => console.warn("[DeltaAutoTrader] Live exit execution warning:", err));
+    }
+
     const now = Date.now();
     // 🎯 If slots were full and now a slot freed up, make sure inspection timer is active to read the next coin!
     if (this.openPositions.length < this.settings.maxConcurrentPositions && this.inspectionStartTimeMs === 0) {
