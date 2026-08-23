@@ -386,9 +386,12 @@ export class DeltaAutoTraderEngine {
     if (!parsed) return;
     if (parsed.settings) {
       this.settings = { ...this.settings, ...parsed.settings };
+      this.settings.initialCapitalUSD = 195.80; // ₹16,350 INR Base Capital
+      this.settings.currentCapitalUSD = (typeof parsed.settings.currentCapitalUSD === "number" && parsed.settings.currentCapitalUSD > 50) ? parsed.settings.currentCapitalUSD : 195.80;
+      this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
       this.settings.maxConcurrentPositions = 5;
-      this.settings.minConfidenceThreshold = 60;
+      this.settings.minConfidenceThreshold = 55;
       this.settings.inspectionWindowMinutes = 5;
     }
     if (Array.isArray(parsed.openPositions)) {
