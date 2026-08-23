@@ -1496,14 +1496,13 @@ export class DeltaAutoTraderEngine {
     const expectedValuePerTradeUSD = Number(((winProb * avgWinUSD) - (lossProb * avgLossUSD) - FEE_BUFFER_PER_TRADE_USD).toFixed(2));
     const expectedValuePerTradeINR = Number((expectedValuePerTradeUSD * 83.5).toFixed(1));
 
-    // Daily Circuit Breaker Check (Hard 3 consecutive losses OR ₹1,200 loss cap OR max drawdown)
-    const circuitBreakerActive = this.consecutiveLossCount >= MAX_CONSECUTIVE_LOSSES_ALLOWED ||
-      todayPnLUSD <= -MAX_DAILY_LOSS_CAP_USD ||
-      totalFloatingDrawdownPct <= -Math.abs(this.settings.maxDailyLossPct) ||
-      todayPnLPct <= -Math.abs(this.settings.maxDailyLossPct);
+    // Daily Circuit Breaker Check (Hard 3 consecutive losses OR Realized Daily Loss Cap ₹1,200 / $14.40)
+    const isRealizedLossCapHit = todayPnLUSD <= -MAX_DAILY_LOSS_CAP_USD || todayPnLPct <= -Math.abs(this.settings.maxDailyLossPct);
+    const isConsecutiveLossCapHit = this.consecutiveLossCount >= MAX_CONSECUTIVE_LOSSES_ALLOWED;
+    const circuitBreakerActive = isRealizedLossCapHit || isConsecutiveLossCapHit;
 
     if (circuitBreakerActive && this.openPositions.length > 0) {
-      console.warn(`[DeltaAutoTrader] 🛑 HARD LOSS CIRCUIT BREAKER TRIPPED (Losses: ${this.consecutiveLossCount}/3, Day PnL: $${todayPnLUSD}). Emergency closing all open positions.`);
+      console.warn(`[DeltaAutoTrader] 🛑 HARD REALIZED LOSS CIRCUIT BREAKER TRIPPED (Losses: ${this.consecutiveLossCount}/3, Day Realized PnL: $${todayPnLUSD.toFixed(2)}). Emergency closing all open positions.`);
       this.closeAllOpenPositions("CIRCUIT_BREAKER_TOTAL_DRAWDOWN_LIMIT");
     }
 
