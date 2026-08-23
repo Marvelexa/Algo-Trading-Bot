@@ -812,37 +812,35 @@ export class DeltaAutoTraderEngine {
     const last1h = bars1h[bars1h.length - 1];
     const currentPrice = last1h.close || 64000;
 
-    // 1. 4-Hour Macro Trend Detection (EMA 9, 21, 50 Ribbon + Structural Highs/Lows)
+    // 1. 4-Hour Macro Trend Detection (EMA 9 & 21 Alignment + Price Action)
     const closes4h = bars4h.map(b => b.close);
     const ema9_4h = this.calculateEMA(closes4h, 9);
     const ema21_4h = this.calculateEMA(closes4h, 21);
     const ema50_4h = this.calculateEMA(closes4h, 50);
     const adx4h = this.calculateADX(bars4h);
 
-    const is4hLowerHighs = closes4h.length >= 4 && closes4h[closes4h.length - 1] < closes4h[closes4h.length - 4];
-    const is4hHigherLows = closes4h.length >= 4 && closes4h[closes4h.length - 1] > closes4h[closes4h.length - 4];
+    const is4hLowerHighs = closes4h.length >= 4 && closes4h[closes4h.length - 1] < closes4h[closes4h.length - 3];
+    const is4hHigherLows = closes4h.length >= 4 && closes4h[closes4h.length - 1] > closes4h[closes4h.length - 3];
 
     let fourHourTrend: "BULLISH" | "BEARISH" | "SIDEWAYS" = "SIDEWAYS";
     let bullTrendPoints = 0;
     let bearTrendPoints = 0;
 
-    if (currentPrice < ema21_4h && ema9_4h <= ema21_4h && is4hLowerHighs) {
-      // Strong Bearish Downtrend
+    if (currentPrice < ema21_4h || (ema9_4h <= ema21_4h && is4hLowerHighs)) {
       fourHourTrend = "BEARISH";
-      bearTrendPoints = 35;
-      bullTrendPoints = 0; // Strictly zero bullish points in a heavy downtrend
+      bearTrendPoints = 30;
+      bullTrendPoints = 0;
     } else if (currentPrice > ema21_4h && ema9_4h >= ema21_4h && is4hHigherLows) {
-      // Strong Bullish Uptrend
       fourHourTrend = "BULLISH";
-      bullTrendPoints = 35;
-      bearTrendPoints = 0; // Strictly zero bearish points in a heavy uptrend
-    } else if (currentPrice < ema21_4h || currentPrice < ema50_4h) {
+      bullTrendPoints = 30;
+      bearTrendPoints = 0;
+    } else if (currentPrice < ema9_4h) {
       fourHourTrend = "BEARISH";
-      bearTrendPoints = 25;
+      bearTrendPoints = 20;
       bullTrendPoints = 5;
-    } else if (currentPrice > ema21_4h && currentPrice > ema50_4h) {
+    } else if (currentPrice > ema9_4h) {
       fourHourTrend = "BULLISH";
-      bullTrendPoints = 25;
+      bullTrendPoints = 20;
       bearTrendPoints = 5;
     } else {
       fourHourTrend = "SIDEWAYS";
@@ -850,7 +848,7 @@ export class DeltaAutoTraderEngine {
       bearTrendPoints = 10;
     }
 
-    // 2. 1-Hour Momentum & MACD / RSI Confluence (Strict Multi-Timeframe Alignment)
+    // 2. 1-Hour Momentum & MACD / RSI Confluence (Symmetric Buy & Sell Engine)
     const closes1h = bars1h.map(b => b.close);
     const rsi1h = this.calculateRSI(closes1h, 14);
     const atr1h = this.calculateATR(bars1h, 14);
@@ -862,14 +860,16 @@ export class DeltaAutoTraderEngine {
     let bullMomPoints = 0;
     let bearMomPoints = 0;
 
-    const is1hBullish = rsi1h >= 48 && macd1h.histogram >= 0 && ema9_1h >= ema21_1h;
-    const is1hBearish = rsi1h <= 52 && macd1h.histogram <= 0 && ema9_1h <= ema21_1h;
+    const is1hBullish = currentPrice > ema21_1h && ema9_1h >= ema21_1h && rsi1h >= 48 && macd1h.histogram >= -0.05;
+    const is1hBearish = currentPrice < ema21_1h && ema9_1h <= ema21_1h && rsi1h <= 52 && macd1h.histogram <= 0.05;
 
     if (is1hBullish) {
-      bullMomPoints = rsi1h >= 55 ? 30 : 22;
+      bullMomPoints = rsi1h >= 54 ? 30 : 22;
+      bearMomPoints = 0;
       oneHourMomentum = "BULLISH_DIVERGENCE";
     } else if (is1hBearish) {
-      bearMomPoints = rsi1h <= 45 ? 30 : 22;
+      bearMomPoints = rsi1h <= 46 ? 30 : 22;
+      bullMomPoints = 0;
       oneHourMomentum = "BEARISH_DIVERGENCE";
     } else {
       oneHourMomentum = "NEUTRAL";
@@ -885,27 +885,26 @@ export class DeltaAutoTraderEngine {
     const volMultiplier = (last15m.volume || 1) / (avgVol15m || 1);
     const volBonus = volMultiplier >= 1.2 ? 20 : volMultiplier >= 0.95 ? 12 : 5;
 
-    let bullPatternPoints = (patternInfo.signal === "BULLISH" && is1hBullish) ? patternInfo.score : 0;
-    let bearPatternPoints = (patternInfo.signal === "BEARISH" && is1hBearish) ? patternInfo.score : 0;
+    let bullPatternPoints = patternInfo.signal === "BULLISH" ? patternInfo.score : (is1hBullish && last15m.close > last15m.open ? 15 : 0);
+    let bearPatternPoints = patternInfo.signal === "BEARISH" ? patternInfo.score : (is1hBearish && last15m.close < last15m.open ? 15 : 0);
 
-    // ADX Trend Strength Filter: If market is consolidating with low ADX (< 18), strictly penalize
-    if (adx4h < 18) {
+    // ADX Trend Strength Filter: If market is in low-volatility dead chop (< 16), penalize
+    if (adx4h < 16) {
       bullTrendPoints = Math.min(bullTrendPoints, 5);
       bearTrendPoints = Math.min(bearTrendPoints, 5);
       bullMomPoints = Math.min(bullMomPoints, 5);
       bearMomPoints = Math.min(bearMomPoints, 5);
     }
 
-    // 🎯 Strict 3-Timeframe Confluence: BUY only if 4h is BULLISH AND 1h is BULLISH AND 15m is BULLISH!
-    // SELL only if 4h is BEARISH AND 1h is BEARISH AND 15m is BEARISH!
-    const is3TimeframeBullConfluence = fourHourTrend === "BULLISH" && is1hBullish && patternInfo.signal === "BULLISH";
-    const is3TimeframeBearConfluence = fourHourTrend === "BEARISH" && is1hBearish && patternInfo.signal === "BEARISH";
+    // 🎯 Symmetric Confluence: BUY when 1h + 15m align Bullish; SELL when 1h + 15m align Bearish!
+    const isBullConfluence = (fourHourTrend !== "BEARISH") && is1hBullish && (patternInfo.signal === "BULLISH" || bullPatternPoints >= 15);
+    const isBearConfluence = (fourHourTrend !== "BULLISH") && is1hBearish && (patternInfo.signal === "BEARISH" || bearPatternPoints >= 15);
 
-    const totalBullScore = is3TimeframeBullConfluence
+    const totalBullScore = isBullConfluence
       ? Math.min(98, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus)
       : Math.min(48, Math.max(10, bullTrendPoints + bullMomPoints));
 
-    const totalBearScore = is3TimeframeBearConfluence
+    const totalBearScore = isBearConfluence
       ? Math.min(98, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus)
       : Math.min(48, Math.max(10, bearTrendPoints + bearMomPoints));
 
