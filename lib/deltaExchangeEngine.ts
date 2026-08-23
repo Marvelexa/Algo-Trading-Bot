@@ -79,11 +79,17 @@ class DeltaExchangeEngine {
   ];
 
   public getApiKey(): string {
-    return this.apiKey || (typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_KEY || process.env?.VITE_DELTA_EXCHANGE_API_KEY || "") : "");
+    if (!this.apiKey && typeof process !== "undefined") {
+      this.apiKey = process.env?.DELTA_EXCHANGE_API_KEY || process.env?.VITE_DELTA_EXCHANGE_API_KEY || "";
+    }
+    return this.apiKey || "";
   }
 
   public getApiSecret(): string {
-    return this.apiSecret || (typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_SECRET || process.env?.VITE_DELTA_EXCHANGE_API_SECRET || "") : "");
+    if (!this.apiSecret && typeof process !== "undefined") {
+      this.apiSecret = process.env?.DELTA_EXCHANGE_API_SECRET || process.env?.VITE_DELTA_EXCHANGE_API_SECRET || "";
+    }
+    return this.apiSecret || "";
   }
 
   constructor() {

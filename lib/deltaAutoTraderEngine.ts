@@ -243,8 +243,8 @@ const DEFAULT_CAPITAL_USD = 195.80; // ₹16,350 INR ($195.80 USD)
 
 export class DeltaAutoTraderEngine {
   private settings: AutoTraderSettings = {
-    mode: "PAPER",
-    isEnabled: false,
+    mode: "LIVE",
+    isEnabled: true,
     initialCapitalUSD: DEFAULT_CAPITAL_USD,
     currentCapitalUSD: DEFAULT_CAPITAL_USD,
     riskPerTradePct: 2.0,
