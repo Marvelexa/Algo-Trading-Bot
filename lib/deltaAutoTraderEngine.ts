@@ -1876,17 +1876,13 @@ export class DeltaAutoTraderEngine {
       ? livePrice
       : (candleClose > 0 && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
 
-    // If coin is in dead sideways chop (Score < 50), advance quickly after 20s to find active trending coins
-    const isDeadChop = analysis.overallScore < 50 && analysis.direction === "NEUTRAL";
-    const minDwellTimeMs = isDeadChop ? 20_000 : inspectionWindowMs;
-
-    // 2. Observation Window in Progress:
-    if (inspectionElapsedMs < minDwellTimeMs) {
+    // 2. Strict 5-Minute Observation Window: NO trade is executed before the full timer countdown completes (0m 00s)!
+    if (!forceImmediate && inspectionElapsedMs < inspectionWindowMs) {
       const mins = Math.floor(inspectionRemainingSec / 60);
       const secs = inspectionRemainingSec % 60;
       return {
         executed: false,
-        message: `⏳ Asset Reading in Progress: [Asset #${safeIndex + 1}/10: ${currentAsset.tag} (${sym})] (${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} active). Score: ${analysis.overallScore}/100 [${analysis.direction}] (${mins}m ${secs}s remaining).`
+        message: `⏳ 5-Min Asset Reading in Progress: [Asset #${safeIndex + 1}/10: ${currentAsset.tag} (${sym})] (${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} active). Score: ${analysis.overallScore}/100 [${analysis.direction}] (${mins}m ${secs}s remaining).`
       };
     }
 
