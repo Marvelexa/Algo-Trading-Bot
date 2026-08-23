@@ -692,9 +692,10 @@ async function startServer() {
   });
 
   // ============================================================================
-  // 🤖 24/7 CLOUD AUTONOMOUS SWING DAEMON WITH IN-PROCESS MUTEX EXECUTION LOCK
+  // 🤖 24/7 CLOUD AUTONOMOUS SWING DAEMON WITH INDEPENDENT MUTEX EXECUTION LOCKS
   // ============================================================================
-  let isDaemonExecutionLocked = false;
+  let isExitMonitoringLocked = false;
+  let isEntryScanLocked = false;
 
   // ⚡ 0. High-Frequency Real-Time Market Ticker Stream & Live P&L Updater (every 2.5s)
   try {
@@ -723,8 +724,8 @@ async function startServer() {
 
   // 1. Exit & Trailing Stop Monitoring Daemon (every 30s for v3 swing horizon)
   setInterval(async () => {
-    if (isDaemonExecutionLocked) return;
-    isDaemonExecutionLocked = true;
+    if (isExitMonitoringLocked) return;
+    isExitMonitoringLocked = true;
     try {
       const fullState = deltaAutoTraderEngine.getLiveFullState();
       if (fullState.settings.isEnabled && fullState.openPositions.length > 0) {
@@ -740,23 +741,26 @@ async function startServer() {
     } catch (e) {
       console.warn("[DeltaDaemon] ⚠️ Exit monitoring tick error:", e);
     } finally {
-      isDaemonExecutionLocked = false;
+      isExitMonitoringLocked = false;
     }
   }, EXIT_MONITORING_INTERVAL_MS);
 
-  // 2. New Entry Scanning Daemon (every 2m for v3 swing horizon)
+  // 2. 24/7 New Entry Scanning Daemon (evaluates 5-min queue every 10s continuously)
   setInterval(async () => {
-    if (isDaemonExecutionLocked) return;
-    isDaemonExecutionLocked = true;
+    if (isEntryScanLocked) return;
+    isEntryScanLocked = true;
     try {
       const fullState = deltaAutoTraderEngine.getLiveFullState();
       if (fullState.settings.isEnabled && fullState.openPositions.length < fullState.settings.maxConcurrentPositions) {
-        await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+        const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
+        if (res && res.executed) {
+          console.log(`[DeltaDaemon] 🚀 AUTONOMOUS TRADE PLACED: ${res.message}`);
+        }
       }
     } catch (e) {
       console.warn("[DeltaDaemon] ⚠️ Entry scan tick error:", e);
     } finally {
-      isDaemonExecutionLocked = false;
+      isEntryScanLocked = false;
     }
   }, NEW_ENTRY_SCAN_INTERVAL_MS);
 
