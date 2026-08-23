@@ -928,10 +928,10 @@ export class DeltaAutoTraderEngine {
     let projectedProfitUSD = 0;
     let profitProbabilityPct = 50;
 
-    const minEntryThreshold = this.settings.minConfidenceThreshold || 60;
+    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 55;
 
-    // 🛡️ Strict Chop Guard: If ADX < 20 or score is below threshold, strictly set NEUTRAL & SKIP
-    if (adx4h < 20 || (totalBullScore < minEntryThreshold && totalBearScore < minEntryThreshold)) {
+    // 🛡️ Strict Chop Guard: If ADX < 14 or score is below threshold, strictly set NEUTRAL & SKIP
+    if (adx4h < 14 || (totalBullScore < minEntryThreshold && totalBearScore < minEntryThreshold)) {
       direction = "NEUTRAL";
       overallScore = Math.max(totalBullScore, totalBearScore);
       projectedProfitUSD = 0;
@@ -953,7 +953,7 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = overallScore;
     }
 
-    const isEntryValid = direction !== "NEUTRAL" && projectedProfitUSD > 0 && overallScore >= minEntryThreshold && adx4h >= 20;
+    const isEntryValid = direction !== "NEUTRAL" && projectedProfitUSD > 0 && overallScore >= minEntryThreshold && adx4h >= 14;
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
     const reasoning = isEntryValid
