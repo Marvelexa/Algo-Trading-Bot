@@ -471,7 +471,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-white text-sm">Growth Target Range: ₹16,350 ➔ ₹18,000 INR</span>
               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                +₹1,650 Target Goal (+10.1%)
+                +₹1,650 Daily Goal (+10.1% · Just 2 Wins)
               </span>
             </div>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
@@ -571,12 +571,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
           <span className="text-[10px] text-slate-400 block uppercase font-mono">Slot Distribution</span>
           <strong className="text-indigo-300 text-sm font-mono">{positions.length} / {settings.maxConcurrentPositions || 5} Slots Active</strong>
-          <span className="text-[9px] text-indigo-400/80 block font-mono">5x–8x Leverage Allocation</span>
+          <span className="text-[9px] text-indigo-400/80 block font-mono">5x–8x Dynamic Sizing</span>
         </div>
         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
           <span className="text-[10px] text-slate-400 block uppercase font-mono">Target Gain / Slot</span>
-          <strong className="text-emerald-400 text-sm font-mono">+₹525 – +₹650 INR</strong>
-          <span className="text-[9px] text-amber-300 block font-mono">(+$6.28 to $7.80 USD)</span>
+          <strong className="text-emerald-400 text-sm font-mono">+₹800 – +₹900 INR</strong>
+          <span className="text-[9px] text-amber-300 block font-mono">(+$9.60 to $10.80 USD · +2.0R)</span>
         </div>
       </div>
 

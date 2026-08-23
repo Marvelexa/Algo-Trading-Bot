@@ -22,7 +22,7 @@ import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
 
 export const EXIT_MONITORING_INTERVAL_MS = 30_000; // 30s exit/trailing stop check for v3
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10_000; // 10s responsive evaluation for 5-min round-robin
-export const V3_MAX_HOLD_TIME_MS = 2 * 60 * 60 * 1000; // 2 Hours Fast Intraday Horizon Window
+export const V3_MAX_HOLD_TIME_MS = 75 * 60 * 1000; // 75 Minutes Fast Intraday Horizon Window
 
 export interface OHLCVBar {
   time: number;
@@ -979,9 +979,9 @@ export class DeltaAutoTraderEngine {
       : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
     const safeAtr = (analysis.atr1h > 0) ? analysis.atr1h : (price * 0.015);
 
-    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:1.6 Risk to Reward):
+    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:2.0 Risk to Reward):
     const slDistance = safeAtr * 1.0;
-    const tpDistance = safeAtr * 1.6;
+    const tpDistance = safeAtr * 2.0;
 
     const stopLossPrice = this.roundPrice(analysis.direction === "BUY" ? price - slDistance : price + slDistance);
     const targetPrice = this.roundPrice(analysis.direction === "BUY" ? price + tpDistance : price - tpDistance);
@@ -1012,7 +1012,7 @@ export class DeltaAutoTraderEngine {
       timeframeAlignment: "15m + 1h + 4h Aligned",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
       entryTimeMs: now,
-      maxHoldTimeExpiry: now + (4 * 60 * 60 * 1000), // 4 Hour Horizon Window
+      maxHoldTimeExpiry: now + (75 * 60 * 1000), // 75 Minute Horizon Window
       subScores: analysis.subScores,
       adxValue: analysis.adxValue,
       rsiValue: analysis.rsi1h,
@@ -1437,9 +1437,10 @@ export class DeltaAutoTraderEngine {
     } catch (e) {}
     const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : this.settings.currentCapitalUSD;
     
-    // 🎯 Target: ₹1,000 INR / Day Goal (₹15k ➔ ₹16k INR)
-    // Risk 2.0% per trade ($3.60 on $180 balance) -> Target (+1.6R) = +$5.76 USD (~₹480 INR) per winning trade!
-    const effectiveRiskPct = Math.max(1.8, this.settings.riskPerTradePct || 2.0);
+    // 🎯 Target: ₹1,650 INR / Day Goal (₹16,350 ➔ ₹18,000 INR)
+    // Risk 2.4% per trade ($4.70 on $195.80 balance) -> Target (+2.0R) = +$9.40 to +$10.50 USD (+₹800 to +₹900 INR) per winning trade!
+    // Just 2 wins achieve the daily target!
+    const effectiveRiskPct = Math.max(2.2, this.settings.riskPerTradePct || 2.4);
     const dollarRiskAllowed = accountEquity * (effectiveRiskPct / 100);
     
     const sym = symbol.toUpperCase().trim();

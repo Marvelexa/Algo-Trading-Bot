@@ -78,7 +78,7 @@ async function runTestSuite() {
   console.log("\n2. v3 TUNABLE DAEMON INTERVALS");
   assert(EXIT_MONITORING_INTERVAL_MS === 30000, "Exit monitoring interval configured to 30s", `EXIT_MONITORING_INTERVAL_MS = ${EXIT_MONITORING_INTERVAL_MS}ms`);
   assert(NEW_ENTRY_SCAN_INTERVAL_MS === 10000, "Responsive 5-min timer evaluation interval configured to 10s", `NEW_ENTRY_SCAN_INTERVAL_MS = ${NEW_ENTRY_SCAN_INTERVAL_MS}ms`);
-  assert(V3_MAX_HOLD_TIME_MS === 7200000, "Max hold window configured to 2h", `V3_MAX_HOLD_TIME_MS = ${V3_MAX_HOLD_TIME_MS}ms`);
+  assert(V3_MAX_HOLD_TIME_MS === 4500000, "Max hold window configured to 75m", `V3_MAX_HOLD_TIME_MS = ${V3_MAX_HOLD_TIME_MS}ms`);
 
   // ─────────────────────────────────────────────────────────────
   // 3. Mathematical Signal Integrity: Real Wilder's ADX
