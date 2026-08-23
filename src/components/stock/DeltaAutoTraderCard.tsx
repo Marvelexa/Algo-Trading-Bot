@@ -936,7 +936,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-indigo-500/20 text-[11px] font-mono">
                           <span className="text-amber-300 flex items-center gap-1.5 font-bold">
                             <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            Active Hold: {diffHours > 0 ? `${diffHours}h ${diffMins % 60}m` : `${diffMins}m`} · Fast Intraday (Max 75m)
+                            Active Hold: {diffHours > 0 ? `${diffHours}h ${diffMins % 60}m` : `${diffMins}m`} · Swing Trend Horizon (2h – 24h)
                           </span>
                           <span className="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
                             🎯 Potential Gain on Target Hit: +${targetGainUSD.toFixed(2)} USD (+₹{targetGainINR.toFixed(0)} INR)

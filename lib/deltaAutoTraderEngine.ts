@@ -20,9 +20,9 @@
 
 import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
 
-export const EXIT_MONITORING_INTERVAL_MS = 30_000; // 30s exit/trailing stop check for v3
-export const NEW_ENTRY_SCAN_INTERVAL_MS = 10_000; // 10s responsive evaluation for 5-min round-robin
-export const V3_MAX_HOLD_TIME_MS = 75 * 60 * 1000; // 75 Minutes Fast Intraday Horizon Window
+export const EXIT_MONITORING_INTERVAL_MS = 30 * 1000; // 30s exit price check interval
+export const NEW_ENTRY_SCAN_INTERVAL_MS = 10 * 1000; // 10s evaluation interval
+export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours (1 Day) Trend & Swing Horizon Window (2h to 1 Day)
 export const FEE_BUFFER_PER_TRADE_USD = 0.24; // Fixed ₹20 INR Delta taker fee + slippage buffer
 export const MAX_CONSECUTIVE_LOSSES_ALLOWED = 3; // Hard daily stop after 3 consecutive losses
 export const MAX_DAILY_LOSS_CAP_USD = 14.40; // ₹1,200 INR (~7.4% of ₹16,350 capital)
@@ -1062,7 +1062,7 @@ export class DeltaAutoTraderEngine {
       timeframeAlignment: "15m + 1h + 4h Aligned",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
       entryTimeMs: now,
-      maxHoldTimeExpiry: now + (75 * 60 * 1000), // 75 Minute Horizon Window
+      maxHoldTimeExpiry: now + V3_MAX_HOLD_TIME_MS, // 24 Hours (1 Day) Trend Horizon Window (2h to 1 Day)
       subScores: analysis.subScores,
       adxValue: analysis.adxValue,
       rsiValue: analysis.rsi1h,
@@ -1361,7 +1361,7 @@ export class DeltaAutoTraderEngine {
             timeframeAlignment: "Delta Exchange Live Position Sync",
             entryTimestamp: livePos.created_at ? livePos.created_at.replace("T", " ").substring(0, 19) : new Date().toISOString().replace("T", " ").substring(0, 19),
             entryTimeMs: now,
-            maxHoldTimeExpiry: now + (75 * 60 * 1000),
+            maxHoldTimeExpiry: now + V3_MAX_HOLD_TIME_MS,
             subScores: { trend: 25, momentum: 25, pattern: 15, volume: 15 },
             adxValue: 30,
             rsiValue: 50,
