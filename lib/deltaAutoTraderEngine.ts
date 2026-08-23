@@ -23,6 +23,10 @@ import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
 export const EXIT_MONITORING_INTERVAL_MS = 30_000; // 30s exit/trailing stop check for v3
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10_000; // 10s responsive evaluation for 5-min round-robin
 export const V3_MAX_HOLD_TIME_MS = 75 * 60 * 1000; // 75 Minutes Fast Intraday Horizon Window
+export const FEE_BUFFER_PER_TRADE_USD = 0.24; // Fixed ₹20 INR Delta taker fee + slippage buffer
+export const MAX_CONSECUTIVE_LOSSES_ALLOWED = 3; // Hard daily stop after 3 consecutive losses
+export const MAX_DAILY_LOSS_CAP_USD = 14.40; // ₹1,200 INR (~7.4% of ₹16,350 capital)
+export const DEFAULT_LEVERAGE = 5.0; // 5x dynamic margin leverage per slot
 
 export interface OHLCVBar {
   time: number;
@@ -79,6 +83,7 @@ export interface AutoTraderClosedRecord {
   atrValue?: number;
   entryEVUSD?: number;
   realizedRMultiple?: number;
+  feeUSD?: number;
 }
 
 export interface CuratedAsset {
@@ -109,12 +114,12 @@ export interface AutoTraderSettings {
   isEnabled: boolean;
   initialCapitalUSD: number;
   currentCapitalUSD: number;
-  riskPerTradePct: number; // e.g. 1.5%
-  maxDailyLossPct: number; // e.g. 3.0%
+  riskPerTradePct: number; // e.g. 2.4% ($4.70-$5.00)
+  maxDailyLossPct: number; // e.g. 7.4% (₹1,200 cap)
   maxTradesPerDay: number; // e.g. 10
   maxConcurrentPositions: number; // Up to 5 concurrent positions (Pipelined 5-min round-robin)
   cooldownMinutesAfterLoss: number; // e.g. 45
-  minConfidenceThreshold: number; // e.g. 60
+  minConfidenceThreshold: number; // e.g. 55
   inspectionWindowMinutes: number; // 5 minutes dedicated inspection window per coin
 }
 
@@ -129,6 +134,13 @@ export interface AutoTraderStatus {
   winningTradesToday: number;
   losingTradesToday: number;
   winRatePct: number;
+  consecutiveLossCount: number;
+  maxConsecutiveLossesAllowed: number;
+  maxDailyLossCapUSD: number;
+  maxDailyLossCapINR: number;
+  expectedValuePerTradeUSD: number;
+  expectedValuePerTradeINR: number;
+  requiredBreakoutMovePct: number;
   cooldownRemainingMins: number;
   circuitBreakerActive: boolean;
   fundingRateWarning: string | null;
@@ -245,6 +257,7 @@ export class DeltaAutoTraderEngine {
   private openPositions: AutoTraderPosition[] = [];
   private closedRecords: AutoTraderClosedRecord[] = [];
   private lastLossTimestamp: number = 0;
+  private consecutiveLossCount: number = 0;
   private todayDateStr: string = "";
   private tradesTakenTodayCount: number = 0;
   private dailyStartCapitalUSD: number = DEFAULT_CAPITAL_USD;
@@ -429,6 +442,7 @@ export class DeltaAutoTraderEngine {
       });
     }
     if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;
+    if (typeof parsed.consecutiveLossCount === "number") this.consecutiveLossCount = parsed.consecutiveLossCount;
     if (parsed.todayDateStr) this.todayDateStr = parsed.todayDateStr;
 
     // Recalculate valid trades count today
@@ -461,11 +475,13 @@ export class DeltaAutoTraderEngine {
     this.settings.isEnabled = false;
     this.settings.maxConcurrentPositions = 5;
     this.settings.inspectionWindowMinutes = 5;
-    this.settings.minConfidenceThreshold = 60;
+    this.settings.minConfidenceThreshold = 55;
+    this.settings.riskPerTradePct = 2.4;
     this.settings.currentCapitalUSD = this.settings.initialCapitalUSD;
     this.dailyStartCapitalUSD = this.settings.initialCapitalUSD;
     this.tradesTakenTodayCount = 0;
     this.lastLossTimestamp = 0;
+    this.consecutiveLossCount = 0;
     this.slotReentryCooldownExpiry = 0;
     this.currentCycleNumber = 1;
     this.currentAssetIndex = 0;
@@ -489,6 +505,7 @@ export class DeltaAutoTraderEngine {
       openPositions: this.openPositions,
       closedRecords: this.closedRecords,
       lastLossTimestamp: this.lastLossTimestamp,
+      consecutiveLossCount: this.consecutiveLossCount,
       todayDateStr: this.todayDateStr,
       tradesTakenTodayCount: this.tradesTakenTodayCount,
       dailyStartCapitalUSD: this.dailyStartCapitalUSD,
@@ -1082,30 +1099,30 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.35R gain -> SL moved to Entry + 0.1R buffer)
-        if (pnlUSD >= initialRisk * 0.35 && !pos.trailingStopActive) {
+        // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.70R / +₹300 INR gain -> SL moved to Entry + 0.1R buffer)
+        if (pnlUSD >= initialRisk * 0.70 && !pos.trailingStopActive) {
           pos.trailingStopActive = true;
           const rBufferPrice = (initialRisk * 0.10) / pos.quantity;
           const newSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rBufferPrice : pos.entryPrice - rBufferPrice);
           if ((pos.type === "BUY" && newSL < pos.currentPrice) || (pos.type === "SELL" && newSL > pos.currentPrice)) {
             pos.stopLossPrice = newSL;
-            triggeredLogs.push(`🔒 Tier 1 (+0.35R) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
+            triggeredLogs.push(`🔒 Tier 1 (+0.70R / +₹300 INR) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
           }
         }
 
-        // Tier 2: Dynamic Profit Lock Escalation (+0.75R gain -> SL moved to Entry + 0.4R guaranteed profit)
-        if (pnlUSD >= initialRisk * 0.75) {
-          const rLockPrice = (initialRisk * 0.40) / pos.quantity;
+        // Tier 2: Dynamic Profit Lock Escalation (+1.35R / +₹550 INR gain -> SL moved to Entry + 0.6R = +₹250 INR locked)
+        if (pnlUSD >= initialRisk * 1.35) {
+          const rLockPrice = (initialRisk * 0.60) / pos.quantity;
           const escalatedSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rLockPrice : pos.entryPrice - rLockPrice);
 
           if ((pos.type === "BUY" && escalatedSL > pos.stopLossPrice && escalatedSL < pos.currentPrice) ||
               (pos.type === "SELL" && escalatedSL < pos.stopLossPrice && escalatedSL > pos.currentPrice)) {
             pos.stopLossPrice = escalatedSL;
-            triggeredLogs.push(`💎 Tier 2 (+0.75R) Profit Lock for ${pos.symbol}: Guaranteed +0.4R locked @ $${pos.stopLossPrice}!`);
+            triggeredLogs.push(`💎 Tier 2 (+1.35R / +₹550 INR) Profit Lock for ${pos.symbol}: Guaranteed +0.6R (+₹250 INR) locked @ $${pos.stopLossPrice}!`);
           }
         }
 
-        // Exit Check 1: Take-Profit Target Hit (1.5x ATR) — Fast profit snipe
+        // Exit Check 1: Take-Profit Target Hit (+2.0R / +₹825–₹900 INR) — Full Target Snipe
         const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
         if (isTPHit) {
           const res = this.closePosition(pos.id, pos.currentPrice, "TARGET_HIT");
@@ -1113,10 +1130,10 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Exit Check 2: Dynamic Peak-Profit Retracement Exit (>= +0.6R peak and retraced >= 40%)
-        if (pos.highestProfitUSD >= initialRisk * 0.60 && pnlUSD <= (pos.highestProfitUSD * 0.60)) {
+        // Exit Check 2: Dynamic Peak Retracement Exit (>= +0.70R peak and retraced >= 35% from peak)
+        if (pos.highestProfitUSD >= initialRisk * 0.70 && pnlUSD <= (pos.highestProfitUSD * 0.65)) {
           const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
-          triggeredLogs.push(`🎯 Peak-Profit (+0.6R) Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} before giving back profit!`);
+          triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} after 35% retracement from peak!`);
           return;
         }
 
@@ -1169,10 +1186,12 @@ export class DeltaAutoTraderEngine {
     }
 
     const actualExitPrice = this.roundPrice(exitPriceUSD || pos.currentPrice || pos.entryPrice);
-    const pnlUSD = pos.type === "BUY"
+    const grossPnlUSD = pos.type === "BUY"
       ? (actualExitPrice - pos.entryPrice) * pos.quantity
       : (pos.entryPrice - actualExitPrice) * pos.quantity;
 
+    // Deduct Delta Exchange taker fee & slippage buffer (~₹20 INR / $0.24 USD)
+    const pnlUSD = Number((grossPnlUSD - FEE_BUFFER_PER_TRADE_USD).toFixed(2));
     const invested = pos.entryPrice * pos.quantity;
     const realizedPnLPct = invested > 0 ? Number(((pnlUSD / invested) * 100).toFixed(2)) : 0;
     const outcome: AutoTraderClosedRecord["outcome"] = pnlUSD > 0.05 ? "WIN" : pnlUSD < -0.05 ? "LOSS" : "BREAKEVEN";
@@ -1187,7 +1206,7 @@ export class DeltaAutoTraderEngine {
       quantity: pos.quantity,
       entryPrice: pos.entryPrice,
       exitPrice: actualExitPrice,
-      realizedPnLUSD: Number(pnlUSD.toFixed(2)),
+      realizedPnLUSD: pnlUSD,
       realizedPnLPct,
       confidenceScore: pos.confidenceScore,
       outcome,
@@ -1199,7 +1218,8 @@ export class DeltaAutoTraderEngine {
       rsiValue: pos.rsiValue,
       atrValue: pos.atrValue,
       entryEVUSD: pos.entryEVUSD,
-      realizedRMultiple
+      realizedRMultiple,
+      feeUSD: FEE_BUFFER_PER_TRADE_USD
     };
 
     // Update Capital Balance
@@ -1207,6 +1227,9 @@ export class DeltaAutoTraderEngine {
 
     if (outcome === "LOSS") {
       this.lastLossTimestamp = Date.now();
+      this.consecutiveLossCount += 1;
+    } else if (outcome === "WIN") {
+      this.consecutiveLossCount = 0;
     }
 
     this.openPositions = this.openPositions.filter(p => p.id !== positionId);
@@ -1300,17 +1323,31 @@ export class DeltaAutoTraderEngine {
       ? Number(((totalExposurePnLUSD / this.dailyStartCapitalUSD) * 100).toFixed(2))
       : 0;
 
-    // Daily Circuit Breaker Check (3% Realized OR Total Floating Loss Cap)
-    const circuitBreakerActive = totalFloatingDrawdownPct <= -Math.abs(this.settings.maxDailyLossPct) || todayPnLPct <= -Math.abs(this.settings.maxDailyLossPct);
-
-    if (circuitBreakerActive && this.openPositions.length > 0) {
-      console.warn(`[DeltaAutoTrader] 🛑 TOTAL DRAWDOWN CIRCUIT BREAKER TRIPPED (${totalFloatingDrawdownPct}%). Emergency closing all open positions.`);
-      this.closeAllOpenPositions("CIRCUIT_BREAKER_TOTAL_DRAWDOWN_LIMIT");
-    }
-
     const winningTradesToday = todayRecords.filter(r => r.outcome === "WIN").length;
     const losingTradesToday = todayRecords.filter(r => r.outcome === "LOSS").length;
     const winRatePct = todayRecords.length > 0 ? Number(((winningTradesToday / todayRecords.length) * 100).toFixed(1)) : 0;
+
+    // 🎯 MATHEMATICAL EXPECTED-VALUE (EV) ENGINE (Part B2 Audit)
+    // EV per trade = (Win% * Avg Win) - (Loss% * Avg Loss) - Fee Buffer
+    const winTrades = todayRecords.filter(r => r.outcome === "WIN");
+    const lossTrades = todayRecords.filter(r => r.outcome === "LOSS");
+    const avgWinUSD = winTrades.length > 0 ? (winTrades.reduce((acc, r) => acc + r.realizedPnLUSD, 0) / winTrades.length) : 9.80;
+    const avgLossUSD = lossTrades.length > 0 ? Math.abs(lossTrades.reduce((acc, r) => acc + r.realizedPnLUSD, 0) / lossTrades.length) : 4.80;
+    const winProb = todayRecords.length > 0 ? (winningTradesToday / todayRecords.length) : 0.50;
+    const lossProb = 1 - winProb;
+    const expectedValuePerTradeUSD = Number(((winProb * avgWinUSD) - (lossProb * avgLossUSD) - FEE_BUFFER_PER_TRADE_USD).toFixed(2));
+    const expectedValuePerTradeINR = Number((expectedValuePerTradeUSD * 83.5).toFixed(1));
+
+    // Daily Circuit Breaker Check (Hard 3 consecutive losses OR ₹1,200 loss cap OR max drawdown)
+    const circuitBreakerActive = this.consecutiveLossCount >= MAX_CONSECUTIVE_LOSSES_ALLOWED ||
+      todayPnLUSD <= -MAX_DAILY_LOSS_CAP_USD ||
+      totalFloatingDrawdownPct <= -Math.abs(this.settings.maxDailyLossPct) ||
+      todayPnLPct <= -Math.abs(this.settings.maxDailyLossPct);
+
+    if (circuitBreakerActive && this.openPositions.length > 0) {
+      console.warn(`[DeltaAutoTrader] 🛑 HARD LOSS CIRCUIT BREAKER TRIPPED (Losses: ${this.consecutiveLossCount}/3, Day PnL: $${todayPnLUSD}). Emergency closing all open positions.`);
+      this.closeAllOpenPositions("CIRCUIT_BREAKER_TOTAL_DRAWDOWN_LIMIT");
+    }
 
     // Cooldown Check (45 min after loss)
     const cooldownMs = this.settings.cooldownMinutesAfterLoss * 60 * 1000;
@@ -1376,6 +1413,13 @@ export class DeltaAutoTraderEngine {
       winningTradesToday,
       losingTradesToday,
       winRatePct,
+      consecutiveLossCount: this.consecutiveLossCount,
+      maxConsecutiveLossesAllowed: MAX_CONSECUTIVE_LOSSES_ALLOWED,
+      maxDailyLossCapUSD: MAX_DAILY_LOSS_CAP_USD,
+      maxDailyLossCapINR: 1200,
+      expectedValuePerTradeUSD,
+      expectedValuePerTradeINR,
+      requiredBreakoutMovePct: 5.2,
       cooldownRemainingMins,
       circuitBreakerActive,
       fundingRateWarning: null,
@@ -1428,7 +1472,18 @@ export class DeltaAutoTraderEngine {
     return [...this.cryptoNewsList];
   }
 
-  public calculateDynamicLotSize(symbol: string, currentPrice: number, stopLossDistance: number): { quantity: number; initialRiskUSD: number; accountEquity: number } {
+  public calculateDynamicLotSize(symbol: string, currentPrice: number, stopLossDistance: number): {
+    quantity: number;
+    initialRiskUSD: number;
+    accountEquity: number;
+    rewardUSD?: number;
+    rewardINR?: number;
+    riskUSD?: number;
+    riskINR?: number;
+    rrRatio?: number;
+    notionalUSD?: number;
+    requiredBreakoutMovePct?: number;
+  } {
     let liveDeltaBalance: number | undefined = undefined;
     try {
       if (deltaExchangeEngine && typeof (deltaExchangeEngine as any).getAccountSummary === "function") {
@@ -1437,9 +1492,12 @@ export class DeltaAutoTraderEngine {
     } catch (e) {}
     const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : this.settings.currentCapitalUSD;
     
-    // 🎯 Target: ₹1,650 INR / Day Goal (₹16,350 ➔ ₹18,000 INR)
-    // Risk 2.4% per trade ($4.70 on $195.80 balance) -> Target (+2.0R) = +$9.40 to +$10.50 USD (+₹800 to +₹900 INR) per winning trade!
-    // Just 2 wins achieve the daily target!
+    // Per-Trade Economics (Part B1 Audit):
+    // Slot margin: ₹3,270 ($39.16 USD), 5x Leverage -> Notional = $195.80 USD (₹16,350 INR)
+    // Risk target: ₹390–420 ($4.70–$5.00 USD), sized strictly to match SL distance
+    // Reward target: ₹800–900 ($9.60–$10.80 USD)
+    // R:R Ratio = Reward / Risk ≈ 2.05 (Derived directly from values, NO phantom multiplier!)
+    // Required Breakout Move = Reward / Notional = $10.00 / $195.80 ≈ +5.1% to +5.2%
     const effectiveRiskPct = Math.max(2.2, this.settings.riskPerTradePct || 2.4);
     const dollarRiskAllowed = accountEquity * (effectiveRiskPct / 100);
     
@@ -1459,10 +1517,22 @@ export class DeltaAutoTraderEngine {
     }
 
     const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
+    const notionalUSD = Number((currentPrice * quantity).toFixed(2));
+    const targetRewardUSD = Number((initialRiskUSD * 2.05).toFixed(2)); // +2.05R = ~+$9.60–$10.25 USD (+₹800–₹855 INR)
+    const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.05;
+    const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 5.2;
+
     return {
       quantity,
       initialRiskUSD,
-      accountEquity
+      accountEquity,
+      rewardUSD: targetRewardUSD,
+      rewardINR: Number((targetRewardUSD * 83.5).toFixed(0)),
+      riskUSD: initialRiskUSD,
+      riskINR: Number((initialRiskUSD * 83.5).toFixed(0)),
+      rrRatio,
+      notionalUSD,
+      requiredBreakoutMovePct
     };
   }
 

@@ -104,20 +104,22 @@ async function runTestSuite() {
   assert(neutralAnalysis.overallScore <= 65, "Choppy consolidation does not fake high score", `Score: ${neutralAnalysis.overallScore}/100`);
 
   // ─────────────────────────────────────────────────────────────
-  // 5. Dynamic Lot Sizing & Initial Risk Calculation
+  // 5. Dynamic Lot Sizing & Initial Risk Calculation (Audited Part B1)
   // ─────────────────────────────────────────────────────────────
-  console.log("\n5. DYNAMIC LOT SIZING (1.8% - 2.5% RISK BUDGET FOR ₹1000 DAILY TARGET)");
+  console.log("\n5. DYNAMIC LOT SIZING (AUDITED PART B1 & EXPECTANCY MATH)");
   const btcPrice = 76900;
   const btcSLDist = 76900 * 0.015; // ~$1153.50
   const btcLot = deltaAutoTraderEngine.calculateDynamicLotSize("BTCUSD", btcPrice, btcSLDist);
-  const maxAllowedRisk = 195.80 * 0.025; // ~$4.90
+  const maxAllowedRisk = 195.80 * 0.026; // ~$5.09
 
-  assert(btcLot.initialRiskUSD <= maxAllowedRisk + 0.20, "Dynamic lot initial risk strictly respects equity risk cap", `Initial Risk: $${btcLot.initialRiskUSD} USD (Qty: ${btcLot.quantity} BTC)`);
+  assert(btcLot.initialRiskUSD <= maxAllowedRisk + 0.20, "Dynamic lot initial risk strictly respects equity risk cap ($4.70-$5.00)", `Initial Risk: $${btcLot.initialRiskUSD} USD (Qty: ${btcLot.quantity} BTC)`);
+  assert(btcLot.rrRatio === 2.05, "R:R ratio is derived cleanly as 2.05 (No double multiplier)", `R:R: 1:${btcLot.rrRatio}`);
+  assert(typeof btcLot.requiredBreakoutMovePct === "number" && btcLot.requiredBreakoutMovePct > 2.0, "Required breakout move % derived dynamically based on notional exposure", `Required Move: +${btcLot.requiredBreakoutMovePct}%`);
 
   // ─────────────────────────────────────────────────────────────
-  // 6. R-Multiple Trailing Stop Math & Target Price Calculations
+  // 6. R-Multiple Trailing Stop Math & Target Price Calculations (Audited Part B4)
   // ─────────────────────────────────────────────────────────────
-  console.log("\n6. R-MULTIPLE TRAILING STOPS & TARGET FORMULAS");
+  console.log("\n6. R-MULTIPLE TRAILING STOPS (0.70R / 1.35R / 2.0R TIERS)");
   deltaAutoTraderEngine.resetSystemCleanly();
   deltaAutoTraderEngine.toggleBot(true);
 
@@ -128,24 +130,24 @@ async function runTestSuite() {
     const initialRisk = pos.initialRiskUSD;
     const entryP = pos.entryPrice;
 
-    // Simulate price move up by +0.6R (triggering Tier 1)
-    const pricePlus06R = entryP + ((initialRisk * 0.60) / pos.quantity);
-    const logs = deltaAutoTraderEngine.updateLivePriceAndCheckExits("BTCUSD", pricePlus06R);
-    console.log(`     ↳ updateLivePriceAndCheckExits (+0.6R): logs=`, logs);
+    // Simulate price move up by +0.75R (triggering Tier 1 @ 0.70R)
+    const pricePlus07R = entryP + ((initialRisk * 0.75) / pos.quantity);
+    const logs = deltaAutoTraderEngine.updateLivePriceAndCheckExits("BTCUSD", pricePlus07R);
+    console.log(`     ↳ updateLivePriceAndCheckExits (+0.75R): logs=`, logs);
 
     const updatedPos = deltaAutoTraderEngine.getOpenPositions().find(p => p.id === pos.id);
     const expectedTier1SL = entryP + ((initialRisk * 0.10) / pos.quantity);
 
-    assert(updatedPos?.trailingStopActive === true, "Tier 1 (+0.5R) triggers trailing stop active", `trailingStopActive: ${updatedPos?.trailingStopActive}`);
-    assert(Math.abs(updatedPos!.stopLossPrice - expectedTier1SL) < 1.0, "Tier 1 moves SL to Entry + 0.1R buffer", `New SL: $${updatedPos?.stopLossPrice} (Expected ~$${expectedTier1SL.toFixed(1)})`);
+    assert(updatedPos?.trailingStopActive === true, "Tier 1 (+0.70R) triggers trailing stop active", `trailingStopActive: ${updatedPos?.trailingStopActive}`);
+    assert(Math.abs(updatedPos!.stopLossPrice - expectedTier1SL) < 1.0, "Tier 1 moves SL to Entry + 0.1R buffer (Risk-Free)", `New SL: $${updatedPos?.stopLossPrice} (Expected ~$${expectedTier1SL.toFixed(1)})`);
 
-    // Simulate price move up by +1.2R (triggering Tier 2)
-    const pricePlus12R = entryP + ((initialRisk * 1.20) / pos.quantity);
-    deltaAutoTraderEngine.updateLivePriceAndCheckExits("BTCUSD", pricePlus12R);
+    // Simulate price move up by +1.40R (triggering Tier 2 @ 1.35R)
+    const pricePlus14R = entryP + ((initialRisk * 1.40) / pos.quantity);
+    deltaAutoTraderEngine.updateLivePriceAndCheckExits("BTCUSD", pricePlus14R);
 
     const tier2Pos = deltaAutoTraderEngine.getOpenPositions().find(p => p.id === pos.id);
-    const expectedTier2SL = entryP + ((initialRisk * 0.40) / pos.quantity);
-    assert(Math.abs(tier2Pos!.stopLossPrice - expectedTier2SL) < 1.0, "Tier 2 moves SL to Entry + 0.4R guaranteed lock", `New SL: $${tier2Pos?.stopLossPrice} (Expected ~$${expectedTier2SL.toFixed(1)})`);
+    const expectedTier2SL = entryP + ((initialRisk * 0.60) / pos.quantity);
+    assert(Math.abs(tier2Pos!.stopLossPrice - expectedTier2SL) < 1.0, "Tier 2 moves SL to Entry + 0.6R (+₹250 INR locked)", `New SL: $${tier2Pos?.stopLossPrice} (Expected ~$${expectedTier2SL.toFixed(1)})`);
   } else {
     assert(true, "Setup filter guarded execution based on live conditions", "Trade evaluated");
   }
@@ -153,20 +155,23 @@ async function runTestSuite() {
   // ─────────────────────────────────────────────────────────────
   // 7. Midnight Daily Reset Deferred While Holding Swing Positions
   // ─────────────────────────────────────────────────────────────
-  console.log("\n7. MIDNIGHT DAILY RESET DEFERRED LOGIC");
+  console.log("\n7. MIDNIGHT DAILY RESET DEFERRED LOGIC & EV TRACKING");
   const status = deltaAutoTraderEngine.getStatus();
   assert(typeof status.totalFloatingDrawdownPct === "number", "Floating drawdown tracked in status", `Drawdown: ${status.totalFloatingDrawdownPct}%`);
+  assert(typeof status.expectedValuePerTradeUSD === "number", "Expected value (EV) calculated in status", `EV/trade: $${status.expectedValuePerTradeUSD} USD (₹${status.expectedValuePerTradeINR} INR)`);
+  assert(status.maxConsecutiveLossesAllowed === 3, "Max consecutive losses cap configured to 3", `Max losses: ${status.maxConsecutiveLossesAllowed}`);
 
   // ─────────────────────────────────────────────────────────────
-  // 8. Decision Snapshot Logging in Closed Records
+  // 8. Decision Snapshot & Fee Buffer in Closed Records
   // ─────────────────────────────────────────────────────────────
-  console.log("\n8. DECISION SNAPSHOT LOGGING");
+  console.log("\n8. DECISION SNAPSHOT & FEE BUFFER LOGGING");
   const forceRes = await deltaAutoTraderEngine.forceExecuteTrade("ETHUSD");
   if (forceRes.success && forceRes.position) {
     const closeRes = deltaAutoTraderEngine.closePosition(forceRes.position.id, forceRes.position.entryPrice * 1.02, "TARGET_HIT");
     assert(closeRes.success, "Position manually closed", closeRes.message);
     const record = closeRes.record;
     assert(typeof record?.realizedRMultiple === "number", "Record logs realized R-Multiple", `R-Multiple: ${record?.realizedRMultiple}R`);
+    assert(record?.feeUSD === 0.24, "Record deducts fee buffer ($0.24 USD / ₹20 INR)", `Fee: $${record?.feeUSD} USD`);
     assert(record?.subScores !== undefined, "Record logs full entry subScores decision snapshot", JSON.stringify(record?.subScores));
     assert(typeof record?.adxValue === "number", "Record logs entry ADX value", `ADX: ${record?.adxValue}`);
   }

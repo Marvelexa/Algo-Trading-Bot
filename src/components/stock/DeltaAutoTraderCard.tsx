@@ -469,13 +469,16 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </span>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-white text-sm">Growth Target Range: ₹16,350 ➔ ₹18,000 INR</span>
+              <span className="font-bold text-white text-sm">Daily Realistic Target: ₹800–₹1,200 INR (+5% to +7%)</span>
               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                +₹1,650 Daily Goal (+10.1% · Just 2 Wins)
+                Mathematical Expectancy Strategy
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                Hard Stop: Max 3 Losses / ₹1,200 Cap
               </span>
             </div>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              Base Capital: ₹16,350 (~$195.80 USD) · Realized Today: ₹{((status.todayPnLUSD || 0) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} ({status.todayPnLPct}%)
+              Base Capital: ₹16,350 (~$195.80 USD) · Realized Today: ₹{((status.todayPnLUSD || 0) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} ({status.todayPnLPct}%) · Consecutive Losses: {status.consecutiveLossCount || 0}/3
             </span>
           </div>
         </div>
@@ -483,12 +486,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         <div className="w-full md:w-64 space-y-1">
           <div className="flex justify-between text-[10px] text-slate-400 font-mono">
             <span>₹16,350</span>
-            <span className="text-amber-300 font-bold">Goal: ₹18,000</span>
+            <span className="text-amber-300 font-bold">Target: ₹17,350–₹17,550</span>
           </div>
           <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
             <div
               className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-400 transition-all duration-700"
-              style={{ width: `${Math.min(100, Math.max(5, ((Math.max(0, (status.todayPnLUSD || 0) * USD_TO_INR)) / 1650) * 100))}%` }}
+              style={{ width: `${Math.min(100, Math.max(5, ((Math.max(0, (status.todayPnLUSD || 0) * USD_TO_INR)) / 1000) * 100))}%` }}
             />
           </div>
         </div>
@@ -512,11 +515,11 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         {/* PIPELINED 5-SLOT ROUND-ROBIN PIPELINE */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
           <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">
-            Execution Mode
+            Execution Slots
           </span>
           <div>
             <span className="text-xl font-black text-amber-300 block">
-              {positions.length} / {settings.maxConcurrentPositions || 5} Positions Active
+              {positions.length} / {settings.maxConcurrentPositions || 5} Slots Active
             </span>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
               {positions.length >= (settings.maxConcurrentPositions || 5)
@@ -526,30 +529,35 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </div>
         </div>
 
-        {/* WIN RATE */}
+        {/* WIN RATE & EXPECTED VALUE (EV) */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
-          <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">Win Rate Today</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">Win Rate & Strategy EV</span>
           <div>
-            <span className="text-xl font-black text-indigo-300 block">
-              {status.winRatePct}%
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-black text-indigo-300 block">
+                {status.winRatePct}%
+              </span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${(status.expectedValuePerTradeUSD ?? 0) >= 0 ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"}`}>
+                EV: {(status.expectedValuePerTradeUSD ?? 0) >= 0 ? "+" : ""}${status.expectedValuePerTradeUSD ?? 0}/tr
+              </span>
+            </div>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              {status.winningTradesToday} Wins / {status.losingTradesToday} Losses (Target: 80%+)
+              {status.winningTradesToday}W / {status.losingTradesToday}L · EV: ₹{(status.expectedValuePerTradeINR ?? 0) >= 0 ? "+" : ""}{status.expectedValuePerTradeINR ?? 0} INR
             </span>
           </div>
         </div>
 
         {/* CIRCUIT BREAKER STATUS */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
-          <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">Daily Loss Circuit Breaker</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">Hard Daily Loss Cap</span>
           <div>
             <span className={`text-xs font-bold block ${status.circuitBreakerActive ? "text-rose-400" : "text-emerald-400"}`}>
-              {status.circuitBreakerActive ? "🛑 HALTED (3% Cap Hit)" : "🟢 SAFE (3% Daily Loss Cap)"}
+              {status.circuitBreakerActive ? "🛑 HALTED (Hard Cap Hit)" : `🟢 SAFE (${status.consecutiveLossCount || 0}/3 Losses · ₹1,200 Cap)`}
             </span>
             <div className="w-full h-1.5 rounded-full bg-slate-800 mt-2 overflow-hidden">
               <div
                 className={`h-full transition-all duration-500 ${status.circuitBreakerActive ? "bg-rose-500" : "bg-emerald-500"}`}
-                style={{ width: `${Math.min(100, (Math.abs(status.todayPnLPct) / settings.maxDailyLossPct) * 100)}%` }}
+                style={{ width: `${Math.min(100, ((status.consecutiveLossCount || 0) / 3) * 100)}%` }}
               />
             </div>
           </div>
@@ -566,17 +574,17 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30">
           <span className="text-[10px] text-emerald-400 block uppercase font-mono font-bold">Per-Slot Capital (1/5)</span>
           <strong className="text-emerald-300 text-sm font-mono">₹{((settings.currentCapitalUSD / (settings.maxConcurrentPositions || 5)) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR</strong>
-          <span className="text-[9px] text-emerald-400/80 block font-mono">(${((settings.currentCapitalUSD / (settings.maxConcurrentPositions || 5))).toFixed(2)} USD / Slot)</span>
+          <span className="text-[9px] text-emerald-400/80 block font-mono">5x Leverage: ₹16,350 Notional</span>
         </div>
         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
-          <span className="text-[10px] text-slate-400 block uppercase font-mono">Slot Distribution</span>
-          <strong className="text-indigo-300 text-sm font-mono">{positions.length} / {settings.maxConcurrentPositions || 5} Slots Active</strong>
-          <span className="text-[9px] text-indigo-400/80 block font-mono">5x–8x Dynamic Sizing</span>
+          <span className="text-[10px] text-slate-400 block uppercase font-mono">Required Move / R:R</span>
+          <strong className="text-indigo-300 text-sm font-mono">~+5.2% Move (1 : 2.05)</strong>
+          <span className="text-[9px] text-indigo-400/80 block font-mono">Vol Breakout + ADX Trigger</span>
         </div>
         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
-          <span className="text-[10px] text-slate-400 block uppercase font-mono">Target Gain / Slot</span>
-          <strong className="text-emerald-400 text-sm font-mono">+₹800 – +₹900 INR</strong>
-          <span className="text-[9px] text-amber-300 block font-mono">(+$9.60 to $10.80 USD · +2.0R)</span>
+          <span className="text-[10px] text-slate-400 block uppercase font-mono">Per-Trade Economics</span>
+          <strong className="text-emerald-400 text-sm font-mono">+₹800–₹900 Win</strong>
+          <span className="text-[9px] text-rose-400 block font-mono">Risk: ₹390–₹420 | Fee: ₹20</span>
         </div>
       </div>
 
