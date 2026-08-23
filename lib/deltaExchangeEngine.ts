@@ -544,20 +544,36 @@ class DeltaExchangeEngine {
       return { success: false, message: "Delta Exchange API Key missing." };
     }
     try {
-      const product = this.products.get(symbol.toUpperCase());
-      const productId = product ? product.id : 1;
+      if (this.products.size === 0) {
+        await this.fetchProducts();
+      }
+      const symUpper = (symbol || "").toUpperCase().trim();
+      const cleanTag = symUpper.replace("USDT", "").replace("USD", "").replace("-", "").trim();
+      let product = this.products.get(symUpper)
+        || this.products.get(`${cleanTag}USD`)
+        || this.products.get(`${cleanTag}USDT`)
+        || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || p.symbol?.toUpperCase() === `${cleanTag}USD` || p.symbol?.toUpperCase() === `${cleanTag}USDT`);
+
+      const productId = product ? product.id : 27;
+      const contractVal = parseFloat((product as any)?.contract_value || "1") || 1;
+      const contractsSize = contractVal < 1
+        ? Math.max(1, Math.round(size / contractVal))
+        : Math.max(1, Math.round(size));
+
       const path = "/v2/orders";
-      const bodyData = {
+      const bodyData: any = {
         product_id: productId,
-        size: Math.max(1, Math.floor(size)),
+        size: contractsSize,
         side: side.toLowerCase(),
-        order_type: price ? "limit_order" : "market_order",
-        limit_price: price ? price.toString() : undefined
+        order_type: price ? "limit_order" : "market_order"
       };
+      if (price) {
+        bodyData.limit_price = price.toString();
+      }
       const bodyStr = JSON.stringify(bodyData);
       const headers = this.getAuthHeaders("POST", path, "", bodyStr);
 
-      const response = await fetch(`${BASE_URL}${path}`, {
+      const response = await fetch(`https://api.india.delta.exchange${path}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -566,7 +582,7 @@ class DeltaExchangeEngine {
         body: bodyStr
       });
       const data = await response.json();
-      console.log(`[DeltaExchange] 🚀 Live Order Placed on Delta Exchange: ${side} ${size} ${symbol}`, data);
+      console.log(`[DeltaExchange] 🚀 Live Order Placed on Delta Exchange: ${side} ${contractsSize} contracts (${size} ${symbol})`, data);
       return data;
     } catch (err) {
       console.error("[DeltaExchange] Order placement error:", err);
