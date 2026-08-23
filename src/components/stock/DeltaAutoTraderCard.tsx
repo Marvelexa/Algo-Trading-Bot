@@ -446,9 +446,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           {/* MODE TOGGLE */}
           <button
             onClick={handleToggleMode}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold transition"
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shadow-lg ${
+              status.mode === "LIVE"
+                ? "bg-rose-950/80 hover:bg-rose-900 border-rose-500/60 text-rose-200 shadow-rose-900/30"
+                : "bg-purple-950/80 hover:bg-purple-900 border-purple-500/60 text-purple-200 shadow-purple-900/30"
+            }`}
           >
-            {status.mode === "PAPER" ? "Switch to Live" : "Switch to Paper"}
+            <span className={`w-2 h-2 rounded-full ${status.mode === "LIVE" ? "bg-rose-400 animate-ping" : "bg-purple-400"}`}></span>
+            {status.mode === "LIVE" ? "🔴 LIVE (Switch to Paper)" : "🧪 PAPER (Switch to Live)"}
           </button>
         </div>
       </div>
