@@ -48,8 +48,8 @@ const DEFAULT_STATUS: AutoTraderStatus = {
 };
 
 const DEFAULT_SETTINGS: AutoTraderSettings = {
-  mode: "PAPER",
-  isEnabled: false,
+  mode: "LIVE",
+  isEnabled: true,
   initialCapitalUSD: 195.80,
   currentCapitalUSD: 195.80,
   riskPerTradePct: 2.0,
