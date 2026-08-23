@@ -538,7 +538,14 @@ class DeltaExchangeEngine {
     return this.isConnected;
   }
 
-  public async placeOrder(symbol: string, side: "buy" | "sell", size: number, price?: number): Promise<any> {
+  public async placeOrder(
+    symbol: string,
+    side: "buy" | "sell",
+    size: number,
+    price?: number,
+    stopLossPrice?: number,
+    takeProfitPrice?: number
+  ): Promise<any> {
     if (!this.apiKey || !this.apiSecret) {
       console.warn("[DeltaExchange] ⚠️ Cannot place live order: DELTA_EXCHANGE_API_KEY environment variables missing.");
       return { success: false, message: "Delta Exchange API Key missing." };
@@ -570,6 +577,18 @@ class DeltaExchangeEngine {
       if (price) {
         bodyData.limit_price = price.toString();
       }
+      if (stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice > 0) {
+        bodyData.stop_loss_order = {
+          stop_price: stopLossPrice.toString(),
+          order_type: "market_order"
+        };
+      }
+      if (takeProfitPrice && !isNaN(takeProfitPrice) && takeProfitPrice > 0) {
+        bodyData.take_profit_order = {
+          stop_price: takeProfitPrice.toString(),
+          order_type: "market_order"
+        };
+      }
       const bodyStr = JSON.stringify(bodyData);
       const headers = this.getAuthHeaders("POST", path, "", bodyStr);
 
@@ -582,7 +601,7 @@ class DeltaExchangeEngine {
         body: bodyStr
       });
       const data = await response.json();
-      console.log(`[DeltaExchange] 🚀 Live Order Placed on Delta Exchange: ${side} ${contractsSize} contracts (${size} ${symbol})`, data);
+      console.log(`[DeltaExchange] 🚀 Live Order Placed on Delta Exchange: ${side} ${contractsSize} contracts (${size} ${symbol}) [SL: ${stopLossPrice || "None"}, TP: ${takeProfitPrice || "None"}]`, data);
       return data;
     } catch (err) {
       console.error("[DeltaExchange] Order placement error:", err);

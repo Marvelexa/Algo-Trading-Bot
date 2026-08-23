@@ -57,6 +57,8 @@ export interface AutoTraderPosition {
   entryTimestamp: string;
   entryTimeMs: number; // Unix timestamp in ms
   maxHoldTimeExpiry: number; // Unix timestamp for 24h force-close
+  ratchetTier?: number; // 0=Initial, 1=Goal 1 Achieved -> Extended to Goal 2, 2=Goal 2 -> Goal 3, etc.
+  lockedProfitUSD?: number; // Guaranteed minimum profit secured by trailing stop
   subScores?: { trend: number; momentum: number; pattern: number; volume: number };
   adxValue?: number;
   rsiValue?: number;
@@ -1072,12 +1074,15 @@ export class DeltaAutoTraderEngine {
     this.openPositions.unshift(position);
     this.tradesTakenTodayCount++;
     this.saveToStorage();
-    // If LIVE mode, trigger execution on Delta Exchange API and sync exact exchange fill price
+    // If LIVE mode, trigger execution on Delta Exchange API and attach native Stop-Loss & Take-Profit bracket
     if (this.settings.mode === "LIVE") {
       deltaExchangeEngine.placeOrder(
         symbol,
         position.type === "BUY" ? "buy" : "sell",
-        quantity
+        quantity,
+        undefined, // Market Order for instant fill
+        position.stopLossPrice,
+        position.targetPrice
       ).then(orderRes => {
         const fillPrice = parseFloat(orderRes?.result?.average_fill_price || orderRes?.result?.limit_price);
         if (fillPrice && !isNaN(fillPrice) && fillPrice > 0) {
@@ -1138,45 +1143,67 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.70R / +₹300 INR gain -> SL moved to Entry + 0.1R buffer)
-        if (pnlUSD >= initialRisk * 0.70 && !pos.trailingStopActive) {
+        // ────────────────────────────────────────────
+        // 🎯 DYNAMIC STEP-UP TARGET RATCHET & MULTI-TIER PROFIT LADDER ENGINE
+        // (e.g. Goal 1 Achieved -> Ratchet Target to 120 -> 140+ with Trailing SL Locked Behind Price)
+        // ────────────────────────────────────────────
+        const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
+        if (isTPHit) {
+          pos.ratchetTier = (pos.ratchetTier || 0) + 1;
+          pos.trailingStopActive = true;
+
+          const currentGainDist = Math.abs(pos.targetPrice - pos.entryPrice);
+          const nextTargetDist = currentGainDist * 1.40; // Expand target by +40% (e.g. 90 -> 126 -> 176...)
+          pos.targetPrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + nextTargetDist : pos.entryPrice - nextTargetDist);
+
+          // Trail Stop Loss UP into guaranteed profit (Locking in 70% of current gain)
+          const lockedGainDist = currentGainDist * 0.70;
+          const ratchetedSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + lockedGainDist : pos.entryPrice - lockedGainDist);
+          if ((pos.type === "BUY" && ratchetedSL > pos.stopLossPrice) || (pos.type === "SELL" && ratchetedSL < pos.stopLossPrice)) {
+            pos.stopLossPrice = ratchetedSL;
+          }
+          pos.lockedProfitUSD = Number((lockedGainDist * pos.quantity).toFixed(2));
+
+          const ratchetMsg = `🚀 STEP-UP RATCHET (Tier #${pos.ratchetTier}) for ${pos.symbol}: Target extended UP to $${pos.targetPrice} | Guaranteed profit locked at SL $${pos.stopLossPrice} (+$${pos.lockedProfitUSD} USD / +₹${(pos.lockedProfitUSD * 95.71).toFixed(0)} INR)! Trend run continuing...`;
+          console.log(`[DeltaAutoTrader] ${ratchetMsg}`);
+          triggeredLogs.push(ratchetMsg);
+          this.saveToStorage();
+        }
+
+        // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.70R gain -> SL moved to Entry + 0.1R buffer)
+        if (pnlUSD >= initialRisk * 0.70 && !pos.trailingStopActive && !pos.ratchetTier) {
           pos.trailingStopActive = true;
           const rBufferPrice = (initialRisk * 0.10) / pos.quantity;
           const newSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rBufferPrice : pos.entryPrice - rBufferPrice);
-          if ((pos.type === "BUY" && newSL < pos.currentPrice) || (pos.type === "SELL" && newSL > pos.currentPrice)) {
+          if ((pos.type === "BUY" && newSL < pos.currentPrice && newSL > pos.stopLossPrice) ||
+              (pos.type === "SELL" && newSL > pos.currentPrice && newSL < pos.stopLossPrice)) {
             pos.stopLossPrice = newSL;
-            triggeredLogs.push(`🔒 Tier 1 (+0.70R / +₹300 INR) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
+            triggeredLogs.push(`🔒 Tier 1 (+0.70R) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
           }
         }
 
-        // Tier 2: Dynamic Profit Lock Escalation (+1.35R / +₹550 INR gain -> SL moved to Entry + 0.6R = +₹250 INR locked)
-        if (pnlUSD >= initialRisk * 1.35) {
-          const rLockPrice = (initialRisk * 0.60) / pos.quantity;
-          const escalatedSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rLockPrice : pos.entryPrice - rLockPrice);
+        // Dynamic High-Water Mark Trailing: As price climbs higher, continuously trail SL 30% below highest peak
+        if (pos.highestProfitUSD >= initialRisk * 1.0) {
+          const dynamicLockUSD = pos.highestProfitUSD * 0.70; // 70% of peak profit locked
+          const lockDist = dynamicLockUSD / pos.quantity;
+          const dynamicSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + lockDist : pos.entryPrice - lockDist);
 
-          if ((pos.type === "BUY" && escalatedSL > pos.stopLossPrice && escalatedSL < pos.currentPrice) ||
-              (pos.type === "SELL" && escalatedSL < pos.stopLossPrice && escalatedSL > pos.currentPrice)) {
-            pos.stopLossPrice = escalatedSL;
-            triggeredLogs.push(`💎 Tier 2 (+1.35R / +₹550 INR) Profit Lock for ${pos.symbol}: Guaranteed +0.6R (+₹250 INR) locked @ $${pos.stopLossPrice}!`);
+          if ((pos.type === "BUY" && dynamicSL > pos.stopLossPrice && dynamicSL < pos.currentPrice) ||
+              (pos.type === "SELL" && dynamicSL < pos.stopLossPrice && dynamicSL > pos.currentPrice)) {
+            pos.stopLossPrice = dynamicSL;
+            pos.trailingStopActive = true;
+            pos.lockedProfitUSD = Number(dynamicLockUSD.toFixed(2));
           }
         }
 
-        // Exit Check 1: Take-Profit Target Hit (+2.0R / +₹825–₹900 INR) — Full Target Snipe
-        const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
-        if (isTPHit) {
-          const res = this.closePosition(pos.id, pos.currentPrice, "TARGET_HIT");
-          triggeredLogs.push(res.message);
-          return;
-        }
-
-        // Exit Check 2: Dynamic Peak Retracement Exit (Whichever peak was reached >= +0.70R, if price retraces >= 35% from that peak)
-        if (pos.highestProfitUSD >= initialRisk * 0.70 && pnlUSD <= (pos.highestProfitUSD * 0.65)) {
+        // Exit Check 2: Dynamic Peak Retracement Exit (If price retraces >= 35% from highest peak profit)
+        if (pos.highestProfitUSD >= initialRisk * 0.80 && pnlUSD <= (pos.highestProfitUSD * 0.65)) {
           const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
           triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} (Peak was +$${pos.highestProfitUSD.toFixed(2)}) after 35% retracement!`);
           return;
         }
 
-        // Exit Check 3: Trailing Stop / Hard Stop-Loss Hit
+        // Exit Check 3: Trailing Stop / Hard Stop-Loss Hit (Automatic market exit on Delta Exchange)
         const isSLHit = pos.type === "BUY" ? pos.currentPrice <= pos.stopLossPrice : pos.currentPrice >= pos.stopLossPrice;
         if (isSLHit) {
           const reason = pos.trailingStopActive ? "TRAILING_PROFIT_LOCKED" : "STOP_LOSS_HIT";
@@ -2062,8 +2089,17 @@ export class DeltaAutoTraderEngine {
         symbol,
         position.type === "BUY" ? "buy" : "sell",
         position.quantity,
-        currentPrice
-      ).catch(err => console.warn("[DeltaAutoTrader] Live execution warning:", err));
+        undefined, // Market order for instant fill
+        position.stopLossPrice,
+        position.targetPrice
+      ).then(orderRes => {
+        const fillPrice = parseFloat(orderRes?.result?.average_fill_price || orderRes?.result?.limit_price);
+        if (fillPrice && !isNaN(fillPrice) && fillPrice > 0) {
+          position.entryPrice = fillPrice;
+          this.saveToStorage();
+          console.log(`[DeltaAutoTrader] 🎯 Synced exact exchange fill price for ${symbol}: $${fillPrice}`);
+        }
+      }).catch(err => console.warn("[DeltaAutoTrader] Live execution warning:", err));
     }
 
     return {

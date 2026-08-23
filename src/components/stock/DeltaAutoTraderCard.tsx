@@ -946,9 +946,16 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                     })()}
 
                     {pos.trailingStopActive && (
-                      <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-[11px] text-emerald-300 font-mono flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                        <strong>🔒 Trailing Stop Active:</strong> Tier {pos.trailingStopTier || 1} Risk-Free Lock (+{pos.trailingStopTier === 2 ? "0.5R Guaranteed Profit Locked" : "0.1R Breakeven Buffer Locked"})!
+                      <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-[11px] text-emerald-300 font-mono flex items-center justify-between gap-2 flex-wrap">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                          <strong>{pos.ratchetTier ? `🚀 Level ${pos.ratchetTier} Target Ratchet Active:` : "🔒 Trailing Stop Active:"}</strong> Target dynamically extended, Stop-Loss trailing tightly behind price!
+                        </span>
+                        {pos.lockedProfitUSD && pos.lockedProfitUSD > 0 ? (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-900/60 text-emerald-200 border border-emerald-400/40 font-bold">
+                            Guaranteed Profit Locked: +${pos.lockedProfitUSD.toFixed(2)} (+₹{(pos.lockedProfitUSD * USD_TO_INR).toFixed(0)} INR)
+                          </span>
+                        ) : null}
                       </div>
                     )}
                   </div>
