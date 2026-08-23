@@ -78,12 +78,17 @@ class DeltaExchangeEngine {
     "BTCUSDT", "ETHUSDT"
   ];
 
-  constructor() {
-    const envKey = typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_KEY || process.env?.VITE_DELTA_EXCHANGE_API_KEY) : "";
-    const envSecret = typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_SECRET || process.env?.VITE_DELTA_EXCHANGE_API_SECRET) : "";
+  public getApiKey(): string {
+    return this.apiKey || (typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_KEY || process.env?.VITE_DELTA_EXCHANGE_API_KEY || "") : "");
+  }
 
-    this.apiKey = envKey || "";
-    this.apiSecret = envSecret || "";
+  public getApiSecret(): string {
+    return this.apiSecret || (typeof process !== "undefined" ? (process.env?.DELTA_EXCHANGE_API_SECRET || process.env?.VITE_DELTA_EXCHANGE_API_SECRET || "") : "");
+  }
+
+  constructor() {
+    this.apiKey = this.getApiKey();
+    this.apiSecret = this.getApiSecret();
     if (this.apiKey) {
       console.log(`[DeltaExchange] 🟢 API Key loaded: ${this.apiKey.slice(0, 8)}...`);
     } else {
@@ -104,9 +109,10 @@ class DeltaExchangeEngine {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const prehash = method.toUpperCase() + timestamp + path + queryString + body;
     let signature = "UNSUPPORTED_BROWSER_HMAC";
+    const secret = this.getApiSecret();
     try {
-      if (nodeCrypto && typeof (nodeCrypto as any).createHmac === "function") {
-        signature = (nodeCrypto as any).createHmac("sha256", this.apiSecret).update(prehash).digest("hex");
+      if (nodeCrypto && typeof (nodeCrypto as any).createHmac === "function" && secret) {
+        signature = (nodeCrypto as any).createHmac("sha256", secret).update(prehash).digest("hex");
       }
     } catch (e) {}
     return { signature, timestamp };
@@ -115,7 +121,7 @@ class DeltaExchangeEngine {
   private getAuthHeaders(method: string, path: string, queryString: string = "", body: string = ""): Record<string, string> {
     const { signature, timestamp } = this.generateSignature(method, path, queryString, body);
     return {
-      "api-key": this.apiKey,
+      "api-key": this.getApiKey(),
       "timestamp": timestamp,
       "signature": signature,
       "Content-Type": "application/json",
@@ -601,7 +607,11 @@ class DeltaExchangeEngine {
         body: bodyStr
       });
       const data = await response.json();
-      console.log(`[DeltaExchange] 🚀 Live Order Placed on Delta Exchange: ${side} ${contractsSize} contracts (${size} ${symbol}) [SL: ${stopLossPrice || "None"}, TP: ${takeProfitPrice || "None"}]`, data);
+      if (data && data.error) {
+        console.error(`[DeltaExchange] ❌ DELTA EXCHANGE ORDER REJECTED:`, JSON.stringify(data.error));
+      } else {
+        console.log(`[DeltaExchange] 🚀 Live Order Placed on Delta Exchange: ${side} ${contractsSize} contracts (${size} ${symbol}) [SL: ${stopLossPrice || "None"}, TP: ${takeProfitPrice || "None"}]`, data);
+      }
       return data;
     } catch (err) {
       console.error("[DeltaExchange] Order placement error:", err);
