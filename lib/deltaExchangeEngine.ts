@@ -591,6 +591,15 @@ class DeltaExchangeEngine {
   // ────────────────────────────────────────────
   public async initialize(): Promise<void> {
     console.log("[DeltaExchange] 🚀 Initializing Delta Exchange Engine...");
+    if (!this.apiKey && typeof process !== "undefined") {
+      const envKey = process.env?.DELTA_EXCHANGE_API_KEY || process.env?.VITE_DELTA_EXCHANGE_API_KEY || "";
+      const envSecret = process.env?.DELTA_EXCHANGE_API_SECRET || process.env?.VITE_DELTA_EXCHANGE_API_SECRET || "";
+      if (envKey) {
+        this.apiKey = envKey.trim();
+        this.apiSecret = envSecret.trim();
+        console.log(`[DeltaExchange] 🟢 Live API Credentials connected: ${this.apiKey.slice(0, 8)}...`);
+      }
+    }
     await this.fetchUsdInrRate();
     await this.fetchProducts();
     this.connectWebSocket();
