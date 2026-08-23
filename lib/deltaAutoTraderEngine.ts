@@ -1130,10 +1130,10 @@ export class DeltaAutoTraderEngine {
           return;
         }
 
-        // Exit Check 2: Dynamic Peak Retracement Exit (>= +0.70R peak and retraced >= 35% from peak)
+        // Exit Check 2: Dynamic Peak Retracement Exit (Whichever peak was reached >= +0.70R, if price retraces >= 35% from that peak)
         if (pos.highestProfitUSD >= initialRisk * 0.70 && pnlUSD <= (pos.highestProfitUSD * 0.65)) {
           const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
-          triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} after 35% retracement from peak!`);
+          triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} (Peak was +$${pos.highestProfitUSD.toFixed(2)}) after 35% retracement!`);
           return;
         }
 

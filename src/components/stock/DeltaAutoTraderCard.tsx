@@ -512,18 +512,18 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           </div>
         </div>
 
-        {/* PIPELINED 5-SLOT ROUND-ROBIN PIPELINE */}
+        {/* SEQUENTIAL 1-BY-1 EXECUTION (5 CAPITAL RESERVES) */}
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
           <span className="text-[10px] text-slate-400 uppercase tracking-widest block mb-1">
-            Execution Slots
+            Execution Mode
           </span>
           <div>
             <span className="text-xl font-black text-amber-300 block">
-              {positions.length} / {settings.maxConcurrentPositions || 5} Slots Active
+              Sequential (1-at-a-Time)
             </span>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              {positions.length >= (settings.maxConcurrentPositions || 5)
-                ? `🎯 All 5 Slots Full · Tracking Exits`
+              {positions.length > 0
+                ? `⚡ Active: ${positions[0].symbol} · 5 Reserves Protected`
                 : `🔍 Inspecting #${(status.currentInspection?.assetIndex ?? 0) + 1}/10 (${status.currentInspection?.tag || "BTC"})`}
             </span>
           </div>
@@ -542,7 +542,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               </span>
             </div>
             <span className="text-[11px] text-slate-400 font-sans block mt-0.5">
-              {status.winningTradesToday}W / {status.losingTradesToday}L · EV: ₹{(status.expectedValuePerTradeINR ?? 0) >= 0 ? "+" : ""}{status.expectedValuePerTradeINR ?? 0} INR
+              {status.winningTradesToday}W / {status.losingTradesToday}L · Breakeven: ~33% Win Rate
             </span>
           </div>
         </div>
@@ -564,7 +564,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         </div>
       </div>
 
-      {/* 💼 5-SLOT EQUAL CAPITAL DISTRIBUTION DASHBOARD */}
+      {/* 💼 5-RESERVE EQUAL CAPITAL DISTRIBUTION DASHBOARD */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 grid grid-cols-2 sm:grid-cols-4 gap-3 shadow-xl">
         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
           <span className="text-[10px] text-slate-400 block uppercase font-mono">Total Capital Balance</span>
@@ -572,13 +572,13 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           <span className="text-[9px] text-slate-500 block font-mono">(${settings.currentCapitalUSD.toFixed(2)} USD)</span>
         </div>
         <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30">
-          <span className="text-[10px] text-emerald-400 block uppercase font-mono font-bold">Per-Slot Capital (1/5)</span>
-          <strong className="text-emerald-300 text-sm font-mono">₹{((settings.currentCapitalUSD / (settings.maxConcurrentPositions || 5)) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 2 })} INR</strong>
+          <span className="text-[10px] text-emerald-400 block uppercase font-mono font-bold">5 Capital Reserves (1/5)</span>
+          <strong className="text-emerald-300 text-sm font-mono">₹3,270 per Trade</strong>
           <span className="text-[9px] text-emerald-400/80 block font-mono">5x Leverage: ₹16,350 Notional</span>
         </div>
         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
           <span className="text-[10px] text-slate-400 block uppercase font-mono">Required Move / R:R</span>
-          <strong className="text-indigo-300 text-sm font-mono">~+5.2% Move (1 : 2.05)</strong>
+          <strong className="text-indigo-300 text-sm font-mono">~+3.0% to +5.2% (1:2.05)</strong>
           <span className="text-[9px] text-indigo-400/80 block font-mono">Vol Breakout + ADX Trigger</span>
         </div>
         <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
