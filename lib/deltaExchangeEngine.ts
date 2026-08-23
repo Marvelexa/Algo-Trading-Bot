@@ -590,6 +590,30 @@ class DeltaExchangeEngine {
     }
   }
 
+  public async fetchLivePositions(): Promise<any[]> {
+    if (!this.apiKey || !this.apiSecret) {
+      return [];
+    }
+    try {
+      const path = "/v2/positions/margined";
+      const headers = this.getAuthHeaders("GET", path, "");
+      const response = await fetch(`https://api.india.delta.exchange${path}`, {
+        headers: {
+          "Content-Type": "application/json",
+          ...headers
+        }
+      });
+      const data: any = await response.json();
+      if (data?.success && Array.isArray(data?.result)) {
+        return data.result.filter((p: any) => p.size !== 0);
+      }
+      return [];
+    } catch (e) {
+      console.warn("[DeltaExchange] Error fetching live positions:", e);
+      return [];
+    }
+  }
+
   public getProductBySymbol(symbol: string): DeltaProduct | undefined {
     return this.products.get(symbol.toUpperCase());
   }

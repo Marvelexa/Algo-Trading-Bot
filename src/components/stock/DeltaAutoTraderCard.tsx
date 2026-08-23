@@ -197,17 +197,10 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         const data = await res.json();
         setNotification(data?.message || `Executed trade on ${sym}`);
         setShowRadarModal(false);
-      } else {
-        const localRes = await deltaAutoTraderEngine.forceExecuteTrade(sym);
-        setNotification(localRes.message);
-        setShowRadarModal(false);
       }
-      fetchServerState();
+      await fetchServerState();
     } catch (e) {
-      const localRes = await deltaAutoTraderEngine.forceExecuteTrade(sym);
-      setNotification(localRes.message);
-      setShowRadarModal(false);
-      fetchServerState();
+      await fetchServerState();
     } finally {
       setIsForcing(false);
       setTimeout(() => setNotification(null), 5000);
@@ -216,26 +209,22 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
   const handleManualScan = async () => {
     setIsScanning(true);
-    setNotification("🔍 Scanning 10 Curated Coins for Multi-POV Confluence (Score ≥ 60, Positive EV)...");
+    setNotification("🔍 Scanning 10 Curated Coins for Multi-POV Confluence (Score ≥ 55, Positive EV)...");
     try {
       const scanRes = await fetch("/api/autotrader/scan", { method: "POST" });
       if (scanRes.ok) {
         const scanData = await scanRes.json();
-        fetchServerState();
+        await fetchServerState();
         if (scanData?.executed) {
           setNotification(`🚀 TRADE PLACED: ${scanData.message}`);
         } else {
           setNotification(scanData?.message || "Scan complete: 5-minute reading active.");
         }
       } else {
-        const localScan = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
-        fetchServerState();
-        setNotification(localScan.message);
+        await fetchServerState();
       }
     } catch (err) {
-      const localScan = await deltaAutoTraderEngine.scanAndExecuteNextTrade();
-      fetchServerState();
-      setNotification(localScan.message);
+      await fetchServerState();
     } finally {
       setIsScanning(false);
       setTimeout(() => setNotification(null), 5000);

@@ -1294,6 +1294,78 @@ export class DeltaAutoTraderEngine {
   }
 
   // ────────────────────────────────────────────
+  // Live Exchange Two-Way Synchronization
+  // ────────────────────────────────────────────
+  public async syncWithExchangePositions(): Promise<void> {
+    if (this.settings.mode !== "LIVE") return;
+    try {
+      const livePositions = await deltaExchangeEngine.fetchLivePositions();
+      if (!Array.isArray(livePositions)) return;
+
+      const activeSymbols = new Set(livePositions.map((p: any) => (p.product_symbol || "").toUpperCase()));
+
+      // 1. Remove positions from this.openPositions if they are closed on Delta Exchange
+      this.openPositions = this.openPositions.filter(pos => activeSymbols.has(pos.symbol.toUpperCase()));
+
+      // 2. Add or update each live exchange position
+      for (const livePos of livePositions) {
+        const sym = (livePos.product_symbol || "").toUpperCase();
+        const size = parseFloat(livePos.size) || 0;
+        if (size === 0) continue;
+
+        const type: "BUY" | "SELL" = size > 0 ? "BUY" : "SELL";
+        const entryPrice = parseFloat(livePos.entry_price) || 0;
+        const markPrice = parseFloat(livePos.mark_price) || entryPrice;
+        const unrealizedPnL = parseFloat(livePos.unrealized_pnl) || 0;
+        const absQty = Math.abs(size);
+
+        let existing = this.openPositions.find(p => p.symbol.toUpperCase() === sym);
+        if (existing) {
+          existing.entryPrice = entryPrice;
+          existing.currentPrice = markPrice;
+          existing.unrealizedPnLUSD = Number(unrealizedPnL.toFixed(4));
+          existing.quantity = absQty;
+        } else {
+          const now = Date.now();
+          const slDistance = entryPrice * 0.015;
+          const stopLossPrice = type === "BUY" ? entryPrice - slDistance : entryPrice + slDistance;
+          const targetPrice = type === "BUY" ? entryPrice + (slDistance * 2.05) : entryPrice - (slDistance * 2.05);
+
+          const newPos: AutoTraderPosition = {
+            id: `DAT-${sym}-LIVE-${livePos.user_id || Date.now()}`,
+            symbol: sym,
+            type,
+            entryPrice,
+            currentPrice: markPrice,
+            stopLossPrice: Number(stopLossPrice.toFixed(4)),
+            initialStopLoss: Number(stopLossPrice.toFixed(4)),
+            targetPrice: Number(targetPrice.toFixed(4)),
+            quantity: absQty,
+            confidenceScore: 80,
+            unrealizedPnLUSD: Number(unrealizedPnL.toFixed(4)),
+            unrealizedPnLPct: entryPrice > 0 ? Number(((unrealizedPnL / (entryPrice * absQty)) * 100).toFixed(2)) : 0,
+            trailingStopActive: false,
+            highestProfitUSD: Math.max(0, unrealizedPnL),
+            timeframeAlignment: "Delta Exchange Live Position Sync",
+            entryTimestamp: livePos.created_at ? livePos.created_at.replace("T", " ").substring(0, 19) : new Date().toISOString().replace("T", " ").substring(0, 19),
+            entryTimeMs: now,
+            maxHoldTimeExpiry: now + (75 * 60 * 1000),
+            subScores: { trend: 25, momentum: 25, pattern: 15, volume: 15 },
+            adxValue: 30,
+            rsiValue: 50,
+            entryEVUSD: 5
+          };
+          this.openPositions.push(newPos);
+        }
+      }
+
+      this.saveToStorage();
+    } catch (e) {
+      console.warn("[DeltaAutoTrader] Error syncing with exchange positions:", e);
+    }
+  }
+
+  // ────────────────────────────────────────────
   // Status, Circuit Breakers & Controls
   // ────────────────────────────────────────────
 

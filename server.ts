@@ -557,8 +557,11 @@ async function startServer() {
   }
 
   // Real-Time Server State (Runs 24/7 in Cloud even when Chrome is closed / Mobile is sleeping)
-  app.get("/api/autotrader/state", (req, res) => {
+  app.get("/api/autotrader/state", async (req, res) => {
     try {
+      if (deltaAutoTraderEngine.getLiveFullState().settings.mode === "LIVE") {
+        await deltaAutoTraderEngine.syncWithExchangePositions();
+      }
       const fullState = deltaAutoTraderEngine.getLiveFullState();
       return res.json({ success: true, state: fullState });
     } catch (e: any) {
