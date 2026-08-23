@@ -558,7 +558,9 @@ class DeltaExchangeEngine {
     stopLossPrice?: number,
     takeProfitPrice?: number
   ): Promise<any> {
-    if (!this.apiKey || !this.apiSecret) {
+    const key = this.getApiKey();
+    const secret = this.getApiSecret();
+    if (!key || !secret) {
       console.warn("[DeltaExchange] ⚠️ Cannot place live order: DELTA_EXCHANGE_API_KEY environment variables missing.");
       return { success: false, message: "Delta Exchange API Key missing." };
     }
@@ -630,7 +632,9 @@ class DeltaExchangeEngine {
     stopLossPrice?: number,
     takeProfitPrice?: number
   ): Promise<any> {
-    if (!this.apiKey || !this.apiSecret) {
+    const key = this.getApiKey();
+    const secret = this.getApiSecret();
+    if (!key || !secret) {
       return { success: false, message: "Delta Exchange API Key missing." };
     }
     try {
@@ -690,7 +694,9 @@ class DeltaExchangeEngine {
     stopLossPrice?: number,
     takeProfitPrice?: number
   ): Promise<any> {
-    if (!this.apiKey || !this.apiSecret) {
+    const key = this.getApiKey();
+    const secret = this.getApiSecret();
+    if (!key || !secret) {
       return { success: false, message: "Delta Exchange API Key missing." };
     }
     try {
@@ -746,7 +752,9 @@ class DeltaExchangeEngine {
   }
 
   public async cancelBracketOrder(symbol: string): Promise<any> {
-    if (!this.apiKey || !this.apiSecret) {
+    const key = this.getApiKey();
+    const secret = this.getApiSecret();
+    if (!key || !secret) {
       return { success: false, message: "Delta Exchange API Key missing." };
     }
     try {
@@ -783,7 +791,9 @@ class DeltaExchangeEngine {
   }
 
   public async fetchLivePositions(): Promise<any[]> {
-    if (!this.apiKey || !this.apiSecret) {
+    const key = this.getApiKey();
+    const secret = this.getApiSecret();
+    if (!key || !secret) {
       return [];
     }
     try {
