@@ -63,6 +63,7 @@ import { AITradingBrainCard } from "../components/stock/AITradingBrainCard";
 import { FnOptionsBreakoutCard } from "../components/stock/FnOptionsBreakoutCard";
 import { DeltaAutoTraderCard } from "../components/stock/DeltaAutoTraderCard";
 import { brokerTickEngine } from "../../lib/brokerTickEngine";
+import { useAuth } from "../context/AuthContext";
 
 const QUICK_TICKERS = [
   { symbol: "NIFTY50", name: "🇮🇳 NIFTY 50" },
@@ -148,6 +149,7 @@ export const StockAnalysis: React.FC = () => {
   const [searchInput, setSearchInput] = useState(currentTicker);
   const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const { user, logout, activeDevicesCount } = useAuth();
 
   // Loading & 30-Second Timer States
   const [loading, setLoading] = useState(true);
@@ -536,77 +538,99 @@ export const StockAnalysis: React.FC = () => {
             </p>
           </div>
 
-          {/* Universal Stock Search Bar */}
-          <div ref={searchContainerRef} className="relative w-full md:w-80">
-            <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search Ticker (e.g. RELIANCE.NS, TCS.NS, AAPL)..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
-                />
-              </div>
-              <button
-                type="submit"
-                className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-3.5 py-2 rounded-lg transition shadow-lg shadow-indigo-600/20 flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Analyze
-              </button>
-            </form>
+          {/* Universal Stock Search Bar & User Session */}
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div ref={searchContainerRef} className="relative flex-1 md:w-72">
+              <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search Ticker (e.g. RELIANCE.NS, TCS.NS, AAPL)..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition font-mono"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-3.5 py-2 rounded-lg transition shadow-lg shadow-indigo-600/20 flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Analyze
+                </button>
+              </form>
 
-            {/* Autocomplete Dropdown */}
-            {showDropdown && searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl shadow-2xl z-50 overflow-hidden max-h-72 overflow-y-auto divide-y divide-slate-800/80">
-                {searchResults.map((item, idx) => {
-                  const isDelta = item.exch === "DELTA" || item.type === "CRYPTO";
-                  const isMcx = item.exch === "MCX" || item.type === "COMMODITY";
-                  const isNfo = item.exch === "NFO" || item.type === "OPTION" || item.type === "FUTURE";
-                  const isNasdaq = item.exch === "NASDAQ";
+              {/* Autocomplete Dropdown */}
+              {showDropdown && searchResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl shadow-2xl z-50 overflow-hidden max-h-72 overflow-y-auto divide-y divide-slate-800/80">
+                  {searchResults.map((item, idx) => {
+                    const isDelta = item.exch === "DELTA" || item.type === "CRYPTO";
+                    const isMcx = item.exch === "MCX" || item.type === "COMMODITY";
+                    const isNfo = item.exch === "NFO" || item.type === "OPTION" || item.type === "FUTURE";
+                    const isNasdaq = item.exch === "NASDAQ";
 
-                  let badgeColor = "bg-indigo-500/20 text-indigo-300 border-indigo-500/30";
-                  if (isDelta) badgeColor = "bg-amber-500/20 text-amber-400 border-amber-500/30 font-bold";
-                  else if (isMcx) badgeColor = "bg-yellow-500/20 text-yellow-300 border-yellow-500/30";
-                  else if (isNfo) badgeColor = "bg-purple-500/20 text-purple-300 border-purple-500/30";
-                  else if (isNasdaq) badgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+                    let badgeColor = "bg-indigo-500/20 text-indigo-300 border-indigo-500/30";
+                    if (isDelta) badgeColor = "bg-amber-500/20 text-amber-400 border-amber-500/30 font-bold";
+                    else if (isMcx) badgeColor = "bg-yellow-500/20 text-yellow-300 border-yellow-500/30";
+                    else if (isNfo) badgeColor = "bg-purple-500/20 text-purple-300 border-purple-500/30";
+                    else if (isNasdaq) badgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
 
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setShowDropdown(false);
-                        setSearchInput(item.symbol);
-                        navigate(`/stock/${encodeURIComponent(item.symbol)}`);
-                      }}
-                      className="w-full p-2.5 text-left hover:bg-slate-800/80 transition flex items-center justify-between text-xs group"
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold font-mono text-slate-100 group-hover:text-indigo-400 transition">
-                            {item.symbol}
-                          </span>
-                          {item.type && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
-                              {item.type}
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setShowDropdown(false);
+                          setSearchInput(item.symbol);
+                          navigate(`/stock/${encodeURIComponent(item.symbol)}`);
+                        }}
+                        className="w-full p-2.5 text-left hover:bg-slate-800/80 transition flex items-center justify-between text-xs group"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold font-mono text-slate-100 group-hover:text-indigo-400 transition">
+                              {item.symbol}
                             </span>
-                          )}
+                            {item.type && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                                {item.type}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-slate-400 truncate max-w-[210px]">
+                            {item.name}
+                          </span>
                         </div>
-                        <span className="text-[11px] text-slate-400 truncate max-w-[210px]">
-                          {item.name}
+                        <span className={`text-[10px] px-2 py-0.5 rounded border font-mono tracking-wider ${badgeColor}`}>
+                          {item.exch}
                         </span>
-                      </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded border font-mono tracking-wider ${badgeColor}`}>
-                        {item.exch}
-                      </span>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Authenticated User & Multi-Device Sync Badge */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className="text-[11px]">
+                  <span className="font-bold text-white font-mono">{user?.username || "admin"}</span>
+                  <span className="text-slate-400 ml-1.5 text-[10px]">({activeDevicesCount} Synced)</span>
+                </div>
               </div>
-            )}
+
+              <button
+                onClick={() => logout()}
+                title="Logout Terminal Session"
+                className="text-xs px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-red-500/20 text-slate-400 hover:text-red-300 border border-slate-800 hover:border-red-500/30 transition flex items-center gap-1"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Exit</span>
+              </button>
+            </div>
           </div>
         </div>
 

@@ -10,6 +10,7 @@ import { deltaAutoTraderEngine, CURATED_AUTO_TRADER_ASSETS, EXIT_MONITORING_INTE
 import { deltaExchangeEngine } from "./lib/deltaExchangeEngine.js";
 
 import fs from "fs";
+import { authEngine } from "./lib/authEngine.js";
 import { getCitiesForLocation } from "./lib/cityDatabase.js";
 import { ScraperEngine, LeadData } from "./lib/ScraperEngine.js";
 
@@ -555,6 +556,64 @@ async function startServer() {
   } catch (e) {
     console.warn("[Server] ⚠️ Could not hydrate delta state from disk:", e);
   }
+
+  // ────────────────────────────────────────────
+  // 🔐 Standalone Manual Institutional Authentication API
+  // ────────────────────────────────────────────
+  app.post("/api/auth/login", (req, res) => {
+    try {
+      const { username, pin, password, device } = req.body;
+      const secret = pin || password || "";
+      const result = authEngine.authenticate(username, secret, device);
+      if (result.success) {
+        return res.json({ success: true, token: result.token, user: result.user, message: result.message });
+      }
+      return res.status(401).json({ success: false, message: result.message });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/auth/verify", (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : (req.query.token as string || "");
+      const result = authEngine.verifyToken(token);
+      if (result.valid) {
+        const sessionInfo = authEngine.getSessionInfo();
+        return res.json({ success: true, authenticated: true, user: result.user, session: sessionInfo });
+      }
+      return res.status(401).json({ success: false, authenticated: false, message: "Session expired or invalid" });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/auth/update-credentials", (req, res) => {
+    try {
+      const { currentSecret, newUsername, newSecret } = req.body;
+      const result = authEngine.updateCredentials(currentSecret, newUsername, newSecret);
+      if (result.success) {
+        return res.json({ success: true, message: result.message });
+      }
+      return res.status(400).json({ success: false, message: result.message });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/auth/session", (req, res) => {
+    try {
+      const sessionInfo = authEngine.getSessionInfo();
+      return res.json({ success: true, session: sessionInfo });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    return res.json({ success: true, message: "Logged out successfully" });
+  });
 
   // Real-Time Server State (Runs 24/7 in Cloud even when Chrome is closed / Mobile is sleeping)
   app.get("/api/autotrader/state", async (req, res) => {
