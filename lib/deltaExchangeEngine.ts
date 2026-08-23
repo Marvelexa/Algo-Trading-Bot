@@ -550,6 +550,15 @@ class DeltaExchangeEngine {
     return this.isConnected;
   }
 
+  public roundToTickSize(price: number, tickSizeStr: string | number): string {
+    const tickSize = typeof tickSizeStr === "string" ? parseFloat(tickSizeStr) : tickSizeStr;
+    if (!tickSize || isNaN(tickSize) || tickSize <= 0) return price.toFixed(2);
+    const rounded = Math.round(price / tickSize) * tickSize;
+    const str = tickSizeStr.toString();
+    const decimals = str.includes(".") ? str.split(".")[1].length : 0;
+    return rounded.toFixed(decimals);
+  }
+
   public async placeOrder(
     symbol: string,
     side: "buy" | "sell",
@@ -576,6 +585,7 @@ class DeltaExchangeEngine {
         || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || p.symbol?.toUpperCase() === `${cleanTag}USD` || p.symbol?.toUpperCase() === `${cleanTag}USDT`);
 
       const productId = product ? product.id : 27;
+      const tickSize = (product as any)?.tick_size || "0.01";
       const contractVal = parseFloat((product as any)?.contract_value || "1") || 1;
       const contractsSize = contractVal < 1
         ? Math.max(1, Math.round(size / contractVal))
@@ -589,19 +599,15 @@ class DeltaExchangeEngine {
         order_type: price ? "limit_order" : "market_order"
       };
       if (price) {
-        bodyData.limit_price = price.toString();
+        bodyData.limit_price = this.roundToTickSize(price, tickSize);
       }
       if (stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice > 0) {
-        bodyData.stop_loss_order = {
-          stop_price: stopLossPrice.toString(),
-          order_type: "market_order"
-        };
+        bodyData.bracket_stop_loss_price = this.roundToTickSize(stopLossPrice, tickSize);
+        bodyData.bracket_stop_trigger_method = "last_traded_price";
       }
       if (takeProfitPrice && !isNaN(takeProfitPrice) && takeProfitPrice > 0) {
-        bodyData.take_profit_order = {
-          stop_price: takeProfitPrice.toString(),
-          order_type: "market_order"
-        };
+        bodyData.bracket_take_profit_price = this.roundToTickSize(takeProfitPrice, tickSize);
+        bodyData.bracket_stop_trigger_method = "last_traded_price";
       }
       const bodyStr = JSON.stringify(bodyData);
       const headers = this.getAuthHeaders("POST", path, "", bodyStr);
@@ -649,6 +655,7 @@ class DeltaExchangeEngine {
         || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || p.symbol?.toUpperCase() === `${cleanTag}USD` || p.symbol?.toUpperCase() === `${cleanTag}USDT`);
 
       const productId = product ? product.id : 27;
+      const tickSize = (product as any)?.tick_size || "0.01";
       const path = "/v2/orders/bracket";
       const bodyData: any = {
         product_id: productId,
@@ -659,13 +666,13 @@ class DeltaExchangeEngine {
       if (stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice > 0) {
         bodyData.stop_loss_order = {
           order_type: "market_order",
-          stop_price: stopLossPrice.toString()
+          stop_price: this.roundToTickSize(stopLossPrice, tickSize)
         };
       }
       if (takeProfitPrice && !isNaN(takeProfitPrice) && takeProfitPrice > 0) {
         bodyData.take_profit_order = {
           order_type: "market_order",
-          stop_price: takeProfitPrice.toString()
+          stop_price: this.roundToTickSize(takeProfitPrice, tickSize)
         };
       }
 
@@ -711,6 +718,7 @@ class DeltaExchangeEngine {
         || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || p.symbol?.toUpperCase() === `${cleanTag}USD` || p.symbol?.toUpperCase() === `${cleanTag}USDT`);
 
       const productId = product ? product.id : 27;
+      const tickSize = (product as any)?.tick_size || "0.01";
       const path = "/v2/orders/bracket";
       const bodyData: any = {
         product_id: productId,
@@ -721,13 +729,13 @@ class DeltaExchangeEngine {
       if (stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice > 0) {
         bodyData.stop_loss_order = {
           order_type: "market_order",
-          stop_price: stopLossPrice.toString()
+          stop_price: this.roundToTickSize(stopLossPrice, tickSize)
         };
       }
       if (takeProfitPrice && !isNaN(takeProfitPrice) && takeProfitPrice > 0) {
         bodyData.take_profit_order = {
           order_type: "market_order",
-          stop_price: takeProfitPrice.toString()
+          stop_price: this.roundToTickSize(takeProfitPrice, tickSize)
         };
       }
 
