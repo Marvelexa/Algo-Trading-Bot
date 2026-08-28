@@ -201,14 +201,12 @@ export interface MultiTimeframeAnalysis {
   subScores?: { trend: number; momentum: number; pattern: number; volume: number };
   fundingRate?: number;
   spreadPct?: number;
-  nexvoraPhiScore?: number;
   shannonEntropy?: number;
   hurstExponent?: number;
   zScore?: number;
   kamaVelocity?: number;
   expectedValueUSD?: number;
   halfKellyFraction?: number;
-  convexityMultiplier?: number;
 }
 
 export interface ScanDiagnosticReport {
@@ -1049,9 +1047,8 @@ export class DeltaAutoTraderEngine {
     return { depthBias: "NEUTRAL", skewScore: 0 };
   }
 
-  // 👑 PROPRIETARY MATHEMATICAL MASTER FORMULA:
-  // 🌟 "NEXVORA PHI-CONVEXITY MASTER MATRIX FORMULA" (N_Phi)
-  // Combines Non-Linear Shannon Entropy (S), Hurst Fractal Exponent (H), and Cumulative Volume Delta (CVD)
+  // 📐 NON-LINEAR SHANNON INFORMATION ENTROPY (S):
+  // Quantifies Market Randomness vs Structural Order
   private calculateShannonEntropy(bars: OHLCVBar[]): number {
     if (!bars || bars.length < 10) return 0.5;
     const returns: number[] = [];
@@ -1068,36 +1065,6 @@ export class DeltaAutoTraderEngine {
     const pDown = downCount / total;
     const entropy = -( (pUp > 0 ? pUp * Math.log2(pUp) : 0) + (pDown > 0 ? pDown * Math.log2(pDown) : 0) );
     return Number(entropy.toFixed(3)); // 0 = Perfectly Ordered / Predictable, 1.0 = Pure Chaos
-  }
-
-  public calculateNexvoraPhiConvexity(
-    flowDirection: "BUY" | "SELL" | "NEUTRAL",
-    cvdRatio: number,
-    kamaVelocityPct: number,
-    hurstExponent: number,
-    shannonEntropy: number,
-    zScore: number
-  ): { phiScore: number; confidenceTier: "LEGENDARY_95" | "ELITE_90" | "SUB_OPTIMAL"; asymmetricGainMultiplier: number } {
-    if (flowDirection === "NEUTRAL") return { phiScore: 50, confidenceTier: "SUB_OPTIMAL", asymmetricGainMultiplier: 1.0 };
-    
-    // Normalized Directional Momentum Vector
-    const dirVector = flowDirection === "BUY" ? (cvdRatio - 0.50) * 2 : (0.50 - cvdRatio) * 2;
-    const orderPersistence = Math.max(0.1, 1.5 - shannonEntropy); // Low entropy enhances order
-    const fractalOrder = Math.max(0.3, hurstExponent);
-    const statisticalSafety = Math.max(0.2, 2.5 - Math.abs(zScore));
-    
-    // Nexvora Phi Core Calculation:
-    const rawPhi = (dirVector * 2.2 + kamaVelocityPct * 1.5) * orderPersistence * fractalOrder * statisticalSafety;
-    
-    // Sigmoid Convexity Normalization (0 to 100)
-    const phiScore = Number((100 / (1 + Math.exp(-rawPhi * 1.6))).toFixed(1));
-    const isLegendary = phiScore >= 88 && shannonEntropy <= 0.88 && hurstExponent >= 0.52;
-    
-    return {
-      phiScore,
-      confidenceTier: isLegendary ? "LEGENDARY_95" : (phiScore >= 78 ? "ELITE_90" : "SUB_OPTIMAL"),
-      asymmetricGainMultiplier: isLegendary ? 1.35 : 1.0
-    };
   }
 
   private detect15mCandlePattern(bars: OHLCVBar[]): { pattern: string; signal: "BULLISH" | "BEARISH" | "NEUTRAL"; score: number } {
@@ -1406,17 +1373,9 @@ export class DeltaAutoTraderEngine {
       if (fourHourTrend === "BEARISH") bearTrendPoints += 6;
     }
 
-    // 👑 NEXVORA PHI-CONVEXITY MASTER MATRIX FORMULA CONFLUENCE:
+    // 📐 Shannon Entropy & KAMA Velocity:
     const shannon15m = this.calculateShannonEntropy(bars15mUse);
     const kamaVelocity15m = ((closes15m[closes15m.length - 1] - kama1h) / Math.max(1, kama1h)) * 100;
-    const nexvoraPhi = this.calculateNexvoraPhiConvexity(
-      isBullConfluence ? "BUY" : (isBearConfluence ? "SELL" : "NEUTRAL"),
-      buyVolRatio,
-      Math.abs(kamaVelocity15m),
-      hurst1h,
-      shannon15m,
-      zScore15m
-    );
 
     // 🔄 4-HOUR MACRO CYCLICAL REVERSAL & BOTTOM ACCUMULATION DETECTOR:
     const is4hBottomReversal = (sweep15m.sweepType === "BULLISH_SWEEP" || msb15m.msbType === "BULLISH_MSB" || (fvg15m.fvgType === "BULLISH_FVG" && !fvg15m.isMitigated) || fib15m.inGoldenPocket) && (is1hRising || currentPrice > vwap1h.vwap || rsi1h < 44);
@@ -1444,7 +1403,7 @@ export class DeltaAutoTraderEngine {
       hurstTrending: hurst1h >= 0.52
     });
 
-    if (nexvoraPhi.confidenceTier === "LEGENDARY_95" || bayesianScore >= 85) {
+    if (bayesianScore >= 85) {
       if (isBullConfluence) bullMomPoints += 15;
       if (isBearConfluence) bearMomPoints += 15;
     }
@@ -1506,7 +1465,7 @@ export class DeltaAutoTraderEngine {
     // 🎯 2-Hour Horizon Expected Profit Forecasting (High-Profit Swing Wave Targets):
     const safeAtr = (atr1h > 0 && atr1h < currentPrice * 0.15) ? atr1h : (currentPrice * 0.015);
     const slDist = safeAtr * 1.0;
-    const tpDist = safeAtr * (2.2 * (nexvoraPhi.asymmetricGainMultiplier || 1.0));
+    const tpDist = safeAtr * 2.2;
     const lotSize = this.calculateDynamicLotSize(sym, currentPrice, slDist).quantity;
 
     // Projected Profit if BUY is executed (2-Hour Horizon):
@@ -1610,14 +1569,12 @@ export class DeltaAutoTraderEngine {
         volume: volBonus
       },
       reasoning,
-      nexvoraPhiScore: nexvoraPhi.phiScore,
       shannonEntropy: shannon15m,
       hurstExponent: hurst1h,
       zScore: Number(zScore15m.toFixed(2)),
       kamaVelocity: Number(kamaVelocity15m.toFixed(2)),
       expectedValueUSD: direction === "BUY" ? buyProjectedProfitUSD : (direction === "SELL" ? sellProjectedProfitUSD : 0),
-      halfKellyFraction: Number((Math.max(0, Math.min(0.10, ((overallScore / 100) * 2 - (1 - (overallScore / 100))) / 2)) * 50).toFixed(2)),
-      convexityMultiplier: nexvoraPhi.asymmetricGainMultiplier
+      halfKellyFraction: Number((Math.max(0, Math.min(0.10, ((overallScore / 100) * 2 - (1 - (overallScore / 100))) / 2)) * 50).toFixed(2))
     };
 
     this.analysisCache.set(sym, result);
@@ -1666,10 +1623,9 @@ export class DeltaAutoTraderEngine {
       : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
     const safeAtr = (analysis.atr1h > 0) ? analysis.atr1h : (price * 0.015);
 
-    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:2.0 Risk to Reward with Convexity Scaling):
-    const convexityMult = analysis.convexityMultiplier || 1.0;
+    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:2.2 Risk to Reward):
     const slDistance = safeAtr * 1.0;
-    const tpDistance = safeAtr * (2.0 * convexityMult);
+    const tpDistance = safeAtr * 2.2;
 
     const stopLossPrice = this.roundPrice(analysis.direction === "BUY" ? price - slDistance : price + slDistance);
     const targetPrice = this.roundPrice(analysis.direction === "BUY" ? price + tpDistance : price - tpDistance);
@@ -2690,7 +2646,7 @@ export class DeltaAutoTraderEngine {
 
     const realisticAtr = (analysis.atr1h && analysis.atr1h > 0 && analysis.atr1h < currentPrice * 0.10) ? analysis.atr1h : Math.max(currentPrice * 0.01, 0.05);
     const slDistance = realisticAtr * 1.0;
-    const tpDistance = realisticAtr * (2.2 * (analysis.convexityMultiplier || 1.0));
+    const tpDistance = realisticAtr * 2.2;
 
     const stopLossPrice = this.roundPrice(tradeDirection === "BUY" ? currentPrice - slDistance : currentPrice + slDistance);
     const targetPrice = this.roundPrice(tradeDirection === "BUY" ? currentPrice + tpDistance : currentPrice - tpDistance);

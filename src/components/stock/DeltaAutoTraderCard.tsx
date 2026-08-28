@@ -1156,17 +1156,17 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
           {/* 6 Quantitative Mathematical Pillars Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {/* Pillar 1: Nexvora Phi-Convexity */}
+            {/* Pillar 1: Anchored VWAP & CVD Volume Flow */}
             <div className="p-4 rounded-2xl bg-slate-950/80 border border-indigo-500/30 space-y-2.5 hover:border-indigo-500/60 transition">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold text-indigo-300">1. Nexvora Φ-Convexity Matrix</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">Sigmoid Scale</span>
+                <span className="text-xs font-bold text-indigo-300">1. Anchored VWAP & CVD Flow</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">Institutional Value</span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-amber-300">
-                Φ = (2.2·DirVector + 1.5·KAMA_v) · (1.5 - S) · H · (2.5 - |Z|)
+                VWAP = ∑(Price · Vol) / ∑Vol,  CVD = ∑(Vol_buy - Vol_sell)
               </div>
               <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
-                Maps multidimensional order flow and volatility into an asymmetric convex reward curve. Unlocks 1.35x profit extensions when conditions hit high-probability thresholds.
+                Tracks the true institutional volume-weighted benchmark and cumulative buying vs selling volume pressure to enter aligned with institutional liquidity.
               </p>
             </div>
 

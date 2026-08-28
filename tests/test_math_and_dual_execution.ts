@@ -48,10 +48,10 @@ const bull4h = generateMockCandles("BULLISH", 30, 70000);
 
 const bullAnalysis = deltaAutoTraderEngine.analyzeMultiTimeframe("BTCUSD", bull15m, bull1h, bull4h);
 console.log(`- Bullish Scenario Result: Direction=${bullAnalysis.direction}, Score=${bullAnalysis.overallScore}/100, EV=$${bullAnalysis.projectedProfitUSD} USD`);
-console.log(`- Nexvora Phi Score: ${bullAnalysis.nexvoraPhiScore}, Shannon Entropy: ${bullAnalysis.shannonEntropy}, Hurst Exponent: ${bullAnalysis.hurstExponent}`);
+console.log(`- Shannon Entropy: ${bullAnalysis.shannonEntropy}, Hurst Exponent: ${bullAnalysis.hurstExponent}`);
 console.log(`- KAMA Velocity: ${bullAnalysis.kamaVelocity}%, Half-Kelly: ${bullAnalysis.halfKellyFraction}`);
 
-if (typeof bullAnalysis.nexvoraPhiScore === "number" && typeof bullAnalysis.shannonEntropy === "number") {
+if (typeof bullAnalysis.shannonEntropy === "number" && typeof bullAnalysis.hurstExponent === "number") {
   console.log("✅ Quantitative Formula calculations: PASSED");
 } else {
   console.error("❌ Quantitative Formula calculations: FAILED");
