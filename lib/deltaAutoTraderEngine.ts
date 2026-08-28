@@ -1642,9 +1642,10 @@ export class DeltaAutoTraderEngine {
       : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
     const safeAtr = (analysis.atr1h > 0) ? analysis.atr1h : (price * 0.015);
 
-    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:2.0 Risk to Reward):
+    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:2.0 Risk to Reward with Convexity Scaling):
+    const convexityMult = analysis.convexityMultiplier || 1.0;
     const slDistance = safeAtr * 1.0;
-    const tpDistance = safeAtr * 2.0;
+    const tpDistance = safeAtr * (2.0 * convexityMult);
 
     const stopLossPrice = this.roundPrice(analysis.direction === "BUY" ? price - slDistance : price + slDistance);
     const targetPrice = this.roundPrice(analysis.direction === "BUY" ? price + tpDistance : price - tpDistance);
