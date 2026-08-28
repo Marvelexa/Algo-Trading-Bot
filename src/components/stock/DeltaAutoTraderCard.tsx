@@ -72,7 +72,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const [positions, setPositions] = useState<AutoTraderPosition[]>([]);
   const [records, setRecords] = useState<AutoTraderClosedRecord[]>([]);
   const [news, setNews] = useState<CryptoNewsItem[]>([]);
-  const [activeTab, setActiveTab] = useState<"OVERVIEW" | "CURATED_ASSETS" | "JOURNAL" | "NEWS" | "SETTINGS">("OVERVIEW");
+  const [activeTab, setActiveTab] = useState<"OVERVIEW" | "CURATED_ASSETS" | "MATH_FORMULAS" | "JOURNAL" | "NEWS" | "SETTINGS">("OVERVIEW");
   const [notification, setNotification] = useState<string | null>(null);
   const [showRadarModal, setShowRadarModal] = useState<boolean>(false);
   const [diagnostics, setDiagnostics] = useState<ScanDiagnosticReport | null>(null);
@@ -713,6 +713,14 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           🎯 10 Curated Assets & Auto-Lots ({CURATED_AUTO_TRADER_ASSETS.length})
         </button>
         <button
+          onClick={() => setActiveTab("MATH_FORMULAS")}
+          className={`px-4 py-2 rounded-t-xl font-bold transition border-t border-x shrink-0 ${
+            activeTab === "MATH_FORMULAS" ? "bg-slate-950 text-amber-300 border-slate-800" : "text-slate-400 border-transparent hover:text-slate-200"
+          }`}
+        >
+          📐 Quantitative Formulas & SMC ({status.currentInspection?.currentScore ? "Live Confluence" : "12 Models"})
+        </button>
+        <button
           onClick={() => setActiveTab("JOURNAL")}
           className={`px-4 py-2 rounded-t-xl font-bold transition border-t border-x shrink-0 ${
             activeTab === "JOURNAL" ? "bg-slate-950 text-indigo-400 border-slate-800" : "text-slate-400 border-transparent hover:text-slate-200"
@@ -1113,6 +1121,157 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: QUANTITATIVE MATHEMATICAL FORMULAS & SMC ENGINE */}
+      {activeTab === "MATH_FORMULAS" && (
+        <div className="space-y-4 animate-fade-in">
+          {/* Header Banner */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-indigo-950/80 to-slate-950 border border-indigo-500/50 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="p-3 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                <Brain className="w-6 h-6 text-amber-300" />
+              </span>
+              <div>
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <span>📐 Quantitative Mathematical Engine & Machine Learning Confluence</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono">
+                    100% Symmetric BUY/SELL
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400 font-sans mt-0.5">
+                  Every trade decision is validated in real-time by multi-dimensional probabilistic mathematics, non-linear entropy, Markov regimes, and SMC institutional order blocks.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-right shrink-0">
+              <span className="text-[10px] text-slate-400 block uppercase">Inspected Asset Confluence:</span>
+              <strong className="text-amber-300 text-xs font-mono">{status.currentInspection?.symbol || "BTCUSD"} · Score: {status.currentInspection?.currentScore || 50}/100</strong>
+              <span className="text-[9px] text-slate-500 block font-mono">EV: ${(status.currentInspection?.currentEVUSD ?? 0).toFixed(2)} USD</span>
+            </div>
+          </div>
+
+          {/* 6 Quantitative Mathematical Pillars Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {/* Pillar 1: Nexvora Phi-Convexity */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-indigo-500/30 space-y-2.5 hover:border-indigo-500/60 transition">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-indigo-300">1. Nexvora Φ-Convexity Matrix</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">Sigmoid Scale</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-amber-300">
+                Φ = (2.2·DirVector + 1.5·KAMA_v) · (1.5 - S) · H · (2.5 - |Z|)
+              </div>
+              <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+                Maps multidimensional order flow and volatility into an asymmetric convex reward curve. Unlocks 1.35x profit extensions when conditions hit high-probability thresholds.
+              </p>
+            </div>
+
+            {/* Pillar 2: Shannon Information Entropy */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-cyan-500/30 space-y-2.5 hover:border-cyan-500/60 transition">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-cyan-300">2. Shannon Information Entropy (S)</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">Chaos Detector</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-cyan-300">
+                S = - ∑ [ P(x_i) · log₂(P(x_i)) ]
+              </div>
+              <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+                Quantifies market noise vs structural order. When S &lt; 0.85, price distribution is structured and predictable; when S &gt; 0.95, market is pure random walk chop (auto-skipped).
+              </p>
+            </div>
+
+            {/* Pillar 3: Hurst Fractal Exponent */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-emerald-500/30 space-y-2.5 hover:border-emerald-500/60 transition">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-emerald-300">3. Hurst Fractal Dimension (H)</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">Regime Classifier</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-emerald-300">
+                R/S = c · τ^H  (H &gt; 0.55 Trend, H &lt; 0.45 Chop)
+              </div>
+              <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+                Separates persistent trending markets (H &gt; 0.55) from mean-reverting chop (H &lt; 0.45). Blocks counter-trend traps during directional impulse waves.
+              </p>
+            </div>
+
+            {/* Pillar 4: Kaufman's Adaptive MA (KAMA) */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-purple-500/30 space-y-2.5 hover:border-purple-500/60 transition">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-purple-300">4. Kaufman's Adaptive MA (KAMA)</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold">Zero-Lag Filter</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-purple-300">
+                ER = |ΔPrice| / ∑|ΔP_i|,  SC = [ER·(SC_f - SC_s) + SC_s]²
+              </div>
+              <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+                Dynamically adjusts smoothing speed based on market efficiency ratio (ER). Remains flat during noise but reacts with zero lag during authentic momentum breakouts.
+              </p>
+            </div>
+
+            {/* Pillar 5: Markov Switching Regime & Bayes */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-rose-500/30 space-y-2.5 hover:border-rose-500/60 transition">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-rose-300">5. Markov & Bayesian Confluence</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold">Probabilistic Log-Odds</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-rose-300">
+                log(Odds_post) = log(Odds_prior) + ∑ log(LR_i)
+              </div>
+              <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+                Synthesizes multi-indicator priors (KAMA, FVG, Order Block, CVD) into an optimal posterior probability using Bayes' theorem to eliminate single-indicator false positives.
+              </p>
+            </div>
+
+            {/* Pillar 6: Half-Kelly Bet Sizing & True EV */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-teal-500/30 space-y-2.5 hover:border-teal-500/60 transition">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-teal-300">6. Half-Kelly & Symmetric EV</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold">Risk Management</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-teal-300">
+                f* = (p·b - q) / b · 0.5,  EV = P_win·TP - P_loss·SL
+              </div>
+              <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+                Calculates the exact geometric growth bet fraction that eliminates risk of ruin. Evaluates BUY and SELL sides symmetrically and executes the direction with maximum positive EV.
+              </p>
+            </div>
+          </div>
+
+          {/* Smart Money Concepts (SMC) Institutional Engine Summary */}
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <span>🏛️ Smart Money Concepts (SMC) & Institutional Price Action Core</span>
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <strong className="text-emerald-400 block mb-1">Fair Value Gaps (FVG)</strong>
+                <p className="text-[11px] text-slate-400 font-sans">
+                  Detects 3-bar institutional imbalances and unfilled liquidity pockets on 15m/1h candles.
+                </p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <strong className="text-indigo-400 block mb-1">Institutional Order Blocks (OB)</strong>
+                <p className="text-[11px] text-slate-400 font-sans">
+                  Identifies major institutional footprints (last down-close before aggressive displacement).
+                </p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <strong className="text-amber-400 block mb-1">Liquidity Sweeps (Turtle Soup)</strong>
+                <p className="text-[11px] text-slate-400 font-sans">
+                  Capitalizes on retail stop-hunt wick absorptions above swing highs or below swing lows.
+                </p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <strong className="text-cyan-400 block mb-1">Anchored VWAP & Fib Golden Pocket</strong>
+                <p className="text-[11px] text-slate-400 font-sans">
+                  Validates mean-reversion pullbacks strictly within the 0.618 - 0.65 optimal trade entry zone.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}

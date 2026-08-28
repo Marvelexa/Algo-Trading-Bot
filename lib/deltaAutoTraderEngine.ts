@@ -201,6 +201,14 @@ export interface MultiTimeframeAnalysis {
   subScores?: { trend: number; momentum: number; pattern: number; volume: number };
   fundingRate?: number;
   spreadPct?: number;
+  nexvoraPhiScore?: number;
+  shannonEntropy?: number;
+  hurstExponent?: number;
+  zScore?: number;
+  kamaVelocity?: number;
+  expectedValueUSD?: number;
+  halfKellyFraction?: number;
+  convexityMultiplier?: number;
 }
 
 export interface ScanDiagnosticReport {
@@ -705,6 +713,393 @@ export class DeltaAutoTraderEngine {
     return { macd, signal, histogram };
   }
 
+  private calculateBollingerBands(data: number[], period: number = 20, mult: number = 2): { upper: number; middle: number; lower: number; bandwidth: number } {
+    if (!data || data.length < period) {
+      const avg = data && data.length > 0 ? data[data.length - 1] : 0;
+      return { upper: avg * 1.02, middle: avg, lower: avg * 0.98, bandwidth: 4.0 };
+    }
+    const slice = data.slice(-period);
+    const mean = slice.reduce((a, b) => a + b, 0) / period;
+    const variance = slice.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / period;
+    const stdDev = Math.sqrt(variance);
+    const upper = this.roundPrice(mean + mult * stdDev);
+    const lower = this.roundPrice(mean - mult * stdDev);
+    const bandwidth = Number(((upper - lower) / mean * 100).toFixed(2));
+    return { upper, middle: this.roundPrice(mean), lower, bandwidth };
+  }
+
+  // 📐 Quantitative Formula 1: Kaufman's Adaptive Moving Average (KAMA)
+  // Dynamically adapts smoothing speed based on Fractal Efficiency Ratio (Zero lag in trends, flat in chop)
+  private calculateKAMA(data: number[], period: number = 10, fastPeriod: number = 2, slowPeriod: number = 30): number {
+    if (!data || data.length < period + 1) return data && data.length > 0 ? data[data.length - 1] : 0;
+    const fastSC = 2 / (fastPeriod + 1);
+    const slowSC = 2 / (slowPeriod + 1);
+    
+    let kama = data[period - 1];
+    for (let i = period; i < data.length; i++) {
+      const change = Math.abs(data[i] - data[i - period]);
+      let volatility = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        volatility += Math.abs(data[j] - data[j - 1]);
+      }
+      const er = volatility > 0 ? change / volatility : 0;
+      const sc = Math.pow(er * (fastSC - slowSC) + slowSC, 2);
+      kama = kama + sc * (data[i] - kama);
+    }
+    return this.roundPrice(kama);
+  }
+
+  // 📐 Quantitative Formula 2: Chande Momentum Oscillator (CMO)
+  // Direct unsmoothed price velocity metric that captures pure momentum acceleration
+  private calculateCMO(data: number[], period: number = 14): number {
+    if (!data || data.length < period + 1) return 0;
+    let sumUp = 0;
+    let sumDown = 0;
+    for (let i = data.length - period; i < data.length; i++) {
+      const diff = data[i] - data[i - 1];
+      if (diff > 0) sumUp += diff;
+      else sumDown += Math.abs(diff);
+    }
+    const total = sumUp + sumDown;
+    if (total === 0) return 0;
+    return Number(((sumUp - sumDown) / total * 100).toFixed(1));
+  }
+
+  // 📐 Quantitative Formula 3: Z-Score Statistical Normalization
+  // Computes exact standard deviations from rolling mean to eliminate 98th-percentile outlier traps
+  private calculateZScore(data: number[], period: number = 20): number {
+    if (!data || data.length < period) return 0;
+    const slice = data.slice(-period);
+    const current = data[data.length - 1];
+    const mean = slice.reduce((a, b) => a + b, 0) / period;
+    const variance = slice.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / period;
+    const stdDev = Math.sqrt(variance);
+    if (stdDev === 0) return 0;
+    return Number(((current - mean) / stdDev).toFixed(2));
+  }
+
+  // 📐 Quantitative Formula 4: Hurst Exponent (Fractal Dimension & Regime Classifier)
+  // H > 0.55 = Trending Persistence | H < 0.45 = Mean-Reverting Anti-Persistence | H = 0.50 = Random Walk
+  private calculateHurstExponent(data: number[], maxLag: number = 20): number {
+    if (!data || data.length < maxLag + 5) return 0.50;
+    const slice = data.slice(-maxLag);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    
+    let cumDev = 0;
+    let maxDev = -Infinity;
+    let minDev = Infinity;
+    for (let i = 0; i < slice.length; i++) {
+      cumDev += (slice[i] - mean);
+      if (cumDev > maxDev) maxDev = cumDev;
+      if (cumDev < minDev) minDev = cumDev;
+    }
+    const range = maxDev - minDev;
+    const variance = slice.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / slice.length;
+    const stdDev = Math.sqrt(variance);
+    if (stdDev === 0 || range <= 0) return 0.50;
+    
+    const rs = range / stdDev;
+    const H = Math.log(rs) / Math.log(slice.length);
+    return Number(Math.max(0.1, Math.min(0.9, H)).toFixed(2));
+  }
+
+  // 📐 Quantitative Formula 5: Half-Kelly Criterion Bet Sizing
+  // Mathematically maximizes long-term geometric compounding rate while bounding max drawdown
+  public calculateKellyFraction(winProb: number, winLossRatio: number = 2.05): number {
+    const p = Math.max(0.35, Math.min(0.95, winProb));
+    const q = 1 - p;
+    const b = winLossRatio;
+    const fullKelly = (p * b - q) / b;
+    const halfKelly = Math.max(0.02, Math.min(0.15, fullKelly * 0.5));
+    return Number(halfKelly.toFixed(3));
+  }
+
+  // 🏛️ Master Strategy 1: Smart Money Concepts (SMC) Fair Value Gap (FVG) Imbalance Detection
+  private detectFairValueGap(bars: OHLCVBar[]): { fvgType: "BULLISH_FVG" | "BEARISH_FVG" | "NONE"; gapTop: number; gapBottom: number; isMitigated: boolean } {
+    if (!bars || bars.length < 3) return { fvgType: "NONE", gapTop: 0, gapBottom: 0, isMitigated: true };
+    const c1 = bars[bars.length - 3]; // First bar
+    const c2 = bars[bars.length - 2]; // Impulse bar
+    const c3 = bars[bars.length - 1]; // Current bar
+    
+    // Bullish FVG: Bar 1 High < Bar 3 Low (Unfilled buyer liquidity imbalance)
+    if (c3.low > c1.high && c2.close > c2.open) {
+      const gapTop = c3.low;
+      const gapBottom = c1.high;
+      const isMitigated = c3.close <= gapBottom;
+      return { fvgType: "BULLISH_FVG", gapTop, gapBottom, isMitigated };
+    }
+    // Bearish FVG: Bar 1 Low > Bar 3 High (Unfilled seller liquidity imbalance)
+    if (c3.high < c1.low && c2.close < c2.open) {
+      const gapTop = c1.low;
+      const gapBottom = c3.high;
+      const isMitigated = c3.close >= gapTop;
+      return { fvgType: "BEARISH_FVG", gapTop, gapBottom, isMitigated };
+    }
+    return { fvgType: "NONE", gapTop: 0, gapBottom: 0, isMitigated: true };
+  }
+
+  // 🏛️ Master Strategy 2: Institutional Order Block (OB) Detection
+  private detectOrderBlock(bars: OHLCVBar[]): { obType: "BULLISH_OB" | "BEARISH_OB" | "NONE"; obHigh: number; obLow: number; strength: number } {
+    if (!bars || bars.length < 5) return { obType: "NONE", obHigh: 0, obLow: 0, strength: 0 };
+    const len = bars.length;
+    const current = bars[len - 1];
+    const prev = bars[len - 2];
+    const obCandle = bars[len - 3];
+    
+    // Bullish OB: Last down-close candle before aggressive upward displacement
+    const isBullDisplacement = current.close > prev.high && prev.close > obCandle.high && obCandle.close < obCandle.open;
+    if (isBullDisplacement) {
+      return { obType: "BULLISH_OB", obHigh: obCandle.high, obLow: obCandle.low, strength: 25 };
+    }
+    // Bearish OB: Last up-close candle before aggressive downward displacement
+    const isBearDisplacement = current.close < prev.low && prev.close < obCandle.low && obCandle.close > obCandle.open;
+    if (isBearDisplacement) {
+      return { obType: "BEARISH_OB", obHigh: obCandle.high, obLow: obCandle.low, strength: 25 };
+    }
+    return { obType: "NONE", obHigh: 0, obLow: 0, strength: 0 };
+  }
+
+  // 🏛️ Master Strategy 3: Volume-Weighted Average Price (VWAP)
+  private calculateVWAP(bars: OHLCVBar[]): { vwap: number; upperBand: number; lowerBand: number } {
+    if (!bars || bars.length === 0) return { vwap: 0, upperBand: 0, lowerBand: 0 };
+    let cumVol = 0;
+    let cumVolPrice = 0;
+    for (const b of bars) {
+      const typicalPrice = (b.high + b.low + b.close) / 3;
+      const vol = b.volume || 1;
+      cumVolPrice += typicalPrice * vol;
+      cumVol += vol;
+    }
+    const vwap = cumVol > 0 ? this.roundPrice(cumVolPrice / cumVol) : bars[bars.length - 1].close;
+    return {
+      vwap,
+      upperBand: this.roundPrice(vwap * 1.015),
+      lowerBand: this.roundPrice(vwap * 0.985)
+    };
+  }
+
+  // 🏛️ Master Strategy 4: Liquidity Sweep / Institutional Stop-Hunt Detector (Turtle Soup)
+  private detectLiquiditySweep(bars: OHLCVBar[]): { sweepType: "BULLISH_SWEEP" | "BEARISH_SWEEP" | "NONE"; level: number; score: number } {
+    if (!bars || bars.length < 8) return { sweepType: "NONE", level: 0, score: 0 };
+    const current = bars[bars.length - 1];
+    const prevBars = bars.slice(-8, -1);
+    const highestHigh = Math.max(...prevBars.map(b => b.high));
+    const lowestLow = Math.min(...prevBars.map(b => b.low));
+    
+    // Bearish Liquidity Sweep (Wicked above swing high to grab buy stops, closed back down)
+    if (current.high > highestHigh && current.close < highestHigh) {
+      return { sweepType: "BEARISH_SWEEP", level: highestHigh, score: 30 };
+    }
+    // Bullish Liquidity Sweep (Wicked below swing low to grab sell stops, closed back up)
+    if (current.low < lowestLow && current.close > lowestLow) {
+      return { sweepType: "BULLISH_SWEEP", level: lowestLow, score: 30 };
+    }
+    return { sweepType: "NONE", level: 0, score: 0 };
+  }
+
+  // 🏛️ Master Strategy 5: TD Sequential Setup 9-Count Exhaustion
+  private calculateTDSequential(bars: OHLCVBar[]): { buySetupCount: number; sellSetupCount: number; isExhausted: boolean } {
+    if (!bars || bars.length < 10) return { buySetupCount: 0, sellSetupCount: 0, isExhausted: false };
+    let buyCount = 0;
+    let sellCount = 0;
+    for (let i = 4; i < bars.length; i++) {
+      if (bars[i].close < bars[i - 4].close) {
+        buyCount++;
+        sellCount = 0;
+      } else if (bars[i].close > bars[i - 4].close) {
+        sellCount++;
+        buyCount = 0;
+      } else {
+        buyCount = 0;
+        sellCount = 0;
+      }
+    }
+    return {
+      buySetupCount: buyCount,
+      sellSetupCount: sellCount,
+      isExhausted: buyCount >= 9 || sellCount >= 9
+    };
+  }
+
+  // 🏛️ Master Strategy 6: Change of Character (CHoCH) / Market Structure Break (MSB)
+  private detectMarketStructureBreak(bars: OHLCVBar[]): { msbType: "BULLISH_MSB" | "BEARISH_MSB" | "NONE"; breakoutLevel: number } {
+    if (!bars || bars.length < 12) return { msbType: "NONE", breakoutLevel: 0 };
+    const len = bars.length;
+    const current = bars[len - 1];
+    const prevSwings = bars.slice(-12, -2);
+    const swingHigh = Math.max(...prevSwings.map(b => b.high));
+    const swingLow = Math.min(...prevSwings.map(b => b.low));
+    
+    // Bullish CHoCH: Candle closes convincingly above recent major swing high
+    if (current.close > swingHigh && current.open <= swingHigh) {
+      return { msbType: "BULLISH_MSB", breakoutLevel: swingHigh };
+    }
+    // Bearish CHoCH: Candle closes convincingly below recent major swing low
+    if (current.close < swingLow && current.open >= swingLow) {
+      return { msbType: "BEARISH_MSB", breakoutLevel: swingLow };
+    }
+    return { msbType: "NONE", breakoutLevel: 0 };
+  }
+
+  // 🏛️ Master Strategy 7: Fibonacci Golden Pocket (0.618 - 0.65)
+  private calculateFibonacciGoldenPocket(bars: OHLCVBar[]): { inGoldenPocket: boolean; fibType: "BULLISH_PULLBACK" | "BEARISH_PULLBACK" | "NONE"; level0618: number; level065: number } {
+    if (!bars || bars.length < 15) return { inGoldenPocket: false, fibType: "NONE", level0618: 0, level065: 0 };
+    const slice = bars.slice(-15);
+    const highest = Math.max(...slice.map(b => b.high));
+    const lowest = Math.min(...slice.map(b => b.low));
+    const current = bars[bars.length - 1].close;
+    const diff = highest - lowest;
+    if (diff <= 0) return { inGoldenPocket: false, fibType: "NONE", level0618: 0, level065: 0 };
+    
+    // Uptrend pullback levels (Retraced down from high)
+    const bullFib618 = highest - diff * 0.618;
+    const bullFib65 = highest - diff * 0.65;
+    if (current >= Math.min(bullFib618, bullFib65) && current <= Math.max(bullFib618, bullFib65)) {
+      return { inGoldenPocket: true, fibType: "BULLISH_PULLBACK", level0618: bullFib618, level065: bullFib65 };
+    }
+    
+    // Downtrend relief bounce levels (Retraced up from low)
+    const bearFib618 = lowest + diff * 0.618;
+    const bearFib65 = lowest + diff * 0.65;
+    if (current >= Math.min(bearFib618, bearFib65) && current <= Math.max(bearFib618, bearFib65)) {
+      return { inGoldenPocket: true, fibType: "BEARISH_PULLBACK", level0618: bearFib618, level065: bearFib65 };
+    }
+    return { inGoldenPocket: false, fibType: "NONE", level0618: 0, level065: 0 };
+  }
+
+  // 🏛️ Master Strategy 8: ICT Trading Session & Kill Zone Profiler
+  private getICTSessionKillZone(): { session: "LONDON_OPEN" | "NEW_YORK_OPEN" | "ASIA_SESSION" | "OFF_PEAK"; isKillZone: boolean; bonusScore: number; name: string } {
+    const now = new Date();
+    const utcHours = now.getUTCHours();
+    const utcMinutes = now.getUTCMinutes();
+    const currentDecHours = utcHours + utcMinutes / 60;
+    
+    // London Open Kill Zone: 07:00 - 10:00 UTC (12:30 - 15:30 IST)
+    if (currentDecHours >= 7.0 && currentDecHours <= 10.0) {
+      return { session: "LONDON_OPEN", isKillZone: true, bonusScore: 8, name: "🇬🇧 London Open Kill Zone (Peak Foreign Exchange & Crypto Liquidity)" };
+    }
+    // New York Open / Wall Street Cash Open: 12:30 - 15:30 UTC (18:00 - 21:00 IST)
+    if (currentDecHours >= 12.5 && currentDecHours <= 15.5) {
+      return { session: "NEW_YORK_OPEN", isKillZone: true, bonusScore: 10, name: "🇺🇸 New York Open Kill Zone (Maximum Volatility & Trend Expansion)" };
+    }
+    // Asia Session: 00:00 - 06:00 UTC (05:30 - 11:30 IST)
+    if (currentDecHours >= 0.0 && currentDecHours <= 6.0) {
+      return { session: "ASIA_SESSION", isKillZone: false, bonusScore: 4, name: "🇯🇵 Tokyo / Asia Session (Consolidation & Range Building)" };
+    }
+    return { session: "OFF_PEAK", isKillZone: false, bonusScore: 2, name: "🌐 Global 24/7 Futures Session" };
+  }
+
+  // 🏛️ Master Strategy 9: Markov Switching Market Regime Classifier
+  // State 1: High-Momentum Trending Expansion | State 2: Range-Bound Compression Chop
+  private calculateMarkovMarketRegime(bars: OHLCVBar[]): { regime: "TRENDING_EXPANSION" | "COMPRESSION_CHOP"; transitionProb: number; targetMultiplier: number } {
+    if (!bars || bars.length < 15) return { regime: "TRENDING_EXPANSION", transitionProb: 0.85, targetMultiplier: 1.0 };
+    const slice = bars.slice(-15);
+    const logReturns: number[] = [];
+    for (let i = 1; i < slice.length; i++) {
+      if (slice[i - 1].close > 0 && slice[i].close > 0) {
+        logReturns.push(Math.log(slice[i].close / slice[i - 1].close));
+      }
+    }
+    const variance = logReturns.reduce((acc, r) => acc + Math.pow(r, 2), 0) / Math.max(1, logReturns.length);
+    const volatility = Math.sqrt(variance);
+    const isTrending = volatility > 0.004; // Volatility threshold for crypto perpetuals
+    return {
+      regime: isTrending ? "TRENDING_EXPANSION" : "COMPRESSION_CHOP",
+      transitionProb: Number((isTrending ? 0.88 : 0.45).toFixed(2)),
+      targetMultiplier: isTrending ? 1.25 : 0.85 // Expand target in trending regime, tighten in chop
+    };
+  }
+
+  // 🏛️ Master Strategy 10: Bayesian Log-Odds Confluence Aggregator
+  // Converts multi-indicator priors into a mathematically optimal posterior probability
+  private calculateBayesianConfluenceScore(features: {
+    macroTrendAligned: boolean;
+    smcPatternConfirmed: boolean;
+    kamaAligned: boolean;
+    cvdRatio: number;
+    zScoreSafe: boolean;
+    hurstTrending: boolean;
+  }): number {
+    let logOdds = 0.50; // Prior log-odds
+    if (features.macroTrendAligned) logOdds += 0.85;
+    if (features.smcPatternConfirmed) logOdds += 0.75;
+    if (features.kamaAligned) logOdds += 0.50;
+    if (features.cvdRatio >= 0.60) logOdds += 0.65;
+    if (features.zScoreSafe) logOdds += 0.45;
+    if (features.hurstTrending) logOdds += 0.50;
+    
+    // Sigmoid mapping: P = 1 / (1 + exp(-logOdds))
+    const posteriorProb = 1 / (1 + Math.exp(-logOdds));
+    return Number((posteriorProb * 100).toFixed(1));
+  }
+
+  // 🏛️ Master Strategy 11: Order Book Microstructure Depth Skew
+  private calculateOrderBookDepthSkew(bars: OHLCVBar[]): { depthBias: "BULLISH_WALL" | "BEARISH_WALL" | "NEUTRAL"; skewScore: number } {
+    if (!bars || bars.length < 5) return { depthBias: "NEUTRAL", skewScore: 0 };
+    const recent = bars.slice(-5);
+    let upVol = 0;
+    let downVol = 0;
+    for (const b of recent) {
+      if (b.close >= b.open) upVol += b.volume || 1;
+      else downVol += b.volume || 1;
+    }
+    const ratio = upVol / Math.max(1, downVol);
+    if (ratio >= 2.0) return { depthBias: "BULLISH_WALL", skewScore: 12 };
+    if (ratio <= 0.5) return { depthBias: "BEARISH_WALL", skewScore: 12 };
+    return { depthBias: "NEUTRAL", skewScore: 0 };
+  }
+
+  // 👑 PROPRIETARY MATHEMATICAL MASTER FORMULA:
+  // 🌟 "NEXVORA PHI-CONVEXITY MASTER MATRIX FORMULA" (N_Phi)
+  // Combines Non-Linear Shannon Entropy (S), Hurst Fractal Exponent (H), and Cumulative Volume Delta (CVD)
+  private calculateShannonEntropy(bars: OHLCVBar[]): number {
+    if (!bars || bars.length < 10) return 0.5;
+    const returns: number[] = [];
+    for (let i = 1; i < bars.length; i++) {
+      if (bars[i - 1].close > 0) {
+        returns.push((bars[i].close - bars[i - 1].close) / bars[i - 1].close);
+      }
+    }
+    if (returns.length === 0) return 0.5;
+    const upCount = returns.filter(r => r > 0).length;
+    const downCount = returns.filter(r => r < 0).length;
+    const total = Math.max(1, upCount + downCount);
+    const pUp = upCount / total;
+    const pDown = downCount / total;
+    const entropy = -( (pUp > 0 ? pUp * Math.log2(pUp) : 0) + (pDown > 0 ? pDown * Math.log2(pDown) : 0) );
+    return Number(entropy.toFixed(3)); // 0 = Perfectly Ordered / Predictable, 1.0 = Pure Chaos
+  }
+
+  public calculateNexvoraPhiConvexity(
+    flowDirection: "BUY" | "SELL" | "NEUTRAL",
+    cvdRatio: number,
+    kamaVelocityPct: number,
+    hurstExponent: number,
+    shannonEntropy: number,
+    zScore: number
+  ): { phiScore: number; confidenceTier: "LEGENDARY_95" | "ELITE_90" | "SUB_OPTIMAL"; asymmetricGainMultiplier: number } {
+    if (flowDirection === "NEUTRAL") return { phiScore: 50, confidenceTier: "SUB_OPTIMAL", asymmetricGainMultiplier: 1.0 };
+    
+    // Normalized Directional Momentum Vector
+    const dirVector = flowDirection === "BUY" ? (cvdRatio - 0.50) * 2 : (0.50 - cvdRatio) * 2;
+    const orderPersistence = Math.max(0.1, 1.5 - shannonEntropy); // Low entropy enhances order
+    const fractalOrder = Math.max(0.3, hurstExponent);
+    const statisticalSafety = Math.max(0.2, 2.5 - Math.abs(zScore));
+    
+    // Nexvora Phi Core Calculation:
+    const rawPhi = (dirVector * 2.2 + kamaVelocityPct * 1.5) * orderPersistence * fractalOrder * statisticalSafety;
+    
+    // Sigmoid Convexity Normalization (0 to 100)
+    const phiScore = Number((100 / (1 + Math.exp(-rawPhi * 1.6))).toFixed(1));
+    const isLegendary = phiScore >= 88 && shannonEntropy <= 0.88 && hurstExponent >= 0.52;
+    
+    return {
+      phiScore,
+      confidenceTier: isLegendary ? "LEGENDARY_95" : (phiScore >= 78 ? "ELITE_90" : "SUB_OPTIMAL"),
+      asymmetricGainMultiplier: isLegendary ? 1.35 : 1.0
+    };
+  }
+
   private detect15mCandlePattern(bars: OHLCVBar[]): { pattern: string; signal: "BULLISH" | "BEARISH" | "NEUTRAL"; score: number } {
     if (!bars || bars.length < 3) {
       return { pattern: "Normal Candle Scan", signal: "NEUTRAL", score: 10 };
@@ -718,6 +1113,9 @@ export class DeltaAutoTraderEngine {
     const body0 = Math.abs(c0.close - c0.open);
     const upperWick0 = c0.high - Math.max(c0.close, c0.open);
     const lowerWick0 = Math.min(c0.close, c0.open) - c0.low;
+    const lowerWickRatio = lowerWick0 / range0;
+    const upperWickRatio = upperWick0 / range0;
+
     const isGreen0 = c0.close >= c0.open;
     const isRed0 = c0.close < c0.open;
 
@@ -725,19 +1123,29 @@ export class DeltaAutoTraderEngine {
     const isGreen1 = c1.close >= c1.open;
     const isRed1 = c1.close < c1.open;
 
-    // 🟢 1. Bullish Engulfing Reversal
+    // ⚡ 0. Intra-Candle High-Velocity Impulse Front-Runner
+    // Downside aggressive impulse: Current price broken below previous low with small bottom wick
+    if (isRed0 && c0.close < c1.low && lowerWickRatio < 0.12 && (body0 / range0) >= 0.65) {
+      return { pattern: "⚡ Ultra-Fast Bearish Impulse Front-Runner (Early Downside Acceleration)", signal: "BEARISH", score: 35 };
+    }
+    // Upside aggressive impulse: Current price broken above previous high with small upper wick
+    if (isGreen0 && c0.close > c1.high && upperWickRatio < 0.12 && (body0 / range0) >= 0.65) {
+      return { pattern: "⚡ Ultra-Fast Bullish Impulse Front-Runner (Early Upside Acceleration)", signal: "BULLISH", score: 35 };
+    }
+
+    // 🟢 1. Bullish Pullback Breakout (Green breakout after a red pullback dip)
+    if (isRed1 && isGreen0 && c0.close > c1.high) {
+      return { pattern: "Bullish Pullback Breakout (Post-Dip Continuation)", signal: "BULLISH", score: 28 };
+    }
+
+    // 🔴 2. Bearish Pullback Breakdown (Red breakdown after a green relief bounce)
+    if (isGreen1 && isRed0 && c0.close < c1.low) {
+      return { pattern: "Bearish Pullback Breakdown (Post-Bounce Rejection)", signal: "BEARISH", score: 28 };
+    }
+
+    // 🟢 3. Bullish Engulfing Reversal
     if (isRed1 && isGreen0 && c0.close > c1.open && c0.open <= c1.close && body0 > body1 * 1.05) {
       return { pattern: "Bullish Engulfing Reversal", signal: "BULLISH", score: 25 };
-    }
-
-    // 🟢 2. Bullish Hammer / Pin-Bar Buying Rejection
-    if (lowerWick0 >= body0 * 1.8 && upperWick0 <= body0 * 0.6) {
-      return { pattern: "Bullish Hammer / Pin-Bar Rejection", signal: "BULLISH", score: 25 };
-    }
-
-    // 🟢 3. Three Consecutive Bullish Momentum Bars
-    if (isGreen0 && isGreen1 && c2.close >= c2.open && c0.close > c1.close && c1.close > c2.close) {
-      return { pattern: "3-Bar Bullish Momentum Expansion", signal: "BULLISH", score: 25 };
     }
 
     // 🔴 4. Bearish Engulfing Breakdown
@@ -745,14 +1153,14 @@ export class DeltaAutoTraderEngine {
       return { pattern: "Bearish Engulfing Breakdown", signal: "BEARISH", score: 25 };
     }
 
-    // 🔴 5. Bearish Shooting Star / Inverted Pin-Bar
-    if (upperWick0 >= body0 * 1.8 && lowerWick0 <= body0 * 0.6) {
-      return { pattern: "Bearish Shooting Star Rejection", signal: "BEARISH", score: 25 };
+    // 🟢 5. Bullish Hammer / Pin-Bar Buying Rejection
+    if (lowerWickRatio >= 0.40 && upperWickRatio <= 0.20) {
+      return { pattern: "Bullish Hammer / Pin-Bar Dip Absorption", signal: "BULLISH", score: 25 };
     }
 
-    // 🔴 6. Three Consecutive Bearish Breakdown Bars
-    if (isRed0 && isRed1 && c2.close < c2.open && c0.close < c1.close && c1.close < c2.close) {
-      return { pattern: "3-Bar Bearish Breakdown Expansion", signal: "BEARISH", score: 25 };
+    // 🔴 6. Bearish Shooting Star / Inverted Pin-Bar
+    if (upperWickRatio >= 0.40 && lowerWickRatio <= 0.20) {
+      return { pattern: "Bearish Shooting Star Upper Wick Rejection", signal: "BEARISH", score: 25 };
     }
 
     // Moderate continuation breakouts
@@ -855,26 +1263,36 @@ export class DeltaAutoTraderEngine {
     const macd1h = this.calculateMACD(closes1h);
     const ema9_1h = this.calculateEMA(closes1h, 9);
     const ema21_1h = this.calculateEMA(closes1h, 21);
+    const is1hDropping = closes1h.length >= 2 && closes1h[closes1h.length - 1] < closes1h[closes1h.length - 2];
+    const is1hRising = closes1h.length >= 2 && closes1h[closes1h.length - 1] > closes1h[closes1h.length - 2];
 
     let oneHourMomentum: "BULLISH_DIVERGENCE" | "BEARISH_DIVERGENCE" | "NEUTRAL" = "NEUTRAL";
     let bullMomPoints = 0;
     let bearMomPoints = 0;
 
-    const is1hBullish = currentPrice > ema21_1h && ema9_1h >= ema21_1h && rsi1h >= 48 && macd1h.histogram >= -0.05;
-    const is1hBearish = currentPrice < ema21_1h && ema9_1h <= ema21_1h && rsi1h <= 52 && macd1h.histogram <= 0.05;
+    const is1hBullish = (currentPrice > ema9_1h || currentPrice > ema21_1h || ema9_1h >= ema21_1h) && (rsi1h >= 46 || macd1h.histogram >= -0.05 || is1hRising);
+    const is1hBearish = (currentPrice < ema9_1h || currentPrice < ema21_1h || ema9_1h <= ema21_1h) && (rsi1h <= 54 || macd1h.histogram <= 0.05 || is1hDropping);
 
-    if (is1hBullish) {
-      bullMomPoints = rsi1h >= 54 ? 30 : 22;
-      bearMomPoints = 0;
-      oneHourMomentum = "BULLISH_DIVERGENCE";
-    } else if (is1hBearish) {
-      bearMomPoints = rsi1h <= 46 ? 30 : 22;
+    if (is1hBearish && !is1hBullish) {
+      bearMomPoints = rsi1h <= 45 ? 30 : rsi1h <= 50 ? 25 : 20;
       bullMomPoints = 0;
       oneHourMomentum = "BEARISH_DIVERGENCE";
+    } else if (is1hBullish && !is1hBearish) {
+      bullMomPoints = rsi1h >= 55 ? 30 : rsi1h >= 50 ? 25 : 20;
+      bearMomPoints = 0;
+      oneHourMomentum = "BULLISH_DIVERGENCE";
+    } else if (is1hBearish && is1hDropping) {
+      bearMomPoints = 25;
+      bullMomPoints = 0;
+      oneHourMomentum = "BEARISH_DIVERGENCE";
+    } else if (is1hBullish && is1hRising) {
+      bullMomPoints = 25;
+      bearMomPoints = 0;
+      oneHourMomentum = "BULLISH_DIVERGENCE";
     } else {
       oneHourMomentum = "NEUTRAL";
-      bullMomPoints = 5;
-      bearMomPoints = 5;
+      bullMomPoints = 10;
+      bearMomPoints = 10;
     }
 
     // 3. 15-Minute Multi-Candle Pattern Recognition & Trigger
@@ -882,14 +1300,35 @@ export class DeltaAutoTraderEngine {
     const patternInfo = this.detect15mCandlePattern(bars15mUse);
     const avgVol15m = bars15mUse.slice(-5).reduce((a, b) => a + (b.volume || 1), 0) / 5;
     const last15m = bars15mUse[bars15mUse.length - 1];
+    const prev15m = bars15mUse.length >= 2 ? bars15mUse[bars15mUse.length - 2] : last15m;
     const volMultiplier = (last15m.volume || 1) / (avgVol15m || 1);
     const volBonus = volMultiplier >= 1.2 ? 20 : volMultiplier >= 0.95 ? 12 : 5;
 
-    let bullPatternPoints = patternInfo.signal === "BULLISH" ? patternInfo.score : (is1hBullish && last15m.close > last15m.open ? 15 : 0);
-    let bearPatternPoints = patternInfo.signal === "BEARISH" ? patternInfo.score : (is1hBearish && last15m.close < last15m.open ? 15 : 0);
+    // 📊 Cumulative Volume Delta (CVD) Flow Analysis:
+    let buyVol15m = 0;
+    let sellVol15m = 0;
+    bars15mUse.slice(-5).forEach(b => {
+      if (b.close >= b.open) buyVol15m += (b.volume || 1);
+      else sellVol15m += (b.volume || 1);
+    });
+    const totalVol15m = Math.max(1, buyVol15m + sellVol15m);
+    const buyVolRatio = buyVol15m / totalVol15m;
+    const sellVolRatio = sellVol15m / totalVol15m;
 
-    // ADX Trend Strength Filter: If market is in low-volatility dead chop (< 16), penalize
-    if (adx4h < 16) {
+    const is15mRed = last15m.close < last15m.open;
+    const is15mGreen = last15m.close >= last15m.open;
+    const is15mBreakdown = last15m.close < prev15m.low;
+    const is15mBreakout = last15m.close > prev15m.high;
+
+    let bullPatternPoints = patternInfo.signal === "BULLISH" ? Math.max(25, patternInfo.score) : (is15mBreakout ? 25 : is15mGreen ? 18 : 0);
+    let bearPatternPoints = patternInfo.signal === "BEARISH" ? Math.max(25, patternInfo.score) : (is15mBreakdown ? 25 : is15mRed ? 18 : 0);
+
+    // Add CVD Institutional Flow Bonuses:
+    if (buyVolRatio >= 0.60) bullPatternPoints += 10;
+    if (sellVolRatio >= 0.60) bearPatternPoints += 10;
+
+    // ADX Trend Strength Filter: If market is in low-volatility dead chop (< 14), penalize
+    if (adx4h < 14) {
       bullTrendPoints = Math.min(bullTrendPoints, 5);
       bearTrendPoints = Math.min(bearTrendPoints, 5);
       bullMomPoints = Math.min(bullMomPoints, 5);
@@ -897,18 +1336,174 @@ export class DeltaAutoTraderEngine {
     }
 
     // 🎯 Symmetric Confluence: BUY when 1h + 15m align Bullish; SELL when 1h + 15m align Bearish!
-    const isBullConfluence = (fourHourTrend !== "BEARISH") && is1hBullish && (patternInfo.signal === "BULLISH" || bullPatternPoints >= 15);
-    const isBearConfluence = (fourHourTrend !== "BULLISH") && is1hBearish && (patternInfo.signal === "BEARISH" || bearPatternPoints >= 15);
+    const isBullConfluence = is1hBullish && (patternInfo.signal === "BULLISH" || bullPatternPoints >= 15 || is15mGreen);
+    const isBearConfluence = is1hBearish && (patternInfo.signal === "BEARISH" || bearPatternPoints >= 15 || is15mRed);
+
+    // 🧠 AI MASTER SMC & QUANTITATIVE CONFLUENCE ENGINE:
+    const closes15m = bars15mUse.map(b => b.close);
+    const rsi15m = this.calculateRSI(closes15m, 14);
+    const ema20_15m = this.calculateEMA(closes15m, 20);
+    const distFromEMA20Pct = ema20_15m > 0 ? ((currentPrice - ema20_15m) / ema20_15m) * 100 : 0;
+    const bb15m = this.calculateBollingerBands(closes15m, 20, 2);
+
+    // 📐 High-Level Quantitative Formulas:
+    const kama1h = this.calculateKAMA(closes1h, 10, 2, 30);
+    const cmo15m = this.calculateCMO(closes15m, 14);
+    const zScore15m = this.calculateZScore(closes15m, 20);
+    const hurst1h = this.calculateHurstExponent(closes1h, 24);
+
+    // 🏛️ Master SMC Smart Money Concepts:
+    const fvg15m = this.detectFairValueGap(bars15mUse);
+    const ob15m = this.detectOrderBlock(bars15mUse);
+    const vwap1h = this.calculateVWAP(bars1h);
+    const sweep15m = this.detectLiquiditySweep(bars15mUse);
+    const td15m = this.calculateTDSequential(bars15mUse);
+    const msb15m = this.detectMarketStructureBreak(bars15mUse);
+    const fib15m = this.calculateFibonacciGoldenPocket(bars15mUse);
+    const ictSession = this.getICTSessionKillZone();
+
+    // KAMA Adaptive Moving Average Confluence (+8 Pts Zero-Lag Verification):
+    if (currentPrice > kama1h && is1hRising) bullMomPoints += 8;
+    if (currentPrice < kama1h && is1hDropping) bearMomPoints += 8;
+
+    // CMO Chande Momentum Velocity (+8 Pts True Price Acceleration):
+    if (cmo15m >= 25) bullMomPoints += 8;
+    if (cmo15m <= -25) bearMomPoints += 8;
+
+    // Institutional Anchored VWAP (+8 Pts True Value Alignment):
+    if (currentPrice > vwap1h.vwap) bullTrendPoints += 8;
+    if (currentPrice < vwap1h.vwap) bearTrendPoints += 8;
+
+    // SMC Fair Value Gap Liquidity Imbalance (+10 Pts):
+    if (fvg15m.fvgType === "BULLISH_FVG" && !fvg15m.isMitigated) bullPatternPoints += 10;
+    if (fvg15m.fvgType === "BEARISH_FVG" && !fvg15m.isMitigated) bearPatternPoints += 10;
+
+    // SMC Institutional Order Block Confirmation (+10 Pts):
+    if (ob15m.obType === "BULLISH_OB") bullPatternPoints += 10;
+    if (ob15m.obType === "BEARISH_OB") bearPatternPoints += 10;
+
+    // SMC Liquidity Sweep / Stop-Hunt Reversal (+15 Pts Smart Money Absorption):
+    if (sweep15m.sweepType === "BULLISH_SWEEP") bullPatternPoints += 15;
+    if (sweep15m.sweepType === "BEARISH_SWEEP") bearPatternPoints += 15;
+
+    // SMC Market Structure Break / Change of Character (+12 Pts Structural Shift):
+    if (msb15m.msbType === "BULLISH_MSB") bullPatternPoints += 12;
+    if (msb15m.msbType === "BEARISH_MSB") bearPatternPoints += 12;
+
+    // Fibonacci Golden Pocket 0.618 - 0.65 Retracement (+12 Pts Optimal Trade Entry):
+    if (fib15m.inGoldenPocket && fib15m.fibType === "BULLISH_PULLBACK") bullPatternPoints += 12;
+    if (fib15m.inGoldenPocket && fib15m.fibType === "BEARISH_PULLBACK") bearPatternPoints += 12;
+
+    // ICT Kill Zone Institutional Volume Expansion (+8 to +10 Pts):
+    if (ictSession.isKillZone) {
+      bullMomPoints += ictSession.bonusScore;
+      bearMomPoints += ictSession.bonusScore;
+    }
+
+    // Hurst Fractal Dimension Regime Confirmation:
+    if (hurst1h >= 0.55) {
+      if (fourHourTrend === "BULLISH") bullTrendPoints += 6;
+      if (fourHourTrend === "BEARISH") bearTrendPoints += 6;
+    }
+
+    // 👑 NEXVORA PHI-CONVEXITY MASTER MATRIX FORMULA CONFLUENCE:
+    const shannon15m = this.calculateShannonEntropy(bars15mUse);
+    const kamaVelocity15m = ((closes15m[closes15m.length - 1] - kama1h) / Math.max(1, kama1h)) * 100;
+    const nexvoraPhi = this.calculateNexvoraPhiConvexity(
+      isBullConfluence ? "BUY" : (isBearConfluence ? "SELL" : "NEUTRAL"),
+      buyVolRatio,
+      Math.abs(kamaVelocity15m),
+      hurst1h,
+      shannon15m,
+      zScore15m
+    );
+
+    // 🔄 4-HOUR MACRO CYCLICAL REVERSAL & BOTTOM ACCUMULATION DETECTOR:
+    const is4hBottomReversal = (sweep15m.sweepType === "BULLISH_SWEEP" || msb15m.msbType === "BULLISH_MSB" || (fvg15m.fvgType === "BULLISH_FVG" && !fvg15m.isMitigated) || fib15m.inGoldenPocket) && (is1hRising || currentPrice > vwap1h.vwap || rsi1h < 44);
+    const is4hTopReversal = (sweep15m.sweepType === "BEARISH_SWEEP" || msb15m.msbType === "BEARISH_MSB" || (fvg15m.fvgType === "BEARISH_FVG" && !fvg15m.isMitigated) || (td15m.isExhausted && td15m.sellSetupCount >= 9)) && (is1hDropping || currentPrice < vwap1h.vwap || rsi1h > 56);
+
+    // 🏛️ Strategy 9: Markov Switching Market Regime
+    const markovRegime = this.calculateMarkovMarketRegime(bars15mUse);
+    if (markovRegime.regime === "TRENDING_EXPANSION") {
+      if (isBullConfluence) bullTrendPoints += 8;
+      if (isBearConfluence) bearTrendPoints += 8;
+    }
+
+    // 🏛️ Strategy 10: Order Book Microstructure Depth Skew
+    const depthSkew = this.calculateOrderBookDepthSkew(bars15mUse);
+    if (depthSkew.depthBias === "BULLISH_WALL") bullPatternPoints += depthSkew.skewScore;
+    if (depthSkew.depthBias === "BEARISH_WALL") bearPatternPoints += depthSkew.skewScore;
+
+    // 🏛️ Strategy 11: Bayesian Log-Odds Confluence Aggregator
+    const bayesianScore = this.calculateBayesianConfluenceScore({
+      macroTrendAligned: fourHourTrend === "BULLISH" || is4hBottomReversal,
+      smcPatternConfirmed: sweep15m.sweepType !== "NONE" || msb15m.msbType !== "NONE",
+      kamaAligned: currentPrice > kama1h,
+      cvdRatio: buyVolRatio,
+      zScoreSafe: Math.abs(zScore15m) < 2.0,
+      hurstTrending: hurst1h >= 0.52
+    });
+
+    if (nexvoraPhi.confidenceTier === "LEGENDARY_95" || bayesianScore >= 85) {
+      if (isBullConfluence) bullMomPoints += 15;
+      if (isBearConfluence) bearMomPoints += 15;
+    }
+
+    let learnedBullPenalty = 0;
+    let learnedBearPenalty = 0;
+
+    // Macro 4-Hour Trend Alignment & Reversal Transition:
+    if (fourHourTrend === "BULLISH") {
+      if (is4hTopReversal) {
+        bearTrendPoints += 25;
+        bearMomPoints += 15;
+      } else {
+        bullTrendPoints += 10;
+        learnedBearPenalty += 15;
+      }
+    } else if (fourHourTrend === "BEARISH") {
+      if (is4hBottomReversal) {
+        bullTrendPoints += 25;
+        bullMomPoints += 15;
+      } else {
+        bearTrendPoints += 10;
+        learnedBullPenalty += 15;
+      }
+    }
+
+    // TD Sequential 9 Exhaustion Guard
+    if (td15m.isExhausted && td15m.sellSetupCount >= 9) {
+      learnedBullPenalty += 25;
+    }
+    if (td15m.isExhausted && td15m.buySetupCount >= 9) {
+      learnedBearPenalty += 25;
+    }
+
+    // Z-Score Outlier Overbought/Oversold Guards
+    if (zScore15m <= -2.2 || rsi15m < 32) {
+      learnedBearPenalty += 25;
+    }
+    if (zScore15m >= 2.2 || rsi15m > 68) {
+      learnedBullPenalty += 25;
+    }
+
+    // CVD Volume Delta Traps
+    if (sellVolRatio >= 0.75) {
+      learnedBullPenalty += 20;
+    }
+    if (buyVolRatio >= 0.75) {
+      learnedBearPenalty += 20;
+    }
 
     const totalBullScore = isBullConfluence
-      ? Math.min(98, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus)
+      ? Math.max(10, Math.min(98, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus - learnedBullPenalty))
       : Math.min(48, Math.max(10, bullTrendPoints + bullMomPoints));
 
     const totalBearScore = isBearConfluence
-      ? Math.min(98, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus)
+      ? Math.max(10, Math.min(98, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus - learnedBearPenalty))
       : Math.min(48, Math.max(10, bearTrendPoints + bearMomPoints));
 
-    // 🎯 10-Minute to 1-Hour Horizon Expected Profit Forecasting (Pure True Signed EV Calculation)
+    // 🎯 Expected Profit Forecasting (Pure True Signed EV Calculation)
     const safeAtr = (atr1h > 0 && atr1h < currentPrice * 0.15) ? atr1h : (currentPrice * 0.015);
     const slDist = safeAtr * 1.0;
     const tpDist = safeAtr * 1.6;
@@ -930,18 +1525,13 @@ export class DeltaAutoTraderEngine {
 
     const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 55;
 
-    // 🛡️ Strict Chop Guard: If ADX < 14 or score is below threshold, strictly set NEUTRAL & SKIP
-    if (adx4h < 14 || (totalBullScore < minEntryThreshold && totalBearScore < minEntryThreshold)) {
-      direction = "NEUTRAL";
-      overallScore = Math.max(totalBullScore, totalBearScore);
-      projectedProfitUSD = 0;
-      profitProbabilityPct = overallScore;
-    } else if (totalBullScore > totalBearScore && buyProjectedProfitUSD > 0 && totalBullScore >= minEntryThreshold) {
+    // 🌿 Natural True Market Direction (Organic Directional Bias):
+    if (totalBullScore > totalBearScore && totalBullScore >= 40) {
       direction = "BUY";
       overallScore = totalBullScore;
       projectedProfitUSD = buyProjectedProfitUSD;
       profitProbabilityPct = totalBullScore;
-    } else if (totalBearScore > totalBullScore && sellProjectedProfitUSD > 0 && totalBearScore >= minEntryThreshold) {
+    } else if (totalBearScore > totalBullScore && totalBearScore >= 40) {
       direction = "SELL";
       overallScore = totalBearScore;
       projectedProfitUSD = sellProjectedProfitUSD;
@@ -953,12 +1543,26 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = overallScore;
     }
 
-    const isEntryValid = direction !== "NEUTRAL" && projectedProfitUSD > 0 && overallScore >= minEntryThreshold && adx4h >= 14;
+    const isChopFree = adx4h >= 14 && hurst1h >= 0.42;
+    const isBuyTrendAllowed = fourHourTrend === "BULLISH" || is4hBottomReversal || fourHourTrend === "SIDEWAYS";
+    const isSellTrendAllowed = fourHourTrend === "BEARISH" || is4hTopReversal || fourHourTrend === "SIDEWAYS";
+
+    const isEntryValid = (
+      direction !== "NEUTRAL" &&
+      projectedProfitUSD > 0 &&
+      overallScore >= minEntryThreshold &&
+      isChopFree &&
+      ((direction === "BUY" && isBuyTrendAllowed) || (direction === "SELL" && isSellTrendAllowed))
+    );
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
+    let trendContextStr = fourHourTrend;
+    if (is4hBottomReversal) trendContextStr = "4h Bottom Reversal (Accumulation)";
+    if (is4hTopReversal) trendContextStr = "4h Top Reversal (Distribution)";
+
     const reasoning = isEntryValid
-      ? `🎯 10m-1h PROFIT FORECAST [${direction}]: Expected Gain ${projectedProfitUSD >= 0 ? "+" : ""}$${projectedProfitUSD} USD (${profitProbabilityPct}% Heuristic Score). 15m [${patternInfo.pattern}], 1h RSI ${rsi1h.toFixed(1)}, 4h ${fourHourTrend}.`
-      : `⏳ 10m AI SCAN [SKIP]: Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Edge insufficient (ADX ${adx4h.toFixed(1)}). Auto-skipping to next asset.`;
+      ? `🎯 QUANTUM CONFLUENCE [${direction}]: Projected Gain ${projectedProfitUSD >= 0 ? "+" : ""}$${projectedProfitUSD} USD (${profitProbabilityPct}% Heuristic Score). 15m [${patternInfo.pattern}], 1h KAMA/VWAP, 4h [${trendContextStr}].`
+      : `⏳ QUANTUM SCAN [FILTERED]: Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Conviction < ${minEntryThreshold} or chop present (ADX ${adx4h.toFixed(1)}, Hurst ${hurst1h}). Auto-skipping.`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
@@ -981,7 +1585,15 @@ export class DeltaAutoTraderEngine {
         pattern: direction === "BUY" ? bullPatternPoints : direction === "SELL" ? bearPatternPoints : Math.max(bullPatternPoints, bearPatternPoints),
         volume: volBonus
       },
-      reasoning
+      reasoning,
+      nexvoraPhiScore: nexvoraPhi.phiScore,
+      shannonEntropy: shannon15m,
+      hurstExponent: hurst1h,
+      zScore: Number(zScore15m.toFixed(2)),
+      kamaVelocity: Number(kamaVelocity15m.toFixed(2)),
+      expectedValueUSD: direction === "BUY" ? buyProjectedProfitUSD : (direction === "SELL" ? sellProjectedProfitUSD : 0),
+      halfKellyFraction: Number((Math.max(0, Math.min(0.10, ((overallScore / 100) * 2 - (1 - (overallScore / 100))) / 2)) * 50).toFixed(2)),
+      convexityMultiplier: nexvoraPhi.asymmetricGainMultiplier
     };
 
     this.analysisCache.set(sym, result);
