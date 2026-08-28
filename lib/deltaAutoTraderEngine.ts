@@ -1503,35 +1503,56 @@ export class DeltaAutoTraderEngine {
       ? Math.max(10, Math.min(98, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus - learnedBearPenalty))
       : Math.min(48, Math.max(10, bearTrendPoints + bearMomPoints));
 
-    // 🎯 Expected Profit Forecasting (Pure True Signed EV Calculation)
+    // 🎯 2-Hour Horizon Expected Profit Forecasting (High-Profit Swing Wave Targets):
     const safeAtr = (atr1h > 0 && atr1h < currentPrice * 0.15) ? atr1h : (currentPrice * 0.015);
     const slDist = safeAtr * 1.0;
-    const tpDist = safeAtr * 1.6;
+    const tpDist = safeAtr * (2.2 * (nexvoraPhi.asymmetricGainMultiplier || 1.0));
     const lotSize = this.calculateDynamicLotSize(sym, currentPrice, slDist).quantity;
 
-    // Projected Profit if BUY is executed:
+    // Projected Profit if BUY is executed (2-Hour Horizon):
     const buyWinProb = totalBullScore / 100;
     const buyProjectedProfitUSD = Number(((tpDist * lotSize * buyWinProb) - (slDist * lotSize * (1 - buyWinProb))).toFixed(2));
 
-    // Projected Profit if SELL is executed:
+    // Projected Profit if SELL is executed (2-Hour Horizon):
     const sellWinProb = totalBearScore / 100;
     const sellProjectedProfitUSD = Number(((tpDist * lotSize * sellWinProb) - (slDist * lotSize * (1 - sellWinProb))).toFixed(2));
 
-    // 4. Pure Mathematical Expected Value Decision (Unbiased, True Signed EV):
+    // 4. Stable 2-Hour Momentum Direction Decision with Anti-Flicker Hysteresis:
     let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
     let overallScore = 50;
     let projectedProfitUSD = 0;
     let profitProbabilityPct = 50;
 
     const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 55;
+    const prevAnalysis = this.analysisCache.get(sym);
 
-    // 🌿 Natural True Market Direction (Organic Directional Bias):
-    if (totalBullScore > totalBearScore && totalBullScore >= 40) {
+    // Anti-Flicker Hysteresis Filter (Prevents 2-minute flip-flopping across intra-candle ticks):
+    if (prevAnalysis?.direction === "BUY" && totalBullScore >= (totalBearScore - 4) && totalBullScore >= 42) {
       direction = "BUY";
       overallScore = totalBullScore;
       projectedProfitUSD = buyProjectedProfitUSD;
       profitProbabilityPct = totalBullScore;
-    } else if (totalBearScore > totalBullScore && totalBearScore >= 40) {
+    } else if (prevAnalysis?.direction === "SELL" && totalBearScore >= (totalBullScore - 4) && totalBearScore >= 42) {
+      direction = "SELL";
+      overallScore = totalBearScore;
+      projectedProfitUSD = sellProjectedProfitUSD;
+      profitProbabilityPct = totalBearScore;
+    } else if (totalBullScore > totalBearScore + 3 && totalBullScore >= 45) {
+      direction = "BUY";
+      overallScore = totalBullScore;
+      projectedProfitUSD = buyProjectedProfitUSD;
+      profitProbabilityPct = totalBullScore;
+    } else if (totalBearScore > totalBullScore + 3 && totalBearScore >= 45) {
+      direction = "SELL";
+      overallScore = totalBearScore;
+      projectedProfitUSD = sellProjectedProfitUSD;
+      profitProbabilityPct = totalBearScore;
+    } else if (totalBullScore >= 50 && totalBullScore >= totalBearScore) {
+      direction = "BUY";
+      overallScore = totalBullScore;
+      projectedProfitUSD = buyProjectedProfitUSD;
+      profitProbabilityPct = totalBullScore;
+    } else if (totalBearScore >= 50 && totalBearScore > totalBullScore) {
       direction = "SELL";
       overallScore = totalBearScore;
       projectedProfitUSD = sellProjectedProfitUSD;
@@ -1560,9 +1581,12 @@ export class DeltaAutoTraderEngine {
     if (is4hBottomReversal) trendContextStr = "4h Bottom Reversal (Accumulation)";
     if (is4hTopReversal) trendContextStr = "4h Top Reversal (Distribution)";
 
+    const tpPct = Number(((tpDist / currentPrice) * 100).toFixed(2));
+    const slPct = Number(((slDist / currentPrice) * 100).toFixed(2));
+
     const reasoning = isEntryValid
-      ? `🎯 QUANTUM CONFLUENCE [${direction}]: Projected Gain ${projectedProfitUSD >= 0 ? "+" : ""}$${projectedProfitUSD} USD (${profitProbabilityPct}% Heuristic Score). 15m [${patternInfo.pattern}], 1h KAMA/VWAP, 4h [${trendContextStr}].`
-      : `⏳ QUANTUM SCAN [FILTERED]: Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Conviction < ${minEntryThreshold} or chop present (ADX ${adx4h.toFixed(1)}, Hurst ${hurst1h}). Auto-skipping.`;
+      ? `🎯 2-HOUR SWING MOMENTUM [${direction}]: 2h Projected Gain ${projectedProfitUSD >= 0 ? "+" : ""}$${projectedProfitUSD} USD (${profitProbabilityPct}% Score). Target: +${tpPct}% · SL: -${slPct}%. 15m [${patternInfo.pattern}], 1h KAMA/VWAP, 4h [${trendContextStr}].`
+      : `⏳ 2-HOUR AI SCAN [FILTERED]: 2h Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Conviction < ${minEntryThreshold} or chop present (ADX ${adx4h.toFixed(1)}, Hurst ${hurst1h}). Auto-skipping.`;
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
@@ -2666,7 +2690,7 @@ export class DeltaAutoTraderEngine {
 
     const realisticAtr = (analysis.atr1h && analysis.atr1h > 0 && analysis.atr1h < currentPrice * 0.10) ? analysis.atr1h : Math.max(currentPrice * 0.01, 0.05);
     const slDistance = realisticAtr * 1.0;
-    const tpDistance = realisticAtr * 1.6;
+    const tpDistance = realisticAtr * (2.2 * (analysis.convexityMultiplier || 1.0));
 
     const stopLossPrice = this.roundPrice(tradeDirection === "BUY" ? currentPrice - slDistance : currentPrice + slDistance);
     const targetPrice = this.roundPrice(tradeDirection === "BUY" ? currentPrice + tpDistance : currentPrice - tpDistance);

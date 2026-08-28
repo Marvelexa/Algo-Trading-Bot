@@ -610,7 +610,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               <p className="text-[11px] text-slate-300 font-sans mt-1">
                 {positions.length >= (settings.maxConcurrentPositions || 5)
                   ? `All 5/5 slots currently active (${positions.map(p => p.symbol).join(", ")}). Actively managing trailing stops & profit targets. Scanner will resume reading next coin as soon as any position exits.`
-                  : `Dedicated 5-minute price action & candle confirmation on ${status.currentInspection?.symbol || "BTCUSD"}. If valid setup appears ➔ Executes trade; if flat/choppy ➔ Moves to next coin. (${positions.length}/5 active slots running in parallel).`}
+                  : `Dedicated 5-minute analysis on ${status.currentInspection?.symbol || "BTCUSD"} specifically calculating the 2-Hour Trend Horizon for maximum profit. Anchors 4h/1h momentum to determine solid BUY/SELL bias, 1:2.2 R:R targets & protective SL.`}
               </p>
             </div>
           </div>
