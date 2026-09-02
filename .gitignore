@@ -24,3 +24,23 @@ public/screenshots/
 firebase-applet-config.json
 .scrip_master.json
 
+
+.auth_config.json
+.delta_ai_mistakes.json
+*.cjs
+tests/check_server_state.ts
+tests/diagnose_execution.ts
+tests/test_audited_formulas.ts
+tests/test_circuit_breakers_and_risk_fixes.ts
+deep-analysis.ts
+deep-debug.ts
+extracted_engine.js
+fetch-bal.ts
+force-scan.ts
+manual-bracket-xrp.ts
+manual-bracket.ts
+check_status.js
+patch.js
+lib/deltaAutoTraderEngine_rebuilt.ts
+lib/deltaAutoTraderEngine_recovered.ts
+Nexvora-stock-analysis-main/

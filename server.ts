@@ -618,10 +618,20 @@ async function startServer() {
   // Real-Time Server State (Runs 24/7 in Cloud even when Chrome is closed / Mobile is sleeping)
   app.get("/api/autotrader/state", async (req, res) => {
     try {
-      if (deltaAutoTraderEngine.getLiveFullState().settings.mode === "LIVE") {
+      if (deltaAutoTraderEngine.getLiveFullState().settings.mode === "LIVE" && process.env.DELTA_EXCHANGE_API_KEY) {
         await deltaAutoTraderEngine.syncWithExchangePositions();
       }
       const fullState = deltaAutoTraderEngine.getLiveFullState();
+      const DELTA_MISTAKES_FILE = path.join(process.cwd(), ".delta_ai_mistakes.json");
+      if (fs.existsSync(DELTA_MISTAKES_FILE)) {
+        try {
+          const mList = JSON.parse(fs.readFileSync(DELTA_MISTAKES_FILE, "utf-8"));
+          fullState.mistakes = mList;
+          if (fullState.status) {
+            fullState.status.mistakesCount = mList.length;
+          }
+        } catch(e) {}
+      }
       return res.json({ success: true, state: fullState });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
@@ -629,16 +639,8 @@ async function startServer() {
   });
 
   app.post("/api/autotrader/state", (req, res) => {
-    try {
-      const state = req.body;
-      if (state) {
-        fs.writeFileSync(DELTA_STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
-        return res.json({ success: true });
-      }
-      res.status(400).json({ success: false, error: "Empty payload" });
-    } catch (e: any) {
-      res.status(500).json({ success: false, error: e.message });
-    }
+    // 🛡️ Protected: Server engine is the single source of truth!
+    return res.json({ success: true, state: deltaAutoTraderEngine.getLiveFullState() });
   });
 
   app.post("/api/autotrader/toggle", (req, res) => {
@@ -650,6 +652,58 @@ async function startServer() {
         fs.writeFileSync(DELTA_STATE_FILE, JSON.stringify(fullState, null, 2), "utf-8");
       } catch (e) {}
       return res.json({ success: true, isEnabled: newStatus, state: fullState });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+    app.get("/api/autotrader/candles", async (req, res) => {
+    try {
+      const symbol = (req.query.symbol as string) || "BTCUSD";
+      const interval = (req.query.interval as string) || "15m";
+      const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 30));
+      const candles = await deltaAutoTraderEngine.fetchCryptoCandles(symbol, interval, limit);
+      return res.json({ success: true, symbol, interval, candles });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  
+  app.get("/api/autotrader/mistakes", (req, res) => {
+    try {
+      const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
+      let list = [];
+      if (fs.existsSync(mistakesPath)) {
+        list = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
+      }
+      return res.json({ success: true, count: list.length, mistakes: list });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.delete("/api/autotrader/mistakes", (req, res) => {
+    try {
+      const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
+      fs.writeFileSync(mistakesPath, JSON.stringify([], null, 2), "utf-8");
+      return res.json({ success: true, message: "All AI mistakes cleared / taken out successfully.", count: 0, mistakes: [] });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.delete("/api/autotrader/mistakes/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
+      let list = [];
+      if (fs.existsSync(mistakesPath)) {
+        list = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
+      }
+      list = list.filter((m: any) => m.id !== id);
+      fs.writeFileSync(mistakesPath, JSON.stringify(list, null, 2), "utf-8");
+      return res.json({ success: true, message: "Mistake taken out successfully.", count: list.length, mistakes: list });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

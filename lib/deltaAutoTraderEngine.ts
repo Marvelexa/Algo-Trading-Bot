@@ -20,7 +20,7 @@
 
 import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
 
-export const EXIT_MONITORING_INTERVAL_MS = 30 * 1000; // 30s exit price check interval
+export const EXIT_MONITORING_INTERVAL_MS = 2 * 1000; // 30s exit price check interval
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10 * 1000; // 10s evaluation interval
 export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours (1 Day) Trend & Swing Horizon Window (2h to 1 Day)
 export const FEE_BUFFER_PER_TRADE_USD = 0.24; // Fixed ₹20 INR Delta taker fee + slippage buffer
@@ -119,7 +119,7 @@ export interface AutoTraderSettings {
   riskPerTradePct: number; // e.g. 2.4% ($4.70-$5.00)
   maxDailyLossPct: number; // e.g. 7.4% (₹1,200 cap)
   maxTradesPerDay: number; // e.g. 10
-  maxConcurrentPositions: number; // Up to 5 concurrent positions (Pipelined 5-min round-robin)
+  maxConcurrentPositions: number; // Up to 7 concurrent positions (Pipelined 5-min round-robin)
   cooldownMinutesAfterLoss: number; // e.g. 45
   minConfidenceThreshold: number; // e.g. 55
   inspectionWindowMinutes: number; // 5 minutes dedicated inspection window per coin
@@ -194,6 +194,14 @@ export interface MultiTimeframeAnalysis {
   fifteenMinTrigger: "BULLISH_BREAKOUT" | "BEARISH_BREAKOUT" | "NEUTRAL";
   adxValue: number;
   rsi1h: number;
+  momentumIgnition?: {
+    score: number;
+    setupTier: "STRONG_SETUP" | "EARLY_SETUP" | "DEVELOPING" | "CHOP_REJECT";
+    roc: number;
+    volumeExpansion: number;
+    obvSlope: string;
+    vwapStatus: string;
+  };
   atr1h: number;
   volumeMultiplier: number;
   reasoning: string;
@@ -249,7 +257,7 @@ const DEFAULT_CAPITAL_USD = 195.80; // ₹16,350 INR ($195.80 USD)
 
 export class DeltaAutoTraderEngine {
   private settings: AutoTraderSettings = {
-    mode: "LIVE",
+    mode: "PAPER",
     isEnabled: true,
     initialCapitalUSD: DEFAULT_CAPITAL_USD,
     currentCapitalUSD: DEFAULT_CAPITAL_USD,
@@ -257,8 +265,8 @@ export class DeltaAutoTraderEngine {
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 55,
-    maxConcurrentPositions: 5, // Up to 5 concurrent positions (Pipelined 5-min round-robin)
+    minConfidenceThreshold: 80,
+    maxConcurrentPositions: 3, // Minimum 3 concurrent positions (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
     inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
 
@@ -398,8 +406,8 @@ export class DeltaAutoTraderEngine {
       this.settings.currentCapitalUSD = (typeof parsed.settings.currentCapitalUSD === "number" && parsed.settings.currentCapitalUSD > 50) ? parsed.settings.currentCapitalUSD : 195.80;
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
-      this.settings.maxConcurrentPositions = 5;
-      this.settings.minConfidenceThreshold = 55;
+      this.settings.maxConcurrentPositions = Math.max(3, Number(parsed.settings?.maxConcurrentPositions) || 3);
+      this.settings.minConfidenceThreshold = 80;
       this.settings.inspectionWindowMinutes = 5;
     }
     if (Array.isArray(parsed.openPositions)) {
@@ -483,10 +491,10 @@ export class DeltaAutoTraderEngine {
   public resetSystemCleanly(): { success: boolean; message: string } {
     this.openPositions = [];
     this.closedRecords = [];
-    this.settings.isEnabled = false;
-    this.settings.maxConcurrentPositions = 5;
+    this.settings.isEnabled = true;
+    this.settings.maxConcurrentPositions = 3;
     this.settings.inspectionWindowMinutes = 5;
-    this.settings.minConfidenceThreshold = 55;
+    this.settings.minConfidenceThreshold = 80;
     this.settings.riskPerTradePct = 2.4;
     this.settings.currentCapitalUSD = this.settings.initialCapitalUSD;
     this.dailyStartCapitalUSD = this.settings.initialCapitalUSD;
@@ -591,6 +599,183 @@ export class DeltaAutoTraderEngine {
     }
 
     return this.getAssetBaselinePrice(symbol);
+  }
+
+
+  // 📈 Rate of Change (ROC / MOM) - Early Velocity Surge Detector (Pandas-TA / TA-Lib)
+  private calculateROC(closes: number[], period: number = 6): number {
+    if (!closes || closes.length <= period) return 0;
+    const current = closes[closes.length - 1];
+    const prev = closes[closes.length - 1 - period];
+    if (!prev || prev === 0) return 0;
+    return Number((((current - prev) / prev) * 100).toFixed(2));
+  }
+
+  // 📊 On-Balance Volume (OBV) & Institutional Volume Expansion (ta.js / ta-crypto)
+  private calculateOBV(bars: OHLCVBar[]): { obv: number; obvSlope: "RISING" | "FALLING" | "FLAT"; volumeExpansionRatio: number } {
+    if (!bars || bars.length < 5) return { obv: 0, obvSlope: "FLAT", volumeExpansionRatio: 1.0 };
+    
+    let currentOBV = 0;
+    const obvHistory: number[] = [0];
+    const volumes = bars.map(b => b.volume || 1);
+
+    for (let i = 1; i < bars.length; i++) {
+      if (bars[i].close > bars[i - 1].close) {
+        currentOBV += bars[i].volume || 1;
+      } else if (bars[i].close < bars[i - 1].close) {
+        currentOBV -= bars[i].volume || 1;
+      }
+      obvHistory.push(currentOBV);
+    }
+
+    const recentVols = volumes.slice(-20);
+    const avgVol = recentVols.reduce((a, b) => a + b, 0) / Math.max(1, recentVols.length);
+    const currentVol = volumes[volumes.length - 1] || 1;
+    const volumeExpansionRatio = Number((currentVol / Math.max(1, avgVol)).toFixed(2));
+
+    const last5 = obvHistory.slice(-5);
+    const obvDiff = last5[last5.length - 1] - last5[0];
+    const obvSlope = obvDiff > 0 ? "RISING" : obvDiff < 0 ? "FALLING" : "FLAT";
+
+    return { obv: currentOBV, obvSlope, volumeExpansionRatio };
+  }
+
+  // 🧭 Full ADX with +DI and -DI Directional Movement (TA-Lib benchmark)
+  private calculateADXFull(bars: OHLCVBar[], period: number = 14): { adx: number; plusDI: number; minusDI: number } {
+    if (!bars || bars.length < period + 2) return { adx: 22.0, plusDI: 20, minusDI: 20 };
+
+    const trs: number[] = [];
+    const plusDMs: number[] = [];
+    const minusDMs: number[] = [];
+
+    for (let i = 1; i < bars.length; i++) {
+      const h = bars[i].high;
+      const l = bars[i].low;
+      const prevH = bars[i - 1].high;
+      const prevL = bars[i - 1].low;
+      const prevC = bars[i - 1].close;
+
+      const tr = Math.max(h - l, Math.abs(h - prevC), Math.abs(l - prevC));
+      trs.push(tr);
+
+      const upMove = h - prevH;
+      const downMove = prevL - l;
+
+      plusDMs.push(upMove > downMove && upMove > 0 ? upMove : 0);
+      minusDMs.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    }
+
+    if (trs.length < period) return { adx: 22.0, plusDI: 20, minusDI: 20 };
+
+    let smoothedTR = trs.slice(0, period).reduce((a, b) => a + b, 0);
+    let smoothedPlusDM = plusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+    let smoothedMinusDM = minusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+
+    const dxValues: number[] = [];
+    let lastPDI = 20;
+    let lastMDI = 20;
+
+    for (let i = period; i < trs.length; i++) {
+      smoothedTR = smoothedTR - (smoothedTR / period) + trs[i];
+      smoothedPlusDM = smoothedPlusDM - (smoothedPlusDM / period) + plusDMs[i];
+      smoothedMinusDM = smoothedMinusDM - (smoothedMinusDM / period) + minusDMs[i];
+
+      const pDI = smoothedTR > 0 ? (smoothedPlusDM / smoothedTR) * 100 : 0;
+      const mDI = smoothedTR > 0 ? (smoothedMinusDM / smoothedTR) * 100 : 0;
+      lastPDI = Number(pDI.toFixed(1));
+      lastMDI = Number(mDI.toFixed(1));
+      const diSum = pDI + mDI;
+      const dx = diSum > 0 ? (Math.abs(pDI - mDI) / diSum) * 100 : 0;
+      dxValues.push(dx);
+    }
+
+    if (dxValues.length === 0) return { adx: 22.0, plusDI: lastPDI, minusDI: lastMDI };
+    const adxSlice = dxValues.slice(-period);
+    const adx = Number((adxSlice.reduce((a, b) => a + b, 0) / adxSlice.length).toFixed(1));
+
+    return { adx: Math.min(100, Math.max(0, adx)), plusDI: lastPDI, minusDI: lastMDI };
+  }
+
+  // 🔥 UNIFIED MOMENTUM IGNITION SCORE (MIS)
+  // Stack: Real Candles -> ROC + ADX (+DI/-DI) + ATR + OBV + Volume Expansion + VWAP
+  // 75+ = EARLY SETUP (Ignition detected before retail EMA cross!)
+  // 85+ = STRONG SETUP (Institutional surge confirmed)
+  // < 65 = CHOP / COMPRESSION -> 100% REJECT
+  private calculateMomentumIgnitionScore(params: {
+    roc15m: number;
+    adx: number;
+    plusDI: number;
+    minusDI: number;
+    obvSlope: "RISING" | "FALLING" | "FLAT";
+    volumeExpansionRatio: number;
+    priceAboveVWAP: boolean;
+    fourHourTrend: "BULLISH" | "BEARISH" | "SIDEWAYS";
+    direction: "BUY" | "SELL";
+  }): {
+    score: number;
+    setupTier: "STRONG_SETUP" | "EARLY_SETUP" | "DEVELOPING" | "CHOP_REJECT";
+    breakdown: { velocityPts: number; volumePts: number; vwapPts: number; trendStrengthPts: number; macroPts: number };
+  } {
+    let velocityPts = 0;
+    let volumePts = 0;
+    let vwapPts = 0;
+    let trendStrengthPts = 0;
+    let macroPts = 0;
+
+    const isBuy = params.direction === "BUY";
+
+    // 1. Velocity (ROC 15m)
+    if (isBuy) {
+      if (params.roc15m >= 1.0) velocityPts = 25;
+      else if (params.roc15m >= 0.5) velocityPts = 20;
+      else if (params.roc15m >= 0.15) velocityPts = 14;
+      else if (params.roc15m < -0.3) velocityPts = 0;
+      else velocityPts = 8;
+    } else {
+      if (params.roc15m <= -1.0) velocityPts = 25;
+      else if (params.roc15m <= -0.5) velocityPts = 20;
+      else if (params.roc15m <= -0.15) velocityPts = 14;
+      else if (params.roc15m > 0.3) velocityPts = 0;
+      else velocityPts = 8;
+    }
+
+    // 2. Volume Expansion & OBV Directional Flow
+    if (params.volumeExpansionRatio >= 1.6) volumePts += 15;
+    else if (params.volumeExpansionRatio >= 1.25) volumePts += 10;
+    else if (params.volumeExpansionRatio >= 1.0) volumePts += 5;
+
+    if (isBuy && params.obvSlope === "RISING") volumePts += 10;
+    else if (!isBuy && params.obvSlope === "FALLING") volumePts += 10;
+
+    // 3. VWAP Clearance (Institutional Fair Value)
+    if (isBuy && params.priceAboveVWAP) vwapPts = 20;
+    else if (!isBuy && !params.priceAboveVWAP) vwapPts = 20;
+    else vwapPts = 5;
+
+    // 4. ADX + Directional Movement (+DI vs -DI)
+    if (params.adx >= 24) trendStrengthPts += 10;
+    else if (params.adx >= 18) trendStrengthPts += 6;
+
+    if (isBuy && params.plusDI > params.minusDI) trendStrengthPts += 10;
+    else if (!isBuy && params.minusDI > params.plusDI) trendStrengthPts += 10;
+
+    // 5. Macro 4H Trend alignment
+    if (isBuy && params.fourHourTrend === "BULLISH") macroPts = 10;
+    else if (!isBuy && params.fourHourTrend === "BEARISH") macroPts = 10;
+    else if (params.fourHourTrend === "SIDEWAYS") macroPts = 5;
+
+    const total = Math.min(98, Math.max(10, velocityPts + volumePts + vwapPts + trendStrengthPts + macroPts));
+
+    let setupTier: "STRONG_SETUP" | "EARLY_SETUP" | "DEVELOPING" | "CHOP_REJECT" = "CHOP_REJECT";
+    if (total >= 85) setupTier = "STRONG_SETUP";
+    else if (total >= 75) setupTier = "EARLY_SETUP";
+    else if (total >= 65) setupTier = "DEVELOPING";
+
+    return {
+      score: total,
+      setupTier,
+      breakdown: { velocityPts, volumePts, vwapPts, trendStrengthPts, macroPts }
+    };
   }
 
   private calculateEMA(data: number[], period: number): number {
@@ -1150,6 +1335,150 @@ export class DeltaAutoTraderEngine {
   // Layer 2: Multi-Timeframe Signal Engine (15m + 1h + 4h)
   // ────────────────────────────────────────────
 
+  
+  public calculateSuperTrend(bars: OHLCVBar[], period: number = 10, multiplier: number = 3.0): { trend: "BULLISH" | "BEARISH"; value: number } {
+    if (!bars || bars.length < period + 1) return { trend: "BULLISH", value: 0 };
+    const trArray: number[] = [];
+    for (let i = 1; i < bars.length; i++) {
+      const tr = Math.max(
+        bars[i].high - bars[i].low,
+        Math.abs(bars[i].high - bars[i - 1].close),
+        Math.abs(bars[i].low - bars[i - 1].close)
+      );
+      trArray.push(tr);
+    }
+    
+    const atr: number[] = [];
+    let sum = trArray.slice(0, period).reduce((a, b) => a + b, 0);
+    atr.push(sum / period);
+    for (let i = period; i < trArray.length; i++) {
+      atr.push((atr[atr.length - 1] * (period - 1) + trArray[i]) / period);
+    }
+    
+    let upperBand = 0;
+    let lowerBand = 0;
+    let trend: "BULLISH" | "BEARISH" = "BULLISH";
+    
+    for (let i = period; i < bars.length; i++) {
+      const curATR = atr[i - period] || atr[atr.length - 1];
+      const hl2 = (bars[i].high + bars[i].low) / 2;
+      let basicUpper = hl2 + (multiplier * curATR);
+      let basicLower = hl2 - (multiplier * curATR);
+      
+      const prevUpper = upperBand;
+      const prevLower = lowerBand;
+      const prevClose = bars[i - 1].close;
+      
+      upperBand = (basicUpper < prevUpper || prevClose > prevUpper) ? basicUpper : prevUpper;
+      lowerBand = (basicLower > prevLower || prevClose < prevLower) ? basicLower : prevLower;
+      
+      if (bars[i].close > prevUpper) {
+        trend = "BULLISH";
+      } else if (bars[i].close < prevLower) {
+        trend = "BEARISH";
+      }
+    }
+    return { trend, value: trend === "BULLISH" ? lowerBand : upperBand };
+  }
+
+  
+  public detectEmaPriceAction(bars15m: OHLCVBar[], currentPrice: number): {
+    signal: "BUY" | "SELL" | "NONE";
+    isTriggered: boolean;
+    pattern: string;
+    slPrice: number;
+    triggerPrice: number;
+    reason: string;
+  } {
+    if (!Array.isArray(bars15m) || bars15m.length < 20) {
+      return { signal: "NONE", isTriggered: false, pattern: "NONE", slPrice: 0, triggerPrice: 0, reason: "Insufficient 15m bars" };
+    }
+
+    const closes = bars15m.map(b => b.close);
+    const curEma9 = this.calculateEMA(closes, 9);
+    const curEma21 = this.calculateEMA(closes, 21);
+    const prevEma9 = this.calculateEMA(closes.slice(0, -1), 9);
+    const prevEma21 = this.calculateEMA(closes.slice(0, -1), 21);
+
+    const isBullTrend = curEma9 > curEma21 && (curEma9 >= prevEma9 || curEma21 >= prevEma21);
+    const isBearTrend = curEma9 < curEma21 && (curEma9 <= prevEma9 || curEma21 <= prevEma21);
+
+    if (!isBullTrend && !isBearTrend) {
+      return { signal: "NONE", isTriggered: false, pattern: "CHOP", slPrice: 0, triggerPrice: 0, reason: "EMA 9/21 Flat or Intertwined (Chop)" };
+    }
+
+    const lastIdx = bars15m.length - 1;
+    const triggerCandle = bars15m[lastIdx - 1];
+    const prevCandle = bars15m[lastIdx - 2];
+    if (!triggerCandle || !prevCandle) {
+      return { signal: "NONE", isTriggered: false, pattern: "NONE", slPrice: 0, triggerPrice: 0, reason: "Missing trigger candle" };
+    }
+
+    const range = triggerCandle.high - triggerCandle.low;
+    if (range <= 0) {
+      return { signal: "NONE", isTriggered: false, pattern: "NONE", slPrice: 0, triggerPrice: 0, reason: "Zero range candle" };
+    }
+
+    const bodySize = Math.abs(triggerCandle.close - triggerCandle.open);
+    const upperWick = triggerCandle.high - Math.max(triggerCandle.close, triggerCandle.open);
+    const lowerWick = Math.min(triggerCandle.close, triggerCandle.open) - triggerCandle.low;
+
+    // BULLISH PULLBACK & REJECTION:
+    if (isBullTrend) {
+      const touchedPocket = triggerCandle.low <= (curEma9 * 1.002) && triggerCandle.close >= (curEma21 * 0.998);
+      const isHammer = lowerWick >= 1.2 * bodySize && lowerWick >= 0.4 * range;
+      const isBullEngulf = triggerCandle.close > triggerCandle.open && triggerCandle.close > prevCandle.high;
+      const isStrongBullClose = triggerCandle.close >= (triggerCandle.low + 0.65 * range) && triggerCandle.close > triggerCandle.open;
+
+      const isRejection = isHammer || isBullEngulf || isStrongBullClose;
+      const isTriggered = currentPrice >= triggerCandle.high;
+
+      if (touchedPocket && isRejection) {
+        const patternName = isHammer ? "BULLISH_HAMMER" : isBullEngulf ? "BULLISH_ENGULFING" : "STRONG_BULL_CLOSE";
+        return {
+          signal: "BUY",
+          isTriggered,
+          pattern: patternName,
+          triggerPrice: triggerCandle.high,
+          slPrice: this.roundPrice(triggerCandle.low * 0.9985),
+          reason: `15m EMA 9/21 Bull Trend + Value Pocket Rejection (${patternName}). ${isTriggered ? "Price broke above trigger high!" : "Awaiting break above " + triggerCandle.high}`
+        };
+      }
+    }
+
+    // BEARISH PULLBACK & REJECTION:
+    if (isBearTrend) {
+      const touchedPocket = triggerCandle.high >= (curEma9 * 0.998) && triggerCandle.close <= (curEma21 * 1.002);
+      const isShootingStar = upperWick >= 1.2 * bodySize && upperWick >= 0.4 * range;
+      const isBearEngulf = triggerCandle.close < triggerCandle.open && triggerCandle.close < prevCandle.low;
+      const isStrongBearClose = triggerCandle.close <= (triggerCandle.high - 0.65 * range) && triggerCandle.close < triggerCandle.open;
+
+      const isRejection = isShootingStar || isBearEngulf || isStrongBearClose;
+      const isTriggered = currentPrice <= triggerCandle.low;
+
+      if (touchedPocket && isRejection) {
+        const patternName = isShootingStar ? "BEARISH_SHOOTING_STAR" : isBearEngulf ? "BEARISH_ENGULFING" : "STRONG_BEAR_CLOSE";
+        return {
+          signal: "SELL",
+          isTriggered,
+          pattern: patternName,
+          triggerPrice: triggerCandle.low,
+          slPrice: this.roundPrice(triggerCandle.high * 1.0015),
+          reason: `15m EMA 9/21 Bear Trend + Value Pocket Rejection (${patternName}). ${isTriggered ? "Price broke below trigger low!" : "Awaiting break below " + triggerCandle.low}`
+        };
+      }
+    }
+
+    return {
+      signal: "NONE",
+      isTriggered: false,
+      pattern: "NONE",
+      slPrice: 0,
+      triggerPrice: 0,
+      reason: `Trend: ${isBullTrend ? "BULLISH" : "BEARISH"}. Awaiting 15m EMA 9/21 pullback rejection candle.`
+    };
+  }
+
   public analyzeMultiTimeframe(symbol: string, bars15m: OHLCVBar[], bars1h: OHLCVBar[], bars4h: OHLCVBar[]): MultiTimeframeAnalysis {
     const sym = (symbol || "BTCUSD").toUpperCase().trim();
 
@@ -1302,12 +1631,21 @@ export class DeltaAutoTraderEngine {
       bearMomPoints = Math.min(bearMomPoints, 5);
     }
 
-    // 🎯 Symmetric Confluence: BUY when 1h + 15m align Bullish; SELL when 1h + 15m align Bearish!
-    const isBullConfluence = is1hBullish && (patternInfo.signal === "BULLISH" || bullPatternPoints >= 15 || is15mGreen);
-    const isBearConfluence = is1hBearish && (patternInfo.signal === "BEARISH" || bearPatternPoints >= 15 || is15mRed);
-
     // 🧠 AI MASTER SMC & QUANTITATIVE CONFLUENCE ENGINE:
     const closes15m = bars15mUse.map(b => b.close);
+    // 🌟 MASTER 15M EMA 9 & 21 CALCULATION 🌟
+    const ema9_15m = this.calculateEMA(closes15m, 9);
+    const ema21_15m = this.calculateEMA(closes15m, 21);
+    const is15mBullCross = ema9_15m >= ema21_15m;
+    const is15mBearCross = ema9_15m < ema21_15m;
+    const isPriceAboveEma9 = currentPrice > ema9_15m;
+    const isPriceBelowEma9 = currentPrice < ema9_15m;
+    const isPriceAboveEma21 = currentPrice > ema21_15m;
+    const isPriceBelowEma21 = currentPrice < ema21_15m;
+
+    // 🎯 Symmetric Confluence: BUY when 1h + 15m align Bullish; SELL when 1h + 15m align Bearish!
+    const isBullConfluence = is1hBullish && (patternInfo.signal === "BULLISH" || bullPatternPoints >= 15 || (is15mGreen && isPriceAboveEma9 && adx4h >= 18));
+    const isBearConfluence = is1hBearish && (patternInfo.signal === "BEARISH" || bearPatternPoints >= 15 || (is15mRed && isPriceBelowEma9 && adx4h >= 18));
     const rsi15m = this.calculateRSI(closes15m, 14);
     const ema20_15m = this.calculateEMA(closes15m, 20);
     const distFromEMA20Pct = ema20_15m > 0 ? ((currentPrice - ema20_15m) / ema20_15m) * 100 : 0;
@@ -1454,6 +1792,51 @@ export class DeltaAutoTraderEngine {
       learnedBearPenalty += 20;
     }
 
+    // 🧠 ACTIVE AI MISTAKE ELIMINATION & AVOIDANCE SHIELD:
+    try {
+      const fsSync = require("fs");
+      const pathSync = require("path");
+      const mFile = pathSync.join(process.cwd(), ".delta_ai_mistakes.json");
+      if (fsSync.existsSync(mFile)) {
+        const pastMistakes = JSON.parse(fsSync.readFileSync(mFile, "utf-8"));
+        // Avoid recent symbol loss repeat
+        const recentSymLoss = pastMistakes.find((m: any) => (m.symbol || "").toUpperCase() === sym);
+        if (recentSymLoss) {
+          const lossAgeMs = Date.now() - new Date((recentSymLoss.timestamp || "").replace(" ", "T") + "Z").getTime();
+          if (lossAgeMs > 0 && lossAgeMs < 2 * 3600 * 1000) {
+            learnedBullPenalty += 30;
+            learnedBearPenalty += 30;
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 🛡️ STRICT EMA 9/21 ANTI-LOSS DISCIPLINE:
+    // 🏛️ TREND-ALIGNED PULLBACK LOGIC:
+    // If 1h is Bearish, a pullback near 15m EMA 9 is a PRIME SHORT ZONE!
+    if (isPriceAboveEma9 && isPriceAboveEma21 && is15mBullCross && fourHourTrend === "BULLISH") {
+      learnedBearPenalty += 40;
+      bearTrendPoints = 0;
+    }
+    if (isPriceBelowEma9 && isPriceBelowEma21 && is15mBearCross && fourHourTrend === "BEARISH") {
+      learnedBullPenalty += 40;
+      bullTrendPoints = 0;
+    }
+
+    // PRO-TREND EMPOWERMENT (Higher-Timeframe 4H Weighted Confluence):
+    if (is15mBullCross && isPriceAboveEma9 && isPriceAboveEma21) {
+      bullTrendPoints = 35;
+      bullMomPoints = 30;
+      // If 4H is Bearish, this is a counter-trend pullback (Cap at ~80). True 95+ only when 4H agrees!
+      learnedBullPenalty += (fourHourTrend === "BEARISH") ? 18 : 0;
+    }
+    if (is15mBearCross && isPriceBelowEma9 && isPriceBelowEma21) {
+      bearTrendPoints = 35;
+      bearMomPoints = 30;
+      // If 4H is Bullish, this is a counter-trend pullback (Cap at ~80). True 95+ only when 4H agrees!
+      learnedBearPenalty += (fourHourTrend === "BULLISH") ? 18 : 0;
+    }
+
     const totalBullScore = isBullConfluence
       ? Math.max(10, Math.min(98, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus - learnedBullPenalty))
       : Math.min(48, Math.max(10, bullTrendPoints + bullMomPoints));
@@ -1465,7 +1848,7 @@ export class DeltaAutoTraderEngine {
     // 🎯 2-Hour Horizon Expected Profit Forecasting (High-Profit Swing Wave Targets):
     const safeAtr = (atr1h > 0 && atr1h < currentPrice * 0.15) ? atr1h : (currentPrice * 0.015);
     const slDist = safeAtr * 1.0;
-    const tpDist = safeAtr * 2.2;
+    const tpDist = safeAtr * 1.35;
     const lotSize = this.calculateDynamicLotSize(sym, currentPrice, slDist).quantity;
 
     // Projected Profit if BUY is executed (2-Hour Horizon):
@@ -1482,7 +1865,7 @@ export class DeltaAutoTraderEngine {
     let projectedProfitUSD = 0;
     let profitProbabilityPct = 50;
 
-    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 55;
+    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 80;
     const prevAnalysis = this.analysisCache.get(sym);
 
     // Anti-Flicker Hysteresis Filter (Prevents 2-minute flip-flopping across intra-candle ticks):
@@ -1523,15 +1906,94 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = overallScore;
     }
 
-    const isChopFree = adx4h >= 14 && hurst1h >= 0.42;
-    const isBuyTrendAllowed = fourHourTrend === "BULLISH" || is4hBottomReversal || fourHourTrend === "SIDEWAYS";
-    const isSellTrendAllowed = fourHourTrend === "BEARISH" || is4hTopReversal || fourHourTrend === "SIDEWAYS";
+    // 🔥 TA-LIB / PANDAS-TA MOMENTUM IGNITION CONFLUENCE INTEGRATION:
+    const roc15m = this.calculateROC(closes15m, 6);
+    const obvData = this.calculateOBV(bars15mUse);
+    const adxFull = this.calculateADXFull(bars15mUse, 14);
+    const priceAboveVWAP = currentPrice > vwap1h.vwap;
+
+    const bullIgnition = this.calculateMomentumIgnitionScore({
+      roc15m,
+      adx: adxFull.adx,
+      plusDI: adxFull.plusDI,
+      minusDI: adxFull.minusDI,
+      obvSlope: obvData.obvSlope,
+      volumeExpansionRatio: obvData.volumeExpansionRatio,
+      priceAboveVWAP,
+      fourHourTrend,
+      direction: "BUY"
+    });
+
+    const bearIgnition = this.calculateMomentumIgnitionScore({
+      roc15m,
+      adx: adxFull.adx,
+      plusDI: adxFull.plusDI,
+      minusDI: adxFull.minusDI,
+      obvSlope: obvData.obvSlope,
+      volumeExpansionRatio: obvData.volumeExpansionRatio,
+      priceAboveVWAP,
+      fourHourTrend,
+      direction: "SELL"
+    });
+
+    // If Momentum Ignition is STRONG (85+) or EARLY (75+), prioritize over lagging EMA cross!
+    let activeIgnition = bullIgnition.score >= bearIgnition.score ? bullIgnition : bearIgnition;
+    if (bullIgnition.score >= 75 && bullIgnition.score > bearIgnition.score) {
+      direction = "BUY";
+      overallScore = bullIgnition.score;
+      profitProbabilityPct = bullIgnition.score;
+      activeIgnition = bullIgnition;
+    } else if (bearIgnition.score >= 75 && bearIgnition.score > bullIgnition.score) {
+      direction = "SELL";
+      overallScore = bearIgnition.score;
+      profitProbabilityPct = bearIgnition.score;
+      activeIgnition = bearIgnition;
+    } else if (bullIgnition.setupTier === "CHOP_REJECT" && bearIgnition.setupTier === "CHOP_REJECT") {
+      direction = "NEUTRAL";
+      overallScore = Math.max(bullIgnition.score, bearIgnition.score);
+    }
+
+        // 🏛️ PURE PRICE ACTION + EMA 9/21 PULLBACK REJECTION ENGINE (Freqtrade / TradingView Benchmark):
+    const pa = this.detectEmaPriceAction(bars15mUse, currentPrice);
+    if (pa.signal !== "NONE" && pa.isTriggered) {
+      direction = pa.signal;
+      overallScore = 95;
+      profitProbabilityPct = 95;
+    } else if (pa.signal !== "NONE") {
+      direction = pa.signal;
+      overallScore = 85; // Confirmed rejection in value pocket
+      profitProbabilityPct = 70;
+    } else {
+      direction = "NEUTRAL";
+      overallScore = 38;
+      profitProbabilityPct = 38;
+    }
+
+    const isChopFree = (adx4h >= 22 || (this.analysisCache?.get?.(sym)?.adxValue || 0) >= 15) && hurst1h >= 0.40;
+    
+    // 🏛️ STREAMLINED 2-HOUR DIRECTION & EXECUTION ENGINE:
+    // 1-Hour 21 EMA defines the master macro trend direction:
+    const is1hBullTrend = currentPrice >= ema21_1h;
+    const is1hBearTrend = currentPrice < ema21_1h;
+
+    const isBuyTrendAllowed = is1hBullTrend;
+    const isSellTrendAllowed = is1hBearTrend;
+
+    // 15m Momentum Alignment:
+    const isEmaAligned = direction === "BUY"
+      ? (currentPrice >= ema9_15m)
+      : direction === "SELL"
+      ? (currentPrice <= ema9_15m)
+      : false;
+
+    // Anti-Exhaustion Guard (avoid buying extreme overbought or selling extreme oversold)
+    const isFreshOrPullback = direction === "BUY" ? (rsi15m <= 70) : (rsi15m >= 30);
 
     const isEntryValid = (
       direction !== "NEUTRAL" &&
-      projectedProfitUSD > 0 &&
-      overallScore >= minEntryThreshold &&
-      isChopFree &&
+      isEmaAligned &&
+      isFreshOrPullback &&
+      overallScore >= (this.settings.minConfidenceThreshold || 55) &&
       ((direction === "BUY" && isBuyTrendAllowed) || (direction === "SELL" && isSellTrendAllowed))
     );
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
@@ -1586,6 +2048,12 @@ export class DeltaAutoTraderEngine {
   // ────────────────────────────────────────────
 
   public evaluateAndExecuteAutoTrade(symbol: string, bars15m: OHLCVBar[], bars1h: OHLCVBar[], bars4h: OHLCVBar[], currentPriceUSD: number): { success: boolean; message: string; position?: AutoTraderPosition } {
+    console.log("[DEBUG EVAL TRADE]", {
+      isEnabled: this.settings.isEnabled,
+      botState: this.getStatus().botState,
+      positionsCount: this.openPositions.length,
+      maxPositions: this.settings.maxConcurrentPositions
+    });
     this.checkDailyReset();
 
     if (!this.settings.isEnabled) {
@@ -1602,7 +2070,7 @@ export class DeltaAutoTraderEngine {
     }
 
     if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
-      return { success: false, message: `🔒 ALL 5 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
+      return { success: false, message: `🔒 ALL 7 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
     }
 
     const analysis = this.analyzeMultiTimeframe(symbol, bars15m, bars1h, bars4h);
@@ -1610,10 +2078,15 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⏳ WAIT MODE: ${analysis.reasoning}` };
     }
 
-    // Directional Capacity Check (Up to maxConcurrentPositions in any valid direction)
+    // 🛡️ DIRECTIONAL CONCENTRATION CAP (Max 3 same-direction positions out of 7 slots)
+    // Prevents herd trading ("sab me BUY" ya "sab me SELL")
+    const maxSameDirection = 3;
     const sameDirectionCount = this.openPositions.filter(p => p.type === analysis.direction).length;
-    if (sameDirectionCount >= this.settings.maxConcurrentPositions) {
-      return { success: false, message: `⚠️ Capacity Limit: Already holding ${sameDirectionCount} ${analysis.direction} positions. All slots full.` };
+    if (sameDirectionCount >= maxSameDirection) {
+      return {
+        success: false,
+        message: `🛡️ Directional Risk Cap: Already holding ${sameDirectionCount} ${analysis.direction} positions. Max allowed is ${maxSameDirection} to preserve balance.`
+      };
     }
 
     const baseline = this.getAssetBaselinePrice(symbol);
@@ -1624,8 +2097,8 @@ export class DeltaAutoTraderEngine {
     const safeAtr = (analysis.atr1h > 0) ? analysis.atr1h : (price * 0.015);
 
     // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:2.2 Risk to Reward):
-    const slDistance = safeAtr * 1.0;
-    const tpDistance = safeAtr * 2.2;
+    const slDistance = safeAtr * 1.00;
+    const tpDistance = safeAtr * 1.40;
 
     const stopLossPrice = this.roundPrice(analysis.direction === "BUY" ? price - slDistance : price + slDistance);
     const targetPrice = this.roundPrice(analysis.direction === "BUY" ? price + tpDistance : price - tpDistance);
@@ -1653,6 +2126,7 @@ export class DeltaAutoTraderEngine {
       unrealizedPnLPct: 0,
       trailingStopActive: false,
       highestProfitUSD: 0,
+      triggerIndicator: `EMA 9/21 ${analysis.direction === "BUY" ? "Golden Cross" : "Death Cross"} · ADX ${(analysis.adxValue || 20).toFixed(1)}`,
       timeframeAlignment: "15m + 1h + 4h Aligned",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
       entryTimeMs: now,
@@ -1728,7 +2202,7 @@ export class DeltaAutoTraderEngine {
 
         // Exit Check 0: Emergency Hard Dollar Loss Floor (Max 1.8% Risk = ~$3.40 on $191 balance)
         // Primary single-runaway risk guard that fires first before account-level breaker
-        const emergencyMaxLossUSD = Math.max(2.50, this.settings.currentCapitalUSD * 0.018);
+        const emergencyMaxLossUSD = Math.max(initialRisk * 1.25, 4.50);
         if (pnlUSD <= -emergencyMaxLossUSD) {
           const res = this.closePosition(pos.id, pos.currentPrice, "STOP_LOSS_HIT");
           triggeredLogs.push(`🛑 Emergency Hard Risk Cap: Closed ${pos.symbol} at -$${Math.abs(pnlUSD).toFixed(2)} to strictly protect capital.`);
@@ -1765,20 +2239,32 @@ export class DeltaAutoTraderEngine {
           this.saveToStorage();
         }
 
+        
+        // 🛡️ Halfway 2-Hour Target Shield (+2.50 USD Gain -> Lock Stop-Loss to Breakeven):
+        if (pnlUSD >= 2.50 && pos.stopLossPrice === (pos.type === "BUY" ? this.roundPrice(pos.entryPrice - (pos.initialRiskUSD / pos.quantity)) : this.roundPrice(pos.entryPrice + (pos.initialRiskUSD / pos.quantity)))) {
+          const beBuffer = 0.05 / pos.quantity;
+          const bePrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + beBuffer : pos.entryPrice - beBuffer);
+          pos.stopLossPrice = bePrice;
+          triggeredLogs.push("🛡️ 2-Hour Target Shield Activated: " + pos.symbol + " reached +$" + pnlUSD.toFixed(2) + ". SL moved to Breakeven ($" + bePrice + ") - Zero Risk for remainder of 2h!");
+          if (this.settings.mode === "LIVE") {
+            deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(()=>{});
+          }
+        }
+
         // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.70R gain -> SL moved to Entry + 0.1R buffer)
-        if (pnlUSD >= initialRisk * 0.70 && !pos.trailingStopActive && !pos.ratchetTier) {
+        if (pnlUSD >= initialRisk * 1.2 && !pos.trailingStopActive && !pos.ratchetTier) {
           pos.trailingStopActive = true;
           const rBufferPrice = (initialRisk * 0.10) / pos.quantity;
           const newSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rBufferPrice : pos.entryPrice - rBufferPrice);
           if ((pos.type === "BUY" && newSL < pos.currentPrice && newSL > pos.stopLossPrice) ||
               (pos.type === "SELL" && newSL > pos.currentPrice && newSL < pos.stopLossPrice)) {
             pos.stopLossPrice = newSL;
-            triggeredLogs.push(`🔒 Tier 1 (+0.70R) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
+            triggeredLogs.push(`🔒 Tier 1 (+0.30R) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
           }
         }
 
         // Dynamic High-Water Mark Trailing: As price climbs higher, continuously trail SL 30% below highest peak
-        if (pos.highestProfitUSD >= initialRisk * 1.0) {
+        if (pos.highestProfitUSD >= initialRisk * 1.2) {
           const dynamicLockUSD = pos.highestProfitUSD * 0.70; // 70% of peak profit locked
           const lockDist = dynamicLockUSD / pos.quantity;
           const dynamicSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + lockDist : pos.entryPrice - lockDist);
@@ -1799,7 +2285,7 @@ export class DeltaAutoTraderEngine {
         }
 
         // Exit Check 2: Dynamic Peak Retracement Exit (If price retraces >= 35% from highest peak profit)
-        if (pos.highestProfitUSD >= initialRisk * 0.80 && pnlUSD <= (pos.highestProfitUSD * 0.65)) {
+        if (pos.highestProfitUSD >= initialRisk * 1.2 && pnlUSD <= (pos.highestProfitUSD * 0.70)) {
           const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
           triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} (Peak was +$${pos.highestProfitUSD.toFixed(2)}) after 35% retracement!`);
           return;
@@ -1817,7 +2303,7 @@ export class DeltaAutoTraderEngine {
         // Exit Check 4: v3 Momentum Decay / Reversal Exit (2-4 Hours: In profit >= +0.4R earlier, now decaying toward scratch after 120m)
         const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
         const holdDurationMins = (now - entryMs) / 60000;
-        if (holdDurationMins >= 120 && pos.highestProfitUSD >= initialRisk * 0.40 && pnlUSD < initialRisk * 0.05) {
+        if (holdDurationMins >= 120 && pos.highestProfitUSD >= initialRisk * 0.20 && pnlUSD < initialRisk * 0.10) {
           const res = this.closePosition(pos.id, pos.currentPrice, "EARLY_MOMENTUM_REVERSAL");
           triggeredLogs.push(`⚠️ v3 Momentum Decay Exit: Closed ${pos.symbol} at scratch ($${pos.unrealizedPnLUSD}) after 2h+ hold before slipping negative.`);
           return;
@@ -1845,6 +2331,61 @@ export class DeltaAutoTraderEngine {
     }
 
     return triggeredLogs;
+  }
+
+
+  private logTradeMistake(record: AutoTraderClosedRecord) {
+    if (record.realizedPnLUSD >= 0) return;
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
+      
+      let mistakes = [];
+      if (fs.existsSync(mistakesPath)) {
+        mistakes = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
+      }
+
+      let rootCause = "TREND_REVERSAL_STOP_LOSS";
+      let analysis = `Trade entered at ${record.entryPrice} but price moved against entry, resulting in a ${record.realizedPnLUSD} loss.`;
+      let correction = ["Tighten Stop-Loss distance.", "Require ADX > 15 for stronger momentum before entering."];
+
+      if (record.exitReason === "MANUAL_UI_CLOSE") {
+        rootCause = "MANUAL_ABORT_PREVENTATIVE_LOSS";
+        analysis = `User manually aborted the ${record.type} position at ${record.exitPrice} to prevent further drawdown. Bot failed to hit Take-Profit.`;
+        correction = ["Activate early breakeven shield at +0.35R.", "Enable faster dynamic trailing stops to lock profit early."];
+      } else if (record.exitReason === "TIME_STALL_EXIT") {
+        rootCause = "PROLONGED_CHOP_MOMENTUM_DECAY";
+        analysis = `Trade stalled for too long without hitting target. Exited due to momentum decay.`;
+      } else if (record.exitReason === "STOP_LOSS_HIT") {
+        rootCause = "HARD_STOP_LOSS_HIT";
+        analysis = `Market reversed sharply against the ${record.type} position, hitting safety stop-loss at ${record.exitPrice}.`;
+      }
+
+      const mistakeData = {
+        id: `MSTK-${Date.now()}-${record.symbol}`,
+        timestamp: record.exitTimestamp,
+        symbol: record.symbol,
+        type: record.type,
+        entryPrice: record.entryPrice,
+        exitPrice: record.exitPrice,
+        lossUSD: record.realizedPnLUSD,
+        lossPct: record.realizedPnLPct,
+        confidenceScore: record.confidenceScore || 85,
+        primaryTrigger: `EMA 9/21 · ADX ${record.adxValue || 20}`,
+        rootCauseCategory: rootCause,
+        detailedMistakeAnalysis: analysis,
+        aiLearnedCorrections: correction
+      };
+
+      mistakes.unshift(mistakeData);
+      if (mistakes.length > 50) mistakes = mistakes.slice(0, 50);
+      
+      fs.writeFileSync(mistakesPath, JSON.stringify(mistakes, null, 2), "utf-8");
+      
+    } catch(e) {
+      console.warn("[AutoTrader] Error logging AI mistake:", e);
+    }
   }
 
   public closePosition(positionId: string, exitPriceUSD: number, reason: AutoTraderClosedRecord["exitReason"] = "MANUAL_EXIT"): { success: boolean; message: string; record?: AutoTraderClosedRecord } {
@@ -1902,6 +2443,9 @@ export class DeltaAutoTraderEngine {
 
     this.openPositions = this.openPositions.filter(p => p.id !== positionId);
     this.closedRecords.unshift(record);
+    if (outcome === "LOSS" || pnlUSD < -0.10) {
+      this.logTradeMistake(record);
+    }
 
     // If LIVE mode, cancel pending bracket order first and trigger exit order on Delta Exchange API to close real market position
     if (this.settings.mode === "LIVE") {
@@ -1918,7 +2462,7 @@ export class DeltaAutoTraderEngine {
     if (this.openPositions.length < this.settings.maxConcurrentPositions && this.inspectionStartTimeMs === 0) {
       this.inspectionStartTimeMs = now;
       const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length];
-      console.log(`[AutoTrader] 🔄 Position exited on ${pos.symbol}. Resumed 5-min inspection on Asset #${(this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length) + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) to fill open slot (${this.openPositions.length}/${this.settings.maxConcurrentPositions} active).`);
+      console.log(`[AutoTrader] 🔄 Position exited on ${pos.symbol}. Resumed 15-sec inspection on Asset #${(this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length) + 1}/10: ${nextCoin.tag} (${nextCoin.symbol}) to fill open slot (${this.openPositions.length}/${this.settings.maxConcurrentPositions} active).`);
     }
 
     if (this.openPositions.length === 0) {
@@ -1939,7 +2483,7 @@ export class DeltaAutoTraderEngine {
   // Live Exchange Two-Way Synchronization
   // ────────────────────────────────────────────
   public async syncWithExchangePositions(): Promise<void> {
-    if (this.settings.mode !== "LIVE") return;
+    if (this.settings.mode !== "LIVE" || !process.env.DELTA_EXCHANGE_API_KEY) return;
     try {
       const livePositions = await deltaExchangeEngine.fetchLivePositions();
       if (!Array.isArray(livePositions)) return;
@@ -2116,7 +2660,7 @@ export class DeltaAutoTraderEngine {
     const cycleElapsedSeconds = Math.floor((now / 1000) % rollingCycleTotalSeconds);
     const rollingCycleRemainingSeconds = rollingCycleTotalSeconds - cycleElapsedSeconds;
 
-    const inspectionTotalSeconds = (this.settings.inspectionWindowMinutes || 5) * 60;
+    const inspectionTotalSeconds = 15; // 15-second dedicated inspection window
     const inspectionElapsedSeconds = this.inspectionStartTimeMs > 0 ? Math.floor((now - this.inspectionStartTimeMs) / 1000) : 0;
     const inspectionRemainingSeconds = Math.max(0, inspectionTotalSeconds - inspectionElapsedSeconds);
 
@@ -2125,7 +2669,7 @@ export class DeltaAutoTraderEngine {
     const nextAsset = CURATED_AUTO_TRADER_ASSETS[(safeIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length];
     const cachedAnalysis = this.analysisCache.get(currentAsset.symbol);
 
-    const isSlotsFull = this.openPositions.length >= (this.settings.maxConcurrentPositions || 5);
+    const isSlotsFull = this.openPositions.length >= (this.settings.maxConcurrentPositions || 7);
     let inspectionStatus: "INSPECTING" | "SLOTS_FULL" | "HOLDING_ACTIVE_POSITION" | "SKIPPED_CHOPPY" | "PAUSED" = "INSPECTING";
     if (!this.settings.isEnabled) {
       inspectionStatus = "PAUSED";
@@ -2136,6 +2680,23 @@ export class DeltaAutoTraderEngine {
     }
 
     const inspectionCurrentPrice = this.latestPrices.get(currentAsset.symbol) || 0;
+    const scoreVal = cachedAnalysis?.overallScore || 0;
+    const directionVal = cachedAnalysis?.direction || "NEUTRAL";
+    const emaBiasVal = directionVal === "BUY"
+      ? "BULLISH (EMA9 > EMA21)"
+      : directionVal === "SELL"
+      ? "BEARISH (EMA9 < EMA21)"
+      : "NEUTRAL (Chop Zone)";
+    const adxVal = cachedAnalysis?.adxValue ? Number(cachedAnalysis.adxValue.toFixed(1)) : 20.0;
+    const smcBiasVal = directionVal === "BUY"
+      ? "SSL Swept (Retail Trapped)"
+      : directionVal === "SELL"
+      ? "BSL Swept (Retail Trapped)"
+      : "NO SWEEP";
+    const triggerVal = cachedAnalysis
+      ? `EMA 9/21 ${directionVal === "BUY" ? "Bull Cross" : directionVal === "SELL" ? "Bear Cross" : "Consolidation"}`
+      : "NO SIGNAL";
+
     const currentInspection = {
       assetIndex: safeIndex,
       symbol: currentAsset.symbol,
@@ -2146,9 +2707,15 @@ export class DeltaAutoTraderEngine {
       inspectionTotalSeconds,
       status: inspectionStatus,
       nextSymbol: nextAsset.symbol,
-      currentScore: cachedAnalysis?.overallScore || 0,
-      currentDirection: cachedAnalysis?.direction || "NEUTRAL",
-      currentEVUSD: cachedAnalysis?.projectedProfitUSD || 0
+      currentScore: scoreVal,
+      currentDirection: directionVal,
+      currentEVUSD: cachedAnalysis?.projectedProfitUSD || 0,
+      score: scoreVal,
+      decision: directionVal,
+      emaBias: emaBiasVal,
+      adx: adxVal,
+      smcBias: smcBiasVal,
+      trigger: triggerVal
     };
 
     return {
@@ -2247,8 +2814,11 @@ export class DeltaAutoTraderEngine {
     // Reward target: ₹800–900 ($9.60–$10.80 USD)
     // R:R Ratio = Reward / Risk ≈ 2.05 (Derived directly from values, NO phantom multiplier!)
     // Required Breakout Move = Reward / Notional = $10.00 / $195.80 ≈ +5.1% to +5.2%
-    const effectiveRiskPct = Math.max(2.2, this.settings.riskPerTradePct || 2.4);
-    const dollarRiskAllowed = accountEquity * (effectiveRiskPct / 100);
+    // 🎯 TARGETED LOT SIZING FOR ₹5,000–₹7,000 INR DAILY PROFIT HORIZON:
+    // 3 concurrent slots x $10-$14 USD reward = $30-$42 USD per batch (~₹2,500-₹3,500 INR)
+    // 2 winning batches = ₹5,000-₹7,000 INR daily profit target achieved!
+    const effectiveRiskPct = Math.max(3.5, this.settings.riskPerTradePct || 3.5);
+    const dollarRiskAllowed = Math.max(6.80, accountEquity * (effectiveRiskPct / 100));
     
     const sym = symbol.toUpperCase().trim();
     const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
@@ -2267,7 +2837,7 @@ export class DeltaAutoTraderEngine {
 
     const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
     const notionalUSD = Number((currentPrice * quantity).toFixed(2));
-    const targetRewardUSD = Number((initialRiskUSD * 2.05).toFixed(2)); // +2.05R = ~+$9.60–$10.25 USD (+₹800–₹855 INR)
+    const targetRewardUSD = Number((Math.max(initialRiskUSD * 1.65, 10.50)).toFixed(2)); // $10.50 - $15.00 USD (+₹875 - ₹1,250 INR) target per trade
     const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.05;
     const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 5.2;
 
@@ -2340,7 +2910,8 @@ export class DeltaAutoTraderEngine {
       const deltaCandles = await deltaExchangeEngine.fetchCandles(sym, deltaResolution);
       if (Array.isArray(deltaCandles) && deltaCandles.length > 0) {
         return deltaCandles.slice(-limit).map(c => ({
-          timestamp: new Date(c.time * 1000).toISOString().split("T")[0],
+          time: typeof c.time === "number" ? (c.time > 1e11 ? Math.floor(c.time / 1000) : c.time) : Math.floor(new Date(c.time).getTime() / 1000),
+          timestamp: new Date((c.time > 1e11 ? c.time : c.time * 1000)).toISOString(),
           open: c.open,
           high: c.high,
           low: c.low,
@@ -2361,7 +2932,8 @@ export class DeltaAutoTraderEngine {
         const raw: any[] = await res.json();
         if (Array.isArray(raw) && raw.length > 0) {
           return raw.map((k: any) => ({
-            timestamp: new Date(k[0]).toISOString().split("T")[0],
+            time: Math.floor(k[0] / 1000),
+            timestamp: new Date(k[0]).toISOString(),
             open: parseFloat(k[1]),
             high: parseFloat(k[2]),
             low: parseFloat(k[3]),
@@ -2477,7 +3049,7 @@ export class DeltaAutoTraderEngine {
       attempts++;
     }
 
-    const inspectionWindowMs = (this.settings.inspectionWindowMinutes || 5) * 60 * 1000;
+    const inspectionWindowMs = 15 * 1000; // 15-second dedicated inspection window
     const inspectionElapsedMs = now - this.inspectionStartTimeMs;
     const inspectionRemainingSec = Math.max(0, Math.ceil((inspectionWindowMs - inspectionElapsedMs) / 1000));
 
@@ -2505,13 +3077,11 @@ export class DeltaAutoTraderEngine {
       ? livePrice
       : (candleClose > 0 && candleClose > baseline * 0.1 && candleClose < baseline * 10 ? candleClose : baseline);
 
-    // 2. Strict 5-Minute Observation Window: NO trade is executed before the full timer countdown completes (0m 00s)!
+    // 2. Strict 15-Second Observation Window: NO trade is executed before the 15-second countdown completes
     if (!forceImmediate && inspectionElapsedMs < inspectionWindowMs) {
-      const mins = Math.floor(inspectionRemainingSec / 60);
-      const secs = inspectionRemainingSec % 60;
       return {
         executed: false,
-        message: `⏳ 5-Min Asset Reading in Progress: [Asset #${safeIndex + 1}/10: ${currentAsset.tag} (${sym})] (${this.openPositions.length}/${this.settings.maxConcurrentPositions || 5} active). Score: ${analysis.overallScore}/100 [${analysis.direction}] (${mins}m ${secs}s remaining).`
+        message: `⏳ 15-Sec Asset Reading in Progress: [Asset #${safeIndex + 1}/10: ${currentAsset.tag} (${sym})] (${this.openPositions.length}/${this.settings.maxConcurrentPositions || 7} active). Score: ${analysis.overallScore}/100 [${analysis.direction}] (${inspectionRemainingSec}s remaining).`
       };
     }
 
@@ -2557,7 +3127,7 @@ export class DeltaAutoTraderEngine {
     this.saveToStorage();
     return {
       success: true,
-      message: `⏭️ Skipped ${prev.tag} inspection. Started 5-min inspection on Asset #${this.currentAssetIndex + 1}/10: ${next.tag} (${next.symbol}).`
+      message: `⏭️ Skipped ${prev.tag} inspection. Started 15-sec inspection on Asset #${this.currentAssetIndex + 1}/10: ${next.tag} (${next.symbol}).`
     };
   }
 
