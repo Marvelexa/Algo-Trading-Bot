@@ -425,6 +425,16 @@ async function startServer() {
   app.use('/templates/restaurant', express.static(path.join(process.cwd(), 'templates', 'Restaurant-Demo', 'dist')));
 
   // API Routes
+  
+  // 🔄 24/7 Cloud Keep-Alive Heartbeat (Prevents Render Free Tier from sleeping / wiping trades)
+  const RENDER_SERVICE_URL = process.env.RENDER_EXTERNAL_URL || "https://algo-trading-bot-9xh0.onrender.com";
+  setInterval(async () => {
+    try {
+      await fetch(`${RENDER_SERVICE_URL}/api/health`, { signal: AbortSignal.timeout(6000) });
+      console.log("[KeepAlive] 💓 24/7 Cloud Heartbeat sent to prevent container spin-down.");
+    } catch (e) {}
+  }, 9 * 60 * 1000); // Every 9 minutes (Render sleeps after 15 mins)
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });

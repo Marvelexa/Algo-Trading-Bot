@@ -114,12 +114,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
       // Server offline or standalone client preview
     }
 
-    // Graceful Engine Fallback
+    // Graceful Engine Fallback (Never overwrite with empty array if server already loaded)
     try {
       const localState = deltaAutoTraderEngine.getLiveFullState();
-      if (localState) {
+      if (localState && localState.openPositions && localState.openPositions.length > 0) {
         setSettings(localState.settings);
-        setPositions(localState.openPositions);
+        setPositions(prev => prev.length > 0 ? prev : localState.openPositions);
         setRecords(localState.closedRecords);
         setStatus(localState.status);
         setNews(localState.cryptoNews);
@@ -1024,7 +1024,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
                     {/* ⏱️ FAST 30M - 75M INTRADAY BURST TIMER */}
                     {(() => {
-                      const entryMs = pos.entryTimeMs || new Date(pos.entryTimestamp).getTime() || (Date.now() - 60000);
+                      const safeIso = pos.entryTimestamp ? (pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z") : "";
+                      const parsedTs = safeIso ? new Date(safeIso).getTime() : 0;
+                      const entryMs = (pos.entryTimeMs && pos.entryTimeMs > 0) ? pos.entryTimeMs : (!isNaN(parsedTs) && parsedTs > 0 ? parsedTs : (Date.now() - 60000));
                       const diffMins = Math.max(1, Math.floor((Date.now() - entryMs) / 60000));
                       const diffHours = Math.floor(diffMins / 60);
                       const targetGainUSD = Math.abs(pos.targetPrice - pos.entryPrice) * pos.quantity;
