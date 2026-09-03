@@ -405,7 +405,7 @@ export class DeltaAutoTraderEngine {
     if (parsed.settings) {
       this.settings = { ...this.settings, ...parsed.settings };
       this.settings.initialCapitalUSD = 180.00; // ₹15,000 INR Base Capital
-      this.settings.currentCapitalUSD = (typeof parsed.settings.currentCapitalUSD === "number" && parsed.settings.currentCapitalUSD > 50 && parsed.settings.currentCapitalUSD <= 300) ? parsed.settings.currentCapitalUSD : 180.00;
+      this.settings.currentCapitalUSD = 180.00;
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
       this.settings.maxConcurrentPositions = 1;
@@ -3017,7 +3017,7 @@ export class DeltaAutoTraderEngine {
         liveDeltaBalance = (deltaExchangeEngine as any).getAccountSummary()?.netEquityUSD;
       }
     } catch (e) {}
-    const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : this.settings.currentCapitalUSD;
+    const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : 180.00; // ₹15,000 INR Account Equity
     
     // Per-Trade Economics (Part B1 Audit):
     // Slot margin: ₹3,270 ($39.16 USD), 5x Leverage -> Notional = $195.80 USD (₹16,350 INR)
