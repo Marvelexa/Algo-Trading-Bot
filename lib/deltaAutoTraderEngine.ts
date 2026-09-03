@@ -26,7 +26,7 @@ export const NEW_ENTRY_SCAN_INTERVAL_MS = 10 * 1000; // 10s evaluation interval
 export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours (1 Day) Trend & Swing Horizon Window (2h to 1 Day)
 export const FEE_BUFFER_PER_TRADE_USD = 0.60; // Fixed ₹50 INR Delta Exchange India (Brokerage + 18% GST + 1% TDS + Slippage)
 export const MAX_CONSECUTIVE_LOSSES_ALLOWED = 3; // Hard daily stop after 3 consecutive losses
-export const MAX_DAILY_LOSS_CAP_USD = 4.40; // ₹367 INR (~7.3% of ₹5,000 capital circuit breaker for 2 SL hits)
+export const MAX_DAILY_LOSS_CAP_USD = 10.80; // ₹900 INR (~6% of ₹15,000 capital circuit breaker after 2-3 losses)
 export const DEFAULT_LEVERAGE = 5.0; // 5x dynamic margin leverage per slot
 
 export interface OHLCVBar {
@@ -254,7 +254,7 @@ export interface ScanDiagnosticReport {
 }
 
 const STORAGE_KEY = "NEXVORA_DELTA_AUTO_TRADER_STATE_V10";
-const DEFAULT_CAPITAL_USD = 60.00; // ₹5,000 INR ($60.00 USD) Real User Account Capital
+const DEFAULT_CAPITAL_USD = 180.00; // ₹15,000 INR ($180.00 USD) Account Capital
 
 export class DeltaAutoTraderEngine {
   private settings: AutoTraderSettings = {
@@ -404,8 +404,8 @@ export class DeltaAutoTraderEngine {
     if (!parsed) return;
     if (parsed.settings) {
       this.settings = { ...this.settings, ...parsed.settings };
-      this.settings.initialCapitalUSD = 60.00; // ₹5,000 INR Base Capital
-      this.settings.currentCapitalUSD = (typeof parsed.settings.currentCapitalUSD === "number" && parsed.settings.currentCapitalUSD > 20 && parsed.settings.currentCapitalUSD <= 100) ? parsed.settings.currentCapitalUSD : 60.00;
+      this.settings.initialCapitalUSD = 180.00; // ₹15,000 INR Base Capital
+      this.settings.currentCapitalUSD = (typeof parsed.settings.currentCapitalUSD === "number" && parsed.settings.currentCapitalUSD > 50 && parsed.settings.currentCapitalUSD <= 300) ? parsed.settings.currentCapitalUSD : 180.00;
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
       this.settings.maxConcurrentPositions = 1;
@@ -3029,7 +3029,7 @@ export class DeltaAutoTraderEngine {
     // 3 concurrent slots x $10-$14 USD reward = $30-$42 USD per batch (~₹2,500-₹3,500 INR)
     // 2 winning batches = ₹5,000-₹7,000 INR daily profit target achieved!
     const effectiveRiskPct = Math.max(3.5, this.settings.riskPerTradePct || 3.5);
-    const dollarRiskAllowed = Math.min(2.20, Math.max(1.60, accountEquity * 0.035)); // ₹135-₹185 INR risk per trade for Single Sniper Mode (Target: +₹350-₹460 INR profit)!
+    const dollarRiskAllowed = Math.min(5.50, Math.max(3.80, accountEquity * 0.025)); // ₹320-₹460 INR risk per trade for ₹15,000 capital (Target: +₹850-₹1,150 INR profit)!
     
     const sym = symbol.toUpperCase().trim();
     const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
@@ -3048,7 +3048,7 @@ export class DeltaAutoTraderEngine {
 
     const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
     const notionalUSD = Number((currentPrice * quantity).toFixed(2));
-    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.5, 6.00)).toFixed(2)); // 🎯 +₹500 - ₹650 INR profit per trade (Crushes ₹50 exchange fees!)
+    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.2, 10.50)).toFixed(2)); // 🎯 +₹850 - ₹1,150 INR profit per trade on ₹15,000 capital (Crushes ₹50 fee completely!)
     const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.05;
     const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 5.2;
 

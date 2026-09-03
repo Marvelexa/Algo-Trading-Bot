@@ -51,8 +51,8 @@ const DEFAULT_STATUS: AutoTraderStatus = {
 const DEFAULT_SETTINGS: AutoTraderSettings = {
   mode: "LIVE",
   isEnabled: true,
-  initialCapitalUSD: 60.00,
-  currentCapitalUSD: 60.00,
+  initialCapitalUSD: 180.00,
+  currentCapitalUSD: 180.00,
   riskPerTradePct: 2.0,
   maxDailyLossPct: 3.0,
   maxTradesPerDay: 10,
