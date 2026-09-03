@@ -367,7 +367,7 @@ class DeltaExchangeEngine {
     try {
       const path = "/v2/wallet/balances";
       const headers = this.getAuthHeaders("GET", path);
-      const res = await fetch(`${BASE_URL}/wallet/balances`, { headers });
+      const res = await fetch(`${BASE_URL}/wallet/balances`, { headers, signal: AbortSignal.timeout(3500) });
       if (!res.ok) return null;
       const json: any = await res.json();
       return json?.result || json;

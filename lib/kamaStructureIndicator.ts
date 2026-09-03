@@ -271,7 +271,7 @@ export function calculateCompositeScore(
   const kamaPeriod = opts.kamaPeriod ?? 10;
   const adxPeriod = opts.adxPeriod ?? 14;
   const swingLookback = opts.swingLookback ?? 3;
-  const entryThreshold = opts.entryThreshold ?? 80;
+  const entryThreshold = opts.entryThreshold ?? 70;
 
   if (!candles || candles.length < 15) {
     return {

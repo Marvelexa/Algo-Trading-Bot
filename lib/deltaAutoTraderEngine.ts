@@ -266,7 +266,7 @@ export class DeltaAutoTraderEngine {
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 80,
+    minConfidenceThreshold: 70,
     maxConcurrentPositions: 3, // 🎯 SINGLE SNIPER MODE: Only 1 trade at a time with concentrated capital! (leaves 50% free margin buffer) (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
     inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
@@ -409,7 +409,7 @@ export class DeltaAutoTraderEngine {
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
       this.settings.maxConcurrentPositions = 3;
-      this.settings.minConfidenceThreshold = 80;
+      this.settings.minConfidenceThreshold = 70;
       this.settings.inspectionWindowMinutes = 5;
     }
     if (Array.isArray(parsed.openPositions)) {
@@ -1997,7 +1997,7 @@ export class DeltaAutoTraderEngine {
       kamaPeriod: 10,
       adxPeriod: 14,
       swingLookback: 3,
-      entryThreshold: 80
+      entryThreshold: 70
     });
 
     const isKamaTrendAligned = 
