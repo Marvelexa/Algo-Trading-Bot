@@ -1447,25 +1447,30 @@ export class DeltaAutoTraderEngine {
       }
     }
 
-    // BEARISH PULLBACK & REJECTION:
+    // BEARISH PULLBACK & BREAKDOWN ENGINE (Symmetric Shorting):
     if (isBearTrend) {
       const touchedPocket = triggerCandle.high >= (curEma9 * 0.998) && triggerCandle.close <= (curEma21 * 1.002);
       const isShootingStar = upperWick >= 1.2 * bodySize && upperWick >= 0.4 * range;
       const isBearEngulf = triggerCandle.close < triggerCandle.open && triggerCandle.close < prevCandle.low;
       const isStrongBearClose = triggerCandle.close <= (triggerCandle.high - 0.65 * range) && triggerCandle.close < triggerCandle.open;
 
-      const isRejection = isShootingStar || isBearEngulf || isStrongBearClose;
-      const isTriggered = currentPrice <= triggerCandle.low;
+      // Also detect clean breakdown below recent 10-bar swing support
+      const prev10Bars = bars15m.slice(-12, -2);
+      const swingLow10 = prev10Bars.length > 0 ? Math.min(...prev10Bars.map(b => b.low)) : 0;
+      const isBreakdown = swingLow10 > 0 && currentPrice < swingLow10 && triggerCandle.close < curEma9;
 
-      if (touchedPocket && isRejection) {
-        const patternName = isShootingStar ? "BEARISH_SHOOTING_STAR" : isBearEngulf ? "BEARISH_ENGULFING" : "STRONG_BEAR_CLOSE";
+      const isRejection = isShootingStar || isBearEngulf || isStrongBearClose || isBreakdown;
+      const isTriggered = currentPrice <= triggerCandle.low || isBreakdown;
+
+      if ((touchedPocket || isBreakdown) && isRejection) {
+        const patternName = isBreakdown ? "BEARISH_SUPPORT_BREAKDOWN" : isShootingStar ? "BEARISH_SHOOTING_STAR" : isBearEngulf ? "BEARISH_ENGULFING" : "STRONG_BEAR_CLOSE";
         return {
           signal: "SELL",
-          isTriggered,
+          isTriggered: true,
           pattern: patternName,
-          triggerPrice: triggerCandle.low,
-          slPrice: this.roundPrice(triggerCandle.high * 1.0015),
-          reason: `15m EMA 9/21 Bear Trend + Value Pocket Rejection (${patternName}). ${isTriggered ? "Price broke below trigger low!" : "Awaiting break below " + triggerCandle.low}`
+          triggerPrice: currentPrice,
+          slPrice: this.roundPrice(Math.max(triggerCandle.high, curEma9) * 1.002),
+          reason: `15m EMA 9/21 Bear Trend + ${patternName}. Institutional Short Entry.`
         };
       }
     }
@@ -2116,7 +2121,7 @@ export class DeltaAutoTraderEngine {
 
     // 🛡️ DIRECTIONAL CONCENTRATION CAP (Max 3 same-direction positions out of 7 slots)
     // Prevents herd trading ("sab me BUY" ya "sab me SELL")
-    const maxSameDirection = 3;
+    const maxSameDirection = 2; // Strict balance: Max 2 BUYs out of 3 slots so 3rd slot is reserved for SELL!
     const sameDirectionCount = this.openPositions.filter(p => p.type === analysis.direction).length;
     if (sameDirectionCount >= maxSameDirection) {
       return {
