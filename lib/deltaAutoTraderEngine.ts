@@ -2152,15 +2152,23 @@ export class DeltaAutoTraderEngine {
     const price = (liveTick > 0 && liveTick > baseline * 0.1 && liveTick < baseline * 10)
       ? liveTick
       : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
-    const safeAtr = Math.max(price * 0.010, (analysis.atr1h > 0 ? analysis.atr1h : (price * 0.015))); // Anti-Noise Floor: At least 1.0% ATR so BTC/ETH are immune to 5m wick outs!
+    // 🎯 SINGLE SOURCE OF TRUTH: Directly query getTradeSignal for unified SL, TP & ATR
+    const tradeSig = getTradeSignal(bars15m, "NONE", {
+      slMultiplier: 1.5,
+      tpMultiplier: 3.0,
+      swingLookback: 3,
+      entryThreshold: 80
+    });
 
-    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (2:1 Institutional Risk to Reward via KAMA ATR):
-    const slDistance = safeAtr * 1.50; // 1.5x ATR Stop Loss
-    const tpDistance = safeAtr * 3.00; // 3.0x ATR Target (Exact 2:1 RR)
-
-    const stopLossPrice = this.roundPrice(analysis.direction === "BUY" ? price - slDistance : price + slDistance);
-    const targetPrice = this.roundPrice(analysis.direction === "BUY" ? price + tpDistance : price - tpDistance);
     const entryPrice = this.roundPrice(price);
+    const stopLossPrice = tradeSig.stopLoss 
+      ? this.roundPrice(tradeSig.stopLoss) 
+      : this.roundPrice(analysis.direction === "BUY" ? price - price * 0.015 : price + price * 0.015);
+    const targetPrice = tradeSig.takeProfit 
+      ? this.roundPrice(tradeSig.takeProfit) 
+      : this.roundPrice(analysis.direction === "BUY" ? price + price * 0.030 : price - price * 0.030);
+    const slDistance = Math.abs(entryPrice - stopLossPrice);
+    const safeAtr = tradeSig.atrValue || (price * 0.010);
 
     // 🎯 DYNAMIC LOT SIZING BASED ON LIVE ACCOUNT BALANCE (1.5% Risk)
     const lotInfo = this.calculateDynamicLotSize(symbol, price, slDistance);

@@ -340,6 +340,9 @@ export interface TradeSignal {
   entryPrice?: number;
   stopLoss?: number;
   takeProfit?: number;
+  atrValue?: number;
+  slDistance?: number;
+  tpDistance?: number;
   composite: CompositeResult;
 }
 
@@ -364,8 +367,13 @@ export function getTradeSignal(
   const composite = calculateCompositeScore(candles, opts);
   const structure = detectStructureSignal(candles, swingLookback);
   const atr = calculateATR(candles, atrPeriod);
-  const lastAtr = atr[atr.length - 1] || (candles[candles.length - 1]?.close * 0.015);
   const lastClose = candles[candles.length - 1]?.close || 0;
+  const rawAtr = atr[atr.length - 1] || (lastClose * 0.015);
+  // 🛡️ UNIFIED ANTI-NOISE VOLATILITY FLOOR (Single Source of Truth):
+  // Minimum 1.0% ATR buffer so crypto wick noise never triggers premature SL
+  const lastAtr = Math.max(lastClose * 0.010, rawAtr);
+  const slDistance = lastAtr * slMultiplier;
+  const tpDistance = lastAtr * tpMultiplier;
 
   // --- Already in a position: check for early invalidation first ---
   // (Broker-side SL/TP orders still handle the hard exit — this is the
@@ -392,8 +400,11 @@ export function getTradeSignal(
       action: "BUY",
       reason: `Score ${composite.score}/${composite.entryThreshold}: KAMA+structure agree bullish (${structure}), ADX confirms trend`,
       entryPrice: lastClose,
-      stopLoss: lastClose - lastAtr * slMultiplier,
-      takeProfit: lastClose + lastAtr * tpMultiplier,
+      stopLoss: lastClose - slDistance,
+      takeProfit: lastClose + tpDistance,
+      atrValue: lastAtr,
+      slDistance,
+      tpDistance,
       composite,
     };
   }
@@ -401,10 +412,13 @@ export function getTradeSignal(
   if (composite.bias === "SHORT") {
     return {
       action: "SELL",
-      reason: `Score ${composite.score}/${composite.entryThreshold}: KAMA+structure agree bearish, ADX confirms trend`,
+      reason: `Score ${composite.score}/${composite.entryThreshold}: KAMA+structure agree bearish (${structure}), ADX confirms trend`,
       entryPrice: lastClose,
-      stopLoss: lastClose + lastAtr * slMultiplier,
-      takeProfit: lastClose - lastAtr * tpMultiplier,
+      stopLoss: lastClose + slDistance,
+      takeProfit: lastClose - tpDistance,
+      atrValue: lastAtr,
+      slDistance,
+      tpDistance,
       composite,
     };
   }
