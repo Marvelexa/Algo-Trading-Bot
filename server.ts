@@ -653,6 +653,18 @@ async function startServer() {
     return res.json({ success: true, state: deltaAutoTraderEngine.getLiveFullState() });
   });
 
+  
+  app.post("/api/autotrader/scale-up", (req, res) => {
+    try {
+      const { symbol } = req.body || {};
+      const result = deltaAutoTraderEngine.scaleUpPosition(symbol || "ADAUSD", 2);
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      return res.json({ success: result.success, message: result.message, state: fullState });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.post("/api/autotrader/toggle", (req, res) => {
     try {
       const { isEnabled } = req.body;

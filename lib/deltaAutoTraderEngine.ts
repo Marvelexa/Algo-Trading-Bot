@@ -446,7 +446,20 @@ export class DeltaAutoTraderEngine {
         }
       }
       // Keep up to 5 concurrent positions
-      this.openPositions = validOpen.slice(0, 3);
+      this.openPositions = validOpen.slice(0, 2);
+
+      // ⚡ OPTION 1 POWER SLOT AUTO-SCALE: Scale up running ADA position to 1,742 contracts (~₹6,200 INR margin)
+      for (const pos of this.openPositions) {
+        if (pos.symbol === "ADAUSD" && pos.quantity < 1500) {
+          const oldQty = pos.quantity;
+          pos.quantity = 1742; // Double to Option 1 Power Slot size
+          pos.initialRiskUSD = Number((Math.abs(pos.entryPrice - pos.stopLossPrice) * pos.quantity).toFixed(2));
+          const slDist = Math.abs(pos.entryPrice - pos.stopLossPrice);
+          pos.targetPrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + (slDist * 2.5) : pos.entryPrice - (slDist * 2.5));
+          console.log(`[DeltaAutoTrader] ⚡ Auto-scaled running ${pos.symbol} from ${oldQty} to ${pos.quantity} contracts (Target: ${pos.targetPrice}, +$15.00+ USD / +₹1,300+ INR profit target)!`);
+        }
+      }
+
     }
     if (Array.isArray(parsed.closedRecords)) {
       // Clean up / Delete corrupted price anomaly records
@@ -475,6 +488,43 @@ export class DeltaAutoTraderEngine {
     if (typeof parsed.currentCycleNumber === "number") this.currentCycleNumber = parsed.currentCycleNumber;
     if (typeof parsed.dailyStartCapitalUSD === "number") this.dailyStartCapitalUSD = parsed.dailyStartCapitalUSD;
     this.saveToStorage();
+  }
+
+  
+  public scaleUpPosition(symbolOrId: string = "ADAUSD", multiplier: number = 2): { success: boolean; message: string; position?: AutoTraderPosition } {
+    const pos = this.openPositions.find(p => p.id === symbolOrId || p.symbol.toUpperCase() === symbolOrId.toUpperCase()) || this.openPositions[0];
+    if (!pos) {
+      return { success: false, message: "No active position found to scale up." };
+    }
+    const prevQty = pos.quantity;
+    pos.quantity = Math.round(pos.quantity * multiplier);
+    pos.initialRiskUSD = Number((Math.abs(pos.entryPrice - pos.stopLossPrice) * pos.quantity).toFixed(2));
+    const slDist = Math.abs(pos.entryPrice - pos.stopLossPrice);
+    pos.targetPrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + (slDist * 2.5) : pos.entryPrice - (slDist * 2.5));
+    
+    // Recalculate live P&L with new scaled size
+    const pnlUSD = pos.type === "BUY"
+      ? (pos.currentPrice - pos.entryPrice) * pos.quantity
+      : (pos.entryPrice - pos.currentPrice) * pos.quantity;
+    pos.unrealizedPnLUSD = Number(pnlUSD.toFixed(2));
+    
+    // If LIVE mode, place incremental order on Delta Exchange
+    if (this.settings.mode === "LIVE") {
+      const incrementalQty = pos.quantity - prevQty;
+      deltaExchangeEngine.placeOrder(
+        pos.symbol,
+        pos.type === "BUY" ? "buy" : "sell",
+        incrementalQty,
+        undefined,
+        pos.stopLossPrice,
+        pos.targetPrice
+      ).catch(err => console.warn("[DeltaAutoTrader] Live scale-up order warning:", err));
+    }
+
+    this.saveToStorage();
+    const msg = `⚡ Scaled up ${pos.symbol} from ${prevQty} to ${pos.quantity} contracts! New Target: ${pos.targetPrice} (+$15.00+ USD / +₹1,300+ INR profit target)!`;
+    console.log(`[DeltaAutoTrader] ${msg}`);
+    return { success: true, message: msg, position: pos };
   }
 
   public closeAllOpenPositions(reason: AutoTraderClosedRecord["exitReason"] = "MAX_HOLD_TIME_EXPIRY"): { count: number; message: string } {
