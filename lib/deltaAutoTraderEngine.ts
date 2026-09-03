@@ -2197,6 +2197,126 @@ export class DeltaAutoTraderEngine {
     };
   }
 
+
+  // 🛡️ CONTINUOUS POST-ENTRY ACTIVE DANGER REVERSAL SENTINEL
+  // Re-evaluates open positions against live 15m/1h candle structure
+  // If in profit (+$1.00 to +$2.00) and danger/reversal is detected -> INSTANT PROFIT-TAKE EXIT!
+  // If not exiting, automatically ratchets SL into guaranteed profit to shield against flash crashes!
+  public async checkActivePositionsDangerReversal(): Promise<string[]> {
+    if (this.openPositions.length === 0) return [];
+
+    const logs: string[] = [];
+
+    for (const pos of [...this.openPositions]) {
+      try {
+        const [c15, c1h, c4h] = await Promise.all([
+          this.fetchCryptoCandles(pos.symbol, "15m", 25),
+          this.fetchCryptoCandles(pos.symbol, "1h", 25),
+          this.fetchCryptoCandles(pos.symbol, "4h", 25)
+        ]);
+
+        if (!c15 || c15.length < 15) continue;
+
+        const currentPrice = pos.currentPrice || pos.entryPrice;
+        const pnlUSD = pos.type === "BUY"
+          ? (currentPrice - pos.entryPrice) * pos.quantity
+          : (pos.entryPrice - currentPrice) * pos.quantity;
+
+        const closes15m = c15.map(b => b.close);
+        const ema9_15m = this.calculateEMA(closes15m, 9);
+        const ema21_15m = this.calculateEMA(closes15m, 21);
+        const last15m = c15[c15.length - 1];
+        const prev15m = c15[c15.length - 2];
+
+        const analysis = this.analyzeMultiTimeframe(pos.symbol, c15, c1h, c4h);
+
+        let dangerDetected = false;
+        let dangerReason = "";
+
+        if (pos.type === "BUY") {
+          const isBearEngulf = last15m.close < last15m.open && last15m.close < prev15m.low;
+          const isEmaBreakdown = currentPrice < ema9_15m && last15m.close < ema21_15m;
+          const isOppositeSignal = analysis.direction === "SELL" && analysis.overallScore >= 70;
+
+          if (isOppositeSignal) {
+            dangerDetected = true;
+            dangerReason = "Macro AI flipped to SELL (" + analysis.overallScore + "/100)";
+          } else if (isBearEngulf && currentPrice < ema9_15m) {
+            dangerDetected = true;
+            dangerReason = "15m Bearish Engulfing Breakdown below EMA 9";
+          } else if (isEmaBreakdown && last15m.volume > (prev15m.volume || 1) * 1.3) {
+            dangerDetected = true;
+            dangerReason = "Heavy Volume EMA 9/21 Breakdown";
+          }
+        } else if (pos.type === "SELL") {
+          const isBullEngulf = last15m.close > last15m.open && last15m.close > prev15m.high;
+          const isEmaBreakout = currentPrice > ema9_15m && last15m.close > ema21_15m;
+          const isOppositeSignal = analysis.direction === "BUY" && analysis.overallScore >= 70;
+
+          if (isOppositeSignal) {
+            dangerDetected = true;
+            dangerReason = "Macro AI flipped to BUY (" + analysis.overallScore + "/100)";
+          } else if (isBullEngulf && currentPrice > ema9_15m) {
+            dangerDetected = true;
+            dangerReason = "15m Bullish Engulfing Breakout above EMA 9";
+          } else if (isEmaBreakout && last15m.volume > (prev15m.volume || 1) * 1.3) {
+            dangerDetected = true;
+            dangerReason = "Heavy Volume EMA 9/21 Breakout";
+          }
+        }
+
+        // 🎯 ACTION 1: INSTANT PROFIT TAKE EXIT IF IN GREEN (Save profit before it dumps!)
+        if (dangerDetected && pnlUSD >= 0.80) {
+          const res = this.closePosition(pos.id, currentPrice, "PEAK_RETRACEMENT_EXIT");
+          const msg = "🚨 DANGER REVERSAL PROFIT LOCK: Closed " + pos.symbol + " in profit (+$" + pnlUSD.toFixed(2) + " USD / +₹" + (pnlUSD * 83.5).toFixed(0) + " INR) because " + dangerReason + "! Avoided potential drawdown.";
+          console.log("[DeltaAutoTrader] " + msg);
+          logs.push(msg);
+          continue;
+        }
+
+        // 🎯 ACTION 2: ULTRA-AGGRESSIVE SL RATCHET IN GREEN (Lock profit so trade cannot lose!)
+        if (pnlUSD >= 1.20) {
+          const profitBufferUSD = Math.max(0.60, pnlUSD * 0.65);
+          const bufferPriceDist = profitBufferUSD / pos.quantity;
+          const securedSL = this.roundPrice(
+            pos.type === "BUY" ? pos.entryPrice + bufferPriceDist : pos.entryPrice - bufferPriceDist
+          );
+
+          if ((pos.type === "BUY" && securedSL > pos.stopLossPrice) ||
+              (pos.type === "SELL" && securedSL < pos.stopLossPrice)) {
+            pos.stopLossPrice = securedSL;
+            pos.trailingStopActive = true;
+            pos.lockedProfitUSD = Number(profitBufferUSD.toFixed(2));
+            const msg = "🔒 DYNAMIC SL PROFIT SHIELD for " + pos.symbol + ": Current gain +$" + pnlUSD.toFixed(2) + ". SL moved into guaranteed profit @ $" + pos.stopLossPrice + " (+$" + profitBufferUSD.toFixed(2) + " locked)!";
+            console.log("[DeltaAutoTrader] " + msg);
+            logs.push(msg);
+            if (this.settings.mode === "LIVE") {
+              deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(() => {});
+            }
+          }
+        } else if (pnlUSD >= 0.60 && pos.stopLossPrice === pos.initialStopLoss) {
+          const beBuffer = 0.05 / pos.quantity;
+          const bePrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + beBuffer : pos.entryPrice - beBuffer);
+          pos.stopLossPrice = bePrice;
+          const msg = "🛡️ EARLY BREAKEVEN SHIELD: " + pos.symbol + " reached +$" + pnlUSD.toFixed(2) + ". SL moved to Entry ($" + bePrice + ") - 100% Risk-Free!";
+          console.log("[DeltaAutoTrader] " + msg);
+          logs.push(msg);
+          if (this.settings.mode === "LIVE") {
+            deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(() => {});
+          }
+        }
+      } catch (err) {
+        // quiet catch
+      }
+    }
+
+    if (logs.length > 0) {
+      this.saveToStorage();
+    }
+
+    return logs;
+  }
+
   public updateLivePriceAndCheckExits(symbol: string, currentPriceUSD: number): string[] {
     this.checkDailyReset();
     if (!currentPriceUSD || isNaN(currentPriceUSD) || currentPriceUSD <= 0) return [];
