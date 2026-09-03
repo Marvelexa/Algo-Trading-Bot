@@ -2100,6 +2100,11 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⏳ LOSS COOLDOWN ACTIVE: Paused for ${status.cooldownRemainingMins} more min(s) following recent loss.` };
     }
 
+    // 🛡️ STRICT DIVERSIFICATION: NO DUPLICATE COIN TRADES!
+    if (this.openPositions.some(p => p.symbol.toUpperCase().replace("USDT","").replace("USD","") === symbol.toUpperCase().replace("USDT","").replace("USD",""))) {
+      return { success: false, message: `🔒 Asset ${symbol} already has an active open position. No duplicates allowed.` };
+    }
+
     if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
       return { success: false, message: `🔒 ALL 7 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
     }
