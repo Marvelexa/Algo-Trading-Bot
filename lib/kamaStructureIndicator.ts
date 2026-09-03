@@ -5,7 +5,7 @@
 // Layers:
 //   1. KAMA (Kaufman's Adaptive Moving Average) — adaptive-lag directional bias
 //   2. Price Structure (Swing Highs/Lows -> BOS / CHoCH) — near-zero-lag confirmation
-//   3. Real Wilder's ADX — trend-strength gate (replaces hardcoded stubs)
+//   3. Real Wilder's ADX — trend-strength gate (replaces the hardcoded 28.5 stub)
 //   4. Wilder's ATR — volatility sizing for SL/TP (unchanged role, real calc)
 //   5. Composite Score — deterministic weighted decision table (no independence
 //      assumption bug — this is a straight weighted sum, not multiplied probabilities)
@@ -148,7 +148,7 @@ export function detectStructureSignal(
 }
 
 // ----------------------------------------------------------------------------
-// 3. Real Wilder's ADX (fixes hardcoded stubs)
+// 3. Real Wilder's ADX (fixes the hardcoded 28.5 stub found in the audit)
 // ----------------------------------------------------------------------------
 
 export interface ADXResult {
@@ -262,9 +262,6 @@ export interface CompositeResult {
     volumePoints: number;   // max 15
   };
   entryThreshold: number;   // default 80
-  structureSignal: StructureSignal;
-  efficiencyRatio: number;
-  adxValue: number;
 }
 
 export function calculateCompositeScore(
@@ -281,10 +278,7 @@ export function calculateCompositeScore(
       score: 0,
       bias: "NONE",
       breakdown: { kamaPoints: 0, structurePoints: 0, adxPoints: 0, volumePoints: 0 },
-      entryThreshold,
-      structureSignal: "NONE",
-      efficiencyRatio: 0,
-      adxValue: 0
+      entryThreshold
     };
   }
 
@@ -329,8 +323,91 @@ export function calculateCompositeScore(
     bias: score >= entryThreshold ? bias : "NONE",
     breakdown: { kamaPoints, structurePoints, adxPoints, volumePoints },
     entryThreshold,
-    structureSignal: structure,
-    efficiencyRatio: Number(lastKama.efficiencyRatio.toFixed(3)),
-    adxValue: Number(lastAdx.adx.toFixed(1))
   };
+}
+
+// ----------------------------------------------------------------------------
+// 6. Entry / Exit Decision Layer
+//    Turns the composite score into an actual BUY / SELL / EXIT action,
+//    plus ATR-based SL/TP. This is the layer your engine's daemon tick should call.
+// ----------------------------------------------------------------------------
+
+export type Position = "LONG" | "SHORT" | "NONE";
+
+export interface TradeSignal {
+  action: "BUY" | "SELL" | "EXIT_LONG" | "EXIT_SHORT" | "HOLD";
+  reason: string;
+  entryPrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  composite: CompositeResult;
+}
+
+export function getTradeSignal(
+  candles: Candle[],
+  currentPosition: Position,
+  opts: {
+    kamaPeriod?: number;
+    adxPeriod?: number;
+    atrPeriod?: number;
+    swingLookback?: number;
+    entryThreshold?: number;
+    slMultiplier?: number;  // ATR multiple for stop loss, default 1.5
+    tpMultiplier?: number;  // ATR multiple for take profit, default 3 (2:1 RR)
+  } = {}
+): TradeSignal {
+  const slMultiplier = opts.slMultiplier ?? 1.5;
+  const tpMultiplier = opts.tpMultiplier ?? 3;
+  const atrPeriod = opts.atrPeriod ?? 14;
+  const swingLookback = opts.swingLookback ?? 3;
+
+  const composite = calculateCompositeScore(candles, opts);
+  const structure = detectStructureSignal(candles, swingLookback);
+  const atr = calculateATR(candles, atrPeriod);
+  const lastAtr = atr[atr.length - 1] || (candles[candles.length - 1]?.close * 0.015);
+  const lastClose = candles[candles.length - 1]?.close || 0;
+
+  // --- Already in a position: check for early invalidation first ---
+  // (Broker-side SL/TP orders still handle the hard exit — this is the
+  // "get out before SL if the setup is clearly wrong" layer.)
+  if (currentPosition === "LONG") {
+    const invalidated = structure === "BOS_BEAR" || structure === "CHOCH_BEAR";
+    if (invalidated) {
+      return { action: "EXIT_LONG", reason: "Structure broke bearish against open long", composite };
+    }
+    return { action: "HOLD", reason: "Long position intact, no invalidation", composite };
+  }
+
+  if (currentPosition === "SHORT") {
+    const invalidated = structure === "BOS_BULL" || structure === "CHOCH_BULL";
+    if (invalidated) {
+      return { action: "EXIT_SHORT", reason: "Structure broke bullish against open short", composite };
+    }
+    return { action: "HOLD", reason: "Short position intact, no invalidation", composite };
+  }
+
+  // --- Flat: look for a new entry ---
+  if (composite.bias === "LONG") {
+    return {
+      action: "BUY",
+      reason: `Score ${composite.score}/${composite.entryThreshold}: KAMA+structure agree bullish, ADX confirms trend`,
+      entryPrice: lastClose,
+      stopLoss: lastClose - lastAtr * slMultiplier,
+      takeProfit: lastClose + lastAtr * tpMultiplier,
+      composite,
+    };
+  }
+
+  if (composite.bias === "SHORT") {
+    return {
+      action: "SELL",
+      reason: `Score ${composite.score}/${composite.entryThreshold}: KAMA+structure agree bearish, ADX confirms trend`,
+      entryPrice: lastClose,
+      stopLoss: lastClose + lastAtr * slMultiplier,
+      takeProfit: lastClose - lastAtr * tpMultiplier,
+      composite,
+    };
+  }
+
+  return { action: "HOLD", reason: "Score below entry threshold or signals disagree", composite };
 }

@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
-import { calculateCompositeScore, calculateATR as calculateWilderATR, detectStructureSignal, CompositeResult } from "./kamaStructureIndicator";
+import { calculateCompositeScore, calculateATR as calculateWilderATR, detectStructureSignal, CompositeResult, getTradeSignal, TradeSignal, Position as KamaPosition } from "./kamaStructureIndicator";
 
 export const EXIT_MONITORING_INTERVAL_MS = 2 * 1000; // 30s exit price check interval
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10 * 1000; // 10s evaluation interval
@@ -2154,9 +2154,9 @@ export class DeltaAutoTraderEngine {
       : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
     const safeAtr = (analysis.atr1h > 0) ? analysis.atr1h : (price * 0.015);
 
-    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (1:2.2 Risk to Reward):
-    const slDistance = safeAtr * 1.00;
-    const tpDistance = safeAtr * 1.40;
+    // 🎯 VOLATILITY-ADAPTIVE DISTANCES (2:1 Institutional Risk to Reward via KAMA ATR):
+    const slDistance = safeAtr * 1.50; // 1.5x ATR Stop Loss
+    const tpDistance = safeAtr * 3.00; // 3.0x ATR Target (Exact 2:1 RR)
 
     const stopLossPrice = this.roundPrice(analysis.direction === "BUY" ? price - slDistance : price + slDistance);
     const targetPrice = this.roundPrice(analysis.direction === "BUY" ? price + tpDistance : price - tpDistance);
@@ -2259,6 +2259,27 @@ export class DeltaAutoTraderEngine {
 
         let dangerDetected = false;
         let dangerReason = "";
+
+        // 🏛️ QUANT KAMA STRUCTURE EARLY INVALIDATION (Zero-Lag Exit before full SL hit):
+        const kamaSignal = getTradeSignal(c15, pos.type === "BUY" ? "LONG" : "SHORT", {
+          slMultiplier: 1.5,
+          tpMultiplier: 3.0,
+          swingLookback: 3
+        });
+
+        if (pos.type === "BUY" && kamaSignal.action === "EXIT_LONG") {
+          const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
+          const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed LONG " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
+          console.log("[DeltaAutoTrader] " + msg);
+          logs.push(msg);
+          continue;
+        } else if (pos.type === "SELL" && kamaSignal.action === "EXIT_SHORT") {
+          const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
+          const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed SHORT " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
+          console.log("[DeltaAutoTrader] " + msg);
+          logs.push(msg);
+          continue;
+        }
 
         if (pos.type === "BUY") {
           const isBearEngulf = last15m.close < last15m.open && last15m.close < prev15m.low;
