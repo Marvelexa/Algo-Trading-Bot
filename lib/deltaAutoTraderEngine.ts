@@ -547,7 +547,7 @@ export class DeltaAutoTraderEngine {
     this.settings.isEnabled = true;
     this.settings.maxConcurrentPositions = 1;
     this.settings.inspectionWindowMinutes = 5;
-    this.settings.minConfidenceThreshold = 80;
+    this.settings.minConfidenceThreshold = 70;
     this.settings.riskPerTradePct = 2.4;
     this.settings.currentCapitalUSD = this.settings.initialCapitalUSD;
     this.dailyStartCapitalUSD = this.settings.initialCapitalUSD;
@@ -1923,7 +1923,7 @@ export class DeltaAutoTraderEngine {
     let projectedProfitUSD = 0;
     let profitProbabilityPct = 50;
 
-    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 80;
+    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 70;
     const prevAnalysis = this.analysisCache.get(sym);
 
     // Anti-Flicker Hysteresis Filter (Prevents 2-minute flip-flopping across intra-candle ticks):
