@@ -2084,10 +2084,7 @@ export class DeltaAutoTraderEngine {
 
     const isEntryValid = (
       direction !== "NEUTRAL" &&
-      isEmaAligned &&
-      isFreshOrPullback &&
-      overallScore >= (this.settings.minConfidenceThreshold || 55) &&
-      ((direction === "BUY" && isBuyTrendAllowed) || (direction === "SELL" && isSellTrendAllowed))
+      overallScore >= (this.settings.minConfidenceThreshold || 70)
     );
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
