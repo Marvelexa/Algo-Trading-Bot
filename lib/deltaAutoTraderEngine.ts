@@ -2152,7 +2152,7 @@ export class DeltaAutoTraderEngine {
     const price = (liveTick > 0 && liveTick > baseline * 0.1 && liveTick < baseline * 10)
       ? liveTick
       : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
-    const safeAtr = (analysis.atr1h > 0) ? analysis.atr1h : (price * 0.015);
+    const safeAtr = Math.max(price * 0.010, (analysis.atr1h > 0 ? analysis.atr1h : (price * 0.015))); // Anti-Noise Floor: At least 1.0% ATR so BTC/ETH are immune to 5m wick outs!
 
     // 🎯 VOLATILITY-ADAPTIVE DISTANCES (2:1 Institutional Risk to Reward via KAMA ATR):
     const slDistance = safeAtr * 1.50; // 1.5x ATR Stop Loss
@@ -2237,9 +2237,9 @@ export class DeltaAutoTraderEngine {
     for (const pos of [...this.openPositions]) {
       try {
         const [c15, c1h, c4h] = await Promise.all([
-          this.fetchCryptoCandles(pos.symbol, "15m", 25),
-          this.fetchCryptoCandles(pos.symbol, "1h", 25),
-          this.fetchCryptoCandles(pos.symbol, "4h", 25)
+          this.fetchCryptoCandles(pos.symbol, "15m", 60),
+          this.fetchCryptoCandles(pos.symbol, "1h", 60),
+          this.fetchCryptoCandles(pos.symbol, "4h", 60)
         ]);
 
         if (!c15 || c15.length < 15) continue;
@@ -3201,9 +3201,9 @@ export class DeltaAutoTraderEngine {
         availableAssets.map(async (asset) => {
           try {
             const [c15, c1h, c4h] = await Promise.all([
-              this.fetchCryptoCandles(asset.symbol, "15m", 30),
-              this.fetchCryptoCandles(asset.symbol, "1h", 30),
-              this.fetchCryptoCandles(asset.symbol, "4h", 30)
+              this.fetchCryptoCandles(asset.symbol, "15m", 60),
+              this.fetchCryptoCandles(asset.symbol, "1h", 60),
+              this.fetchCryptoCandles(asset.symbol, "4h", 60)
             ]);
             const analysis = this.analyzeMultiTimeframe(asset.symbol, c15, c1h, c4h);
             const baseline = this.getAssetBaselinePrice(asset.symbol);
@@ -3287,9 +3287,9 @@ export class DeltaAutoTraderEngine {
     let candles4h: OHLCVBar[] = [];
     try {
       [candles15m, candles1h, candles4h] = await Promise.all([
-        this.fetchCryptoCandles(sym, "15m", 30),
-        this.fetchCryptoCandles(sym, "1h", 30),
-        this.fetchCryptoCandles(sym, "4h", 30)
+        this.fetchCryptoCandles(sym, "15m", 60),
+        this.fetchCryptoCandles(sym, "1h", 60),
+        this.fetchCryptoCandles(sym, "4h", 60)
       ]);
     } catch (e) {}
 
@@ -3363,9 +3363,9 @@ export class DeltaAutoTraderEngine {
       tracked.map(async (item) => {
         try {
           const [candles15m, candles1h, candles4h] = await Promise.all([
-            this.fetchCryptoCandles(item.symbol, "15m", 30),
-            this.fetchCryptoCandles(item.symbol, "1h", 30),
-            this.fetchCryptoCandles(item.symbol, "4h", 30)
+            this.fetchCryptoCandles(item.symbol, "15m", 60),
+            this.fetchCryptoCandles(item.symbol, "1h", 60),
+            this.fetchCryptoCandles(item.symbol, "4h", 60)
           ]);
           const analysis = this.analyzeMultiTimeframe(item.symbol, candles15m, candles1h, candles4h);
           const baseline = this.getAssetBaselinePrice(item.symbol);
@@ -3420,9 +3420,9 @@ export class DeltaAutoTraderEngine {
     }
 
     const [candles15m, candles1h, candles4h] = await Promise.all([
-      this.fetchCryptoCandles(symbol, "15m", 30),
-      this.fetchCryptoCandles(symbol, "1h", 30),
-      this.fetchCryptoCandles(symbol, "4h", 30)
+      this.fetchCryptoCandles(symbol, "15m", 60),
+      this.fetchCryptoCandles(symbol, "1h", 60),
+      this.fetchCryptoCandles(symbol, "4h", 60)
     ]);
 
     const analysis = this.analyzeMultiTimeframe(symbol, candles15m, candles1h, candles4h);

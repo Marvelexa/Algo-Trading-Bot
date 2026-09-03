@@ -390,7 +390,7 @@ export function getTradeSignal(
   if (composite.bias === "LONG") {
     return {
       action: "BUY",
-      reason: `Score ${composite.score}/${composite.entryThreshold}: KAMA+structure agree bullish, ADX confirms trend`,
+      reason: `Score ${composite.score}/${composite.entryThreshold}: KAMA+structure agree bullish (${structure}), ADX confirms trend`,
       entryPrice: lastClose,
       stopLoss: lastClose - lastAtr * slMultiplier,
       takeProfit: lastClose + lastAtr * tpMultiplier,
@@ -409,5 +409,8 @@ export function getTradeSignal(
     };
   }
 
+    if (composite.score >= 50) {
+    console.log(`[KAMA_AUDIT] Score: ${composite.score}/${composite.entryThreshold} (KAMA: ${composite.breakdown.kamaPoints}/35, Structure: ${composite.breakdown.structurePoints}/35 [${structure}], ADX: ${composite.breakdown.adxPoints}/15, Vol: ${composite.breakdown.volumePoints}/15) | Pos: ${currentPosition} -> HOLD (Threshold not met or signals disagree)`);
+  }
   return { action: "HOLD", reason: "Score below entry threshold or signals disagree", composite };
 }
