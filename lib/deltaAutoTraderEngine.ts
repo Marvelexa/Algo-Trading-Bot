@@ -2841,7 +2841,7 @@ export class DeltaAutoTraderEngine {
         this.saveToStorage();
         return false;
       }
-      return true; // Still in 10-min analysis cooldown
+      return false; // Continuous rolling replenishment
     }
 
     return false;
@@ -3274,16 +3274,9 @@ export class DeltaAutoTraderEngine {
       };
     }
 
-    // 🛡️ ENFORCED LOSS COOLDOWN (45 Minutes Complete Silence)
-    const cooldownMs = (this.settings.cooldownMinutesAfterLoss || 45) * 60 * 1000;
-    const isLossCooldown = this.lastLossTimestamp > 0 && (Date.now() - this.lastLossTimestamp) < cooldownMs;
-    if (isLossCooldown && !forceImmediate) {
-      const remMins = Math.ceil((cooldownMs - (Date.now() - this.lastLossTimestamp)) / 60000);
-      return {
-        executed: false,
-        message: `⏳ ENFORCED LOSS COOLDOWN ACTIVE: Paused for ${remMins} more min(s) to protect capital.`
-      };
-    }
+    // 🚀 Fully Autonomous Continuous Scanning: No artificial freeze
+    this.slotReentryCooldownExpiry = 0;
+    this.lastLossTimestamp = 0;
 
     if (this.consecutiveLossesCount >= MAX_CONSECUTIVE_LOSSES_ALLOWED) {
       return {
