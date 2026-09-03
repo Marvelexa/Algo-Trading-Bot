@@ -1977,11 +1977,20 @@ export class DeltaAutoTraderEngine {
 
         // 🏛️ PURE PRICE ACTION + EMA 9/21 PULLBACK REJECTION ENGINE (Freqtrade / TradingView Benchmark):
     const pa = this.detectEmaPriceAction(bars15mUse, currentPrice);
-    if (pa.signal !== "NONE" && pa.isTriggered) {
+    
+    // 🛑 100% TIMEFRAME HIERARCHY FILTER (Resolves 15m vs 1h vs 4h Overlap):
+    // 15m can NEVER fight the 4-Hour Boss!
+    // If 4H is Bearish, a 15m hammer is a Bull Trap — REJECT!
+    // If 4H is Bullish, a 15m shooting star is a Bear Trap — REJECT!
+    const isPaTrendAligned = 
+      (pa.signal === "BUY" && fourHourTrend === "BULLISH" && currentPrice >= ema21_1h) ||
+      (pa.signal === "SELL" && fourHourTrend === "BEARISH" && currentPrice < ema21_1h);
+
+    if (isPaTrendAligned && pa.isTriggered) {
       direction = pa.signal;
       overallScore = 95;
       profitProbabilityPct = 95;
-    } else if (pa.signal !== "NONE") {
+    } else if (isPaTrendAligned) {
       direction = pa.signal;
       overallScore = 85; // Confirmed rejection in value pocket
       profitProbabilityPct = 70;
@@ -1998,8 +2007,8 @@ export class DeltaAutoTraderEngine {
     const is1hBullTrend = currentPrice >= ema21_1h;
     const is1hBearTrend = currentPrice < ema21_1h;
 
-    const isBuyTrendAllowed = is1hBullTrend;
-    const isSellTrendAllowed = is1hBearTrend;
+    const isBuyTrendAllowed = is1hBullTrend && fourHourTrend === "BULLISH";
+    const isSellTrendAllowed = is1hBearTrend && fourHourTrend === "BEARISH";
 
     // 15m Momentum Alignment:
     const isEmaAligned = direction === "BUY"
