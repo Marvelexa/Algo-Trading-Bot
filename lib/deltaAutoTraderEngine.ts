@@ -19,6 +19,7 @@
 // ============================================================================
 
 import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
+import { calculateCompositeScore, calculateATR as calculateWilderATR, detectStructureSignal, CompositeResult } from "./kamaStructureIndicator";
 
 export const EXIT_MONITORING_INTERVAL_MS = 2 * 1000; // 30s exit price check interval
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10 * 1000; // 10s evaluation interval
@@ -1991,7 +1992,23 @@ export class DeltaAutoTraderEngine {
       (pa.signal === "BUY" && fourHourTrend === "BULLISH" && currentPrice >= ema21_1h) ||
       (pa.signal === "SELL" && fourHourTrend === "BEARISH" && currentPrice < ema21_1h);
 
-    if (isPaTrendAligned && pa.isTriggered) {
+    // 🧠 5-LAYER QUANT STACK (KAMA + Structure BOS/CHoCH + Wilder ADX + ATR):
+    const kamaComposite = calculateCompositeScore(bars15mUse, {
+      kamaPeriod: 10,
+      adxPeriod: 14,
+      swingLookback: 3,
+      entryThreshold: 80
+    });
+
+    const isKamaTrendAligned = 
+      (kamaComposite.bias === "LONG" && fourHourTrend === "BULLISH" && currentPrice >= ema21_1h) ||
+      (kamaComposite.bias === "SHORT" && fourHourTrend === "BEARISH" && currentPrice < ema21_1h);
+
+    if (isKamaTrendAligned && kamaComposite.score >= 80) {
+      direction = kamaComposite.bias === "LONG" ? "BUY" : "SELL";
+      overallScore = kamaComposite.score;
+      profitProbabilityPct = kamaComposite.score;
+    } else if (isPaTrendAligned && pa.isTriggered) {
       direction = pa.signal;
       overallScore = 95;
       profitProbabilityPct = 95;
@@ -2001,8 +2018,8 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = 70;
     } else {
       direction = "NEUTRAL";
-      overallScore = 38;
-      profitProbabilityPct = 38;
+      overallScore = Math.max(38, kamaComposite.score > 50 ? kamaComposite.score : 38);
+      profitProbabilityPct = overallScore;
     }
 
     const isChopFree = (adx4h >= 22 || (this.analysisCache?.get?.(sym)?.adxValue || 0) >= 15) && hurst1h >= 0.40;
@@ -2042,7 +2059,7 @@ export class DeltaAutoTraderEngine {
     const slPct = Number(((slDist / currentPrice) * 100).toFixed(2));
 
     const reasoning = isEntryValid
-      ? `🎯 2-HOUR SWING MOMENTUM [${direction}]: 2h Projected Gain ${projectedProfitUSD >= 0 ? "+" : ""}$${projectedProfitUSD} USD (${profitProbabilityPct}% Score). Target: +${tpPct}% · SL: -${slPct}%. 15m [${patternInfo.pattern}], 1h KAMA/VWAP, 4h [${trendContextStr}].`
+      ? `🎯 QUANT ADAPTIVE [${direction}]: (${profitProbabilityPct}% Score). Structure: ${kamaComposite?.structureSignal || patternInfo.pattern} | ER: ${kamaComposite?.efficiencyRatio || 0} | ADX: ${kamaComposite?.adxValue || 0} | Target: +${tpPct}% · SL: -${slPct}%. 4h [${trendContextStr}].`
       : `⏳ 2-HOUR AI SCAN [FILTERED]: 2h Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Conviction < ${minEntryThreshold} or chop present (ADX ${adx4h.toFixed(1)}, Hurst ${hurst1h}). Auto-skipping.`;
 
     const result: MultiTimeframeAnalysis = {
