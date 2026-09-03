@@ -24,7 +24,7 @@ import { calculateCompositeScore, calculateATR as calculateWilderATR, detectStru
 export const EXIT_MONITORING_INTERVAL_MS = 2 * 1000; // 30s exit price check interval
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10 * 1000; // 10s evaluation interval
 export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours (1 Day) Trend & Swing Horizon Window (2h to 1 Day)
-export const FEE_BUFFER_PER_TRADE_USD = 0.24; // Fixed ₹20 INR Delta taker fee + slippage buffer
+export const FEE_BUFFER_PER_TRADE_USD = 0.60; // Fixed ₹50 INR Delta Exchange India (Brokerage + 18% GST + 1% TDS + Slippage)
 export const MAX_CONSECUTIVE_LOSSES_ALLOWED = 3; // Hard daily stop after 3 consecutive losses
 export const MAX_DAILY_LOSS_CAP_USD = 4.40; // ₹367 INR (~7.3% of ₹5,000 capital circuit breaker for 2 SL hits)
 export const DEFAULT_LEVERAGE = 5.0; // 5x dynamic margin leverage per slot
@@ -2322,7 +2322,7 @@ export class DeltaAutoTraderEngine {
         }
 
         // 🎯 ACTION 1: INSTANT PROFIT TAKE EXIT IF IN GREEN (Save profit before it dumps!)
-        if (dangerDetected && pnlUSD >= 0.80) {
+        if (dangerDetected && pnlUSD >= 1.80) { // At least ₹150 profit so net in hand is >₹100 after ₹50 fee
           const res = this.closePosition(pos.id, currentPrice, "PEAK_RETRACEMENT_EXIT");
           const msg = "🚨 DANGER REVERSAL PROFIT LOCK: Closed " + pos.symbol + " in profit (+$" + pnlUSD.toFixed(2) + " USD / +₹" + (pnlUSD * 83.5).toFixed(0) + " INR) because " + dangerReason + "! Avoided potential drawdown.";
           console.log("[DeltaAutoTrader] " + msg);
@@ -2350,7 +2350,7 @@ export class DeltaAutoTraderEngine {
               deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(() => {});
             }
           }
-        } else if (pnlUSD >= 0.60 && pos.stopLossPrice === pos.initialStopLoss) {
+        } else if (pnlUSD >= 1.20 && pos.stopLossPrice === pos.initialStopLoss) { // Lock breakeven after ₹100 move to cover ₹50 fee completely
           const beBuffer = 0.05 / pos.quantity;
           const bePrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + beBuffer : pos.entryPrice - beBuffer);
           pos.stopLossPrice = bePrice;
@@ -3045,7 +3045,7 @@ export class DeltaAutoTraderEngine {
 
     const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
     const notionalUSD = Number((currentPrice * quantity).toFixed(2));
-    const targetRewardUSD = Number((initialRiskUSD * 2.2).toFixed(2)); // 🎯 +₹350 - ₹480 INR profit per trade (Crushes exchange fees!)
+    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.5, 6.00)).toFixed(2)); // 🎯 +₹500 - ₹650 INR profit per trade (Crushes ₹50 exchange fees!)
     const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.05;
     const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 5.2;
 
