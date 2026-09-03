@@ -1481,26 +1481,49 @@ export class DeltaAutoTraderEngine {
     const upperWick = triggerCandle.high - Math.max(triggerCandle.close, triggerCandle.open);
     const lowerWick = Math.min(triggerCandle.close, triggerCandle.open) - triggerCandle.low;
 
-    // BULLISH PULLBACK & REJECTION:
+    // 🎯 1. TOP RESISTANCE REJECTION / CLIMAX SHORTING (Even if EMA 9 is still above EMA 21):
+    const isOverextendedHigh = triggerCandle.high >= curEma21 * 1.015;
+    const isTopShootingStar = upperWick >= 1.2 * bodySize && upperWick >= 0.35 * range;
+    const isTopBearEngulf = triggerCandle.close < triggerCandle.open && triggerCandle.close < prevCandle.low;
+    const isBreakBelowEma9 = currentPrice < curEma9 && triggerCandle.close < curEma9;
+    
+    if (isOverextendedHigh && (isTopShootingStar || isTopBearEngulf || isBreakBelowEma9)) {
+      const patternName = isTopShootingStar ? "TOP_SHOOTING_STAR_REJECTION" : isTopBearEngulf ? "TOP_BEARISH_ENGULFING" : "EMA9_BREAKDOWN_FROM_TOP";
+      return {
+        signal: "SELL",
+        isTriggered: true,
+        pattern: patternName,
+        triggerPrice: currentPrice,
+        slPrice: this.roundPrice(Math.max(triggerCandle.high, curEma9) * 1.005),
+        reason: `Top Reversal Rejection (${patternName}) from overextended high. High-probability SHORT.`
+      };
+    }
+
+    // 🎯 2. BULLISH PULLBACK & REJECTION (Protected with Anti-Top Guard):
     if (isBullTrend) {
-      const touchedPocket = triggerCandle.low <= (curEma9 * 1.002) && triggerCandle.close >= (curEma21 * 0.998);
-      const isHammer = lowerWick >= 1.2 * bodySize && lowerWick >= 0.4 * range;
-      const isBullEngulf = triggerCandle.close > triggerCandle.open && triggerCandle.close > prevCandle.high;
-      const isStrongBullClose = triggerCandle.close >= (triggerCandle.low + 0.65 * range) && triggerCandle.close > triggerCandle.open;
+      // 🛡️ ANTI-TOP PROTECTION: Never buy if the trigger candle has a big upper wick or closed red
+      if (upperWick > bodySize * 1.2 || triggerCandle.close < triggerCandle.open) {
+        // Selling pressure at high — do NOT buy the top!
+      } else {
+        const touchedPocket = triggerCandle.low <= (curEma9 * 1.002) && triggerCandle.close >= (curEma21 * 0.998);
+        const isHammer = lowerWick >= 1.2 * bodySize && lowerWick >= 0.4 * range;
+        const isBullEngulf = triggerCandle.close > triggerCandle.open && triggerCandle.close > prevCandle.high;
+        const isStrongBullClose = triggerCandle.close >= (triggerCandle.low + 0.65 * range) && triggerCandle.close > triggerCandle.open;
 
-      const isRejection = isHammer || isBullEngulf || isStrongBullClose;
-      const isTriggered = currentPrice >= triggerCandle.high;
+        const isRejection = isHammer || isBullEngulf || isStrongBullClose;
+        const isTriggered = currentPrice >= triggerCandle.high;
 
-      if (touchedPocket && isRejection) {
-        const patternName = isHammer ? "BULLISH_HAMMER" : isBullEngulf ? "BULLISH_ENGULFING" : "STRONG_BULL_CLOSE";
-        return {
-          signal: "BUY",
-          isTriggered,
-          pattern: patternName,
-          triggerPrice: triggerCandle.high,
-          slPrice: this.roundPrice(triggerCandle.low * 0.9985),
-          reason: `15m EMA 9/21 Bull Trend + Value Pocket Rejection (${patternName}). ${isTriggered ? "Price broke above trigger high!" : "Awaiting break above " + triggerCandle.high}`
-        };
+        if (touchedPocket && isRejection) {
+          const patternName = isHammer ? "BULLISH_HAMMER" : isBullEngulf ? "BULLISH_ENGULFING" : "STRONG_BULL_CLOSE";
+          return {
+            signal: "BUY",
+            isTriggered,
+            pattern: patternName,
+            triggerPrice: triggerCandle.high,
+            slPrice: this.roundPrice(triggerCandle.low * 0.9985),
+            reason: `15m EMA 9/21 Bull Trend + Value Pocket Rejection (${patternName}). ${isTriggered ? "Price broke above trigger high!" : "Awaiting break above " + triggerCandle.high}`
+          };
+        }
       }
     }
 
@@ -2033,9 +2056,12 @@ export class DeltaAutoTraderEngine {
     // 15m can NEVER fight the 4-Hour Boss!
     // If 4H is Bearish, a 15m hammer is a Bull Trap — REJECT!
     // If 4H is Bullish, a 15m shooting star is a Bear Trap — REJECT!
+    // Bi-directional Symmetrical Trend Alignment:
+    // BUY requires price >= 1h EMA 21 (or strong bullish ignition)
+    // SELL is 100% active whenever price rejects from top or breaks below 1h EMA 21!
     const isPaTrendAligned = 
-      (pa.signal === "BUY" && fourHourTrend === "BULLISH" && currentPrice >= ema21_1h) ||
-      (pa.signal === "SELL" && fourHourTrend === "BEARISH" && currentPrice < ema21_1h);
+      (pa.signal === "BUY" && currentPrice >= ema21_1h * 0.995) ||
+      (pa.signal === "SELL" && (currentPrice <= ema21_1h * 1.005 || pa.pattern?.includes("TOP_")));
 
     // 🧠 5-LAYER QUANT STACK (KAMA + Structure BOS/CHoCH + Wilder ADX + ATR):
     const kamaComposite = calculateCompositeScore(bars15mUse, {
@@ -2046,8 +2072,8 @@ export class DeltaAutoTraderEngine {
     });
 
     const isKamaTrendAligned = 
-      (kamaComposite.bias === "LONG" && fourHourTrend === "BULLISH" && currentPrice >= ema21_1h) ||
-      (kamaComposite.bias === "SHORT" && fourHourTrend === "BEARISH" && currentPrice < ema21_1h);
+      (kamaComposite.bias === "LONG" && currentPrice >= ema21_1h * 0.995) ||
+      (kamaComposite.bias === "SHORT" && currentPrice <= ema21_1h * 1.005);
 
     if (isKamaTrendAligned && kamaComposite.score >= 80) {
       direction = kamaComposite.bias === "LONG" ? "BUY" : "SELL";
@@ -2085,8 +2111,22 @@ export class DeltaAutoTraderEngine {
       ? (currentPrice <= ema9_15m * 1.003)
       : false;
 
-    // Anti-Exhaustion Guard (Safe range: 25 to 80 for crypto breakouts)
-    const isFreshOrPullback = direction === "BUY" ? (rsi15m <= 80) : (rsi15m >= 20);
+    // 🛡️ STRICT ANTI-TOP-BUYING GUARD (Never buy overbought climax top):
+    if (direction === "BUY" && (rsi15m >= 72 || currentPrice > ema21_15m * 1.018)) {
+      direction = "NEUTRAL";
+      overallScore = 38;
+      profitProbabilityPct = 38;
+    }
+
+    // 🚀 TOP REVERSAL SHORT TRIGGER:
+    // If overbought and red rejection forms, flip immediately to SELL (SHORT)!
+    if (direction === "NEUTRAL" && (rsi15m >= 68 || rsi1h >= 70) && pa.signal === "SELL") {
+      direction = "SELL";
+      overallScore = 88;
+      profitProbabilityPct = 88;
+    }
+
+    const isFreshOrPullback = direction === "BUY" ? (rsi15m <= 72) : (rsi15m >= 20);
 
     const isEntryValid = (
       direction !== "NEUTRAL" &&
@@ -2378,7 +2418,17 @@ export class DeltaAutoTraderEngine {
         }
 
         // 🎯 ACTION 1: INSTANT PROFIT TAKE EXIT IF IN GREEN (Save profit before it dumps!)
-        if (dangerDetected && pnlUSD >= 1.80) { // At least ₹150 profit so net in hand is >₹100 after ₹50 fee
+        // 🛡️ ACTION 1A: FAST DEFENSIVE CUT IN RED (Exit early on heavy volume breakdown instead of bleeding full SL)
+        if (dangerDetected && pnlUSD <= -pos.initialRiskUSD * 0.45) {
+          const res = this.closePosition(pos.id, currentPrice, "EARLY_MOMENTUM_REVERSAL");
+          const msg = "🛡️ DEFENSIVE TREND CUT: Exited " + pos.symbol + " early at small loss ($" + pnlUSD.toFixed(2) + " USD) because " + dangerReason + ". Prevented full -1.0R Stop-Loss hit!";
+          console.log("[DeltaAutoTrader] " + msg);
+          logs.push(msg);
+          continue;
+        }
+
+        // 🎯 ACTION 1B: INSTANT PROFIT TAKE EXIT IF IN GREEN (Save profit before it dumps!)
+        if (dangerDetected && pnlUSD >= 1.80) {
           const res = this.closePosition(pos.id, currentPrice, "PEAK_RETRACEMENT_EXIT");
           const msg = "🚨 DANGER REVERSAL PROFIT LOCK: Closed " + pos.symbol + " in profit (+$" + pnlUSD.toFixed(2) + " USD / +₹" + (pnlUSD * 83.5).toFixed(0) + " INR) because " + dangerReason + "! Avoided potential drawdown.";
           console.log("[DeltaAutoTrader] " + msg);
