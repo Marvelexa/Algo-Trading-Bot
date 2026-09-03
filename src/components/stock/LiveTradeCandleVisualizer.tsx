@@ -54,6 +54,7 @@ export const LiveTradeCandleVisualizer: React.FC<LiveTradeCandleVisualizerProps>
   const ema9SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const ema21SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const isFirstLoadRef = useRef(true);
 
   const [interval, setIntervalState] = useState<"1m" | "3m" | "5m" | "15m" | "1h">("15m");
   const [loading, setLoading] = useState<boolean>(true);
@@ -147,7 +148,8 @@ export const LiveTradeCandleVisualizer: React.FC<LiveTradeCandleVisualizerProps>
       }
     });
 
-    // Candlestick series
+    // Candlestick series with adaptive micro-tick precision for sub-dollar coins (DOGE, ADA, XRP)
+    const isSmallAsset = (entryPrice > 0 && entryPrice < 2.0) || (symbol.toUpperCase().includes("DOGE") || symbol.toUpperCase().includes("ADA") || symbol.toUpperCase().includes("XRP"));
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#10b981",
       downColor: "#ef4444",
@@ -156,7 +158,16 @@ export const LiveTradeCandleVisualizer: React.FC<LiveTradeCandleVisualizerProps>
       borderDownColor: "#ef4444",
       wickUpColor: "#10b981",
       wickDownColor: "#ef4444",
-      wickVisible: true
+      wickVisible: true,
+      priceFormat: isSmallAsset ? {
+        type: "price",
+        precision: 4,
+        minMove: 0.0001
+      } : {
+        type: "price",
+        precision: 2,
+        minMove: 0.01
+      }
     });
 
     // 🎯 GUARANTEE TP & SL ARE ALWAYS IN VISIBLE VERTICAL VIEWPORT
@@ -172,7 +183,7 @@ export const LiveTradeCandleVisualizer: React.FC<LiveTradeCandleVisualizerProps>
           min = Math.min(min, entryPrice);
           max = Math.max(max, entryPrice);
         }
-        const span = Math.max(1, max - min);
+        const span = Math.max(min * 0.015, max - min);
         const pad = span * 0.08;
         return {
           ...res,
@@ -375,6 +386,10 @@ export const LiveTradeCandleVisualizer: React.FC<LiveTradeCandleVisualizerProps>
         ema21SeriesRef.current?.setData(calcEmaSeries(21));
 
         setLastFormingCandle(uniqueBars[uniqueBars.length - 1]);
+        if (isFirstLoadRef.current && chartRef.current) {
+          chartRef.current.timeScale().fitContent();
+          isFirstLoadRef.current = false;
+        }
         setLoading(false);
       } catch (e) {
         // silent fallback
