@@ -184,11 +184,17 @@ export const LiveTradeCandleVisualizer: React.FC<LiveTradeCandleVisualizerProps>
       }
     });
 
-    // Volume series
+    // Volume series isolated to bottom 18% of chart
     const volumeSeries = chart.addSeries(HistogramSeries, {
       color: "#26a69a",
       priceFormat: { type: "volume" },
-      priceScaleId: "", // overlay
+      priceScaleId: "volume_scale",
+    });
+    volumeSeries.priceScale().applyOptions({
+      scaleMargins: {
+        top: 0.82,
+        bottom: 0,
+      },
     });
 
     // EMA 9 (Cyan)
@@ -357,10 +363,10 @@ export const LiveTradeCandleVisualizer: React.FC<LiveTradeCandleVisualizerProps>
           const result: { time: UTCTimestamp; value: number }[] = [];
           if (uniqueBars.length === 0) return result;
           let ema = uniqueBars[0].close;
-          result.push({ time: uniqueBars[0].time, value: Number(ema.toFixed(2)) });
+          result.push({ time: uniqueBars[0].time, value: Number(ema.toFixed(4)) });
           for (let i = 1; i < uniqueBars.length; i++) {
             ema = uniqueBars[i].close * k + ema * (1 - k);
-            result.push({ time: uniqueBars[i].time, value: Number(ema.toFixed(2)) });
+            result.push({ time: uniqueBars[i].time, value: Number(ema.toFixed(4)) });
           }
           return result;
         };
