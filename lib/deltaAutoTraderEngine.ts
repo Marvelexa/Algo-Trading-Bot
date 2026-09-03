@@ -3141,7 +3141,7 @@ export class DeltaAutoTraderEngine {
 
         // 2. Fully Autonomous Multi-Timeframe Scan & Rolling Slot Replenishment
         if (this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle()) {
-          const res = await this.scanAndExecuteNextTrade();
+          const res = await this.scanAndExecuteNextTrade(true);
           if (res.executed && res.position) {
             console.log(`[DeltaAutoTraderDaemon] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
           }
@@ -3249,7 +3249,7 @@ export class DeltaAutoTraderEngine {
     return [];
   }
 
-  public async scanAndExecuteNextTrade(forceImmediate: boolean = false): Promise<{ executed: boolean; message: string; position?: AutoTraderPosition }> {
+  public async scanAndExecuteNextTrade(forceImmediate: boolean = true): Promise<{ executed: boolean; message: string; position?: AutoTraderPosition }> {
     this.checkDailyReset();
 
     if (!this.settings.isEnabled) {
