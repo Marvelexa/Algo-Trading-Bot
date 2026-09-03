@@ -3165,35 +3165,44 @@ export class DeltaAutoTraderEngine {
 
   public async fetchCryptoCandles(symbol: string, interval: "15m" | "1h" | "4h" = "1h", limit: number = 30): Promise<OHLCVBar[]> {
     const sym = symbol.toUpperCase().trim();
+    const base = sym.replace("USD", "").replace("USDT", "").trim();
 
-    // 1. Primary: Genuine Live Historical Candles directly from Delta Exchange India / Global API
+    // 1. Primary: Lightning-Fast Real Public Binance Vision Kline Engine (Real Live Dynamic Prices & Volume)
     try {
-      const deltaResolution = interval === "15m" ? "15m" : interval === "1h" ? "1h" : "4h";
-      const deltaCandles = await deltaExchangeEngine.fetchCandles(sym, deltaResolution);
-      if (Array.isArray(deltaCandles) && deltaCandles.length > 0) {
-        return deltaCandles.slice(-limit).map(c => ({
-          time: typeof c.time === "number" ? (c.time > 1e11 ? Math.floor(c.time / 1000) : c.time) : Math.floor(new Date(c.time).getTime() / 1000),
-          timestamp: new Date((c.time > 1e11 ? c.time : c.time * 1000)).toISOString(),
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume: c.volume
-        }));
+      const binancePair = `${base}USDT`;
+      const res = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`, {
+        signal: AbortSignal.timeout(3500)
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (Array.isArray(data) && data.length >= 10) {
+          const bars: OHLCVBar[] = data.map((k: any[]) => ({
+            time: Math.floor(k[0] / 1000),
+            timestamp: new Date(k[0]).toISOString(),
+            open: parseFloat(k[1]),
+            high: parseFloat(k[2]),
+            low: parseFloat(k[3]),
+            close: parseFloat(k[4]),
+            volume: parseFloat(k[5])
+          }));
+          // Ensure candles are genuine moving candles with real volume
+          if (bars.some(b => b.volume > 0)) {
+            return bars;
+          }
+        }
       }
     } catch (e) {}
 
-    // 2. Secondary: Binance Public Spot / Futures Kline API
-    const base = sym.replace("USD", "").replace("USDT", "").trim();
-    const binancePair = `${base}USDT`;
+    // 2. Secondary Fallback: Standard Binance Public API
     try {
+      const binancePair = `${base}USDT`;
       const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`, {
         signal: AbortSignal.timeout(3000)
       });
       if (res.ok) {
-        const raw: any[] = await res.json();
-        if (Array.isArray(raw) && raw.length > 0) {
-          return raw.map((k: any) => ({
+        const data: any = await res.json();
+        if (Array.isArray(data) && data.length >= 10) {
+          return data.map((k: any[]) => ({
             time: Math.floor(k[0] / 1000),
             timestamp: new Date(k[0]).toISOString(),
             open: parseFloat(k[1]),
@@ -3206,7 +3215,23 @@ export class DeltaAutoTraderEngine {
       }
     } catch (e) {}
 
-    // 3. If real candles cannot be retrieved, return empty array (NEVER generate fake synthetic candles)
+    // 3. Tertiary Fallback: Delta Exchange (strictly only if real dynamic candles with volume > 0)
+    try {
+      const deltaResolution = interval === "15m" ? "15m" : interval === "1h" ? "1h" : "4h";
+      const deltaCandles = await deltaExchangeEngine.fetchCandles(sym, deltaResolution);
+      if (Array.isArray(deltaCandles) && deltaCandles.length >= 10 && deltaCandles.some(c => c.volume > 0)) {
+        return deltaCandles.slice(-limit).map(c => ({
+          time: typeof c.time === "number" ? (c.time > 1e11 ? Math.floor(c.time / 1000) : c.time) : Math.floor(new Date(c.time).getTime() / 1000),
+          timestamp: new Date((c.time > 1e11 ? c.time : c.time * 1000)).toISOString(),
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume
+        }));
+      }
+    } catch (e) {}
+
     return [];
   }
 
