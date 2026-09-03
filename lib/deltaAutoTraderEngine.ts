@@ -273,6 +273,7 @@ export class DeltaAutoTraderEngine {
   private openPositions: AutoTraderPosition[] = [];
   private closedRecords: AutoTraderClosedRecord[] = [];
   private lastLossTimestamp: number = 0;
+  private symbolBlacklist: Record<string, number> = {};
   private consecutiveLossCount: number = 0;
   private todayDateStr: string = "";
   private tradesTakenTodayCount: number = 0;
@@ -1953,6 +1954,27 @@ export class DeltaAutoTraderEngine {
       overallScore = Math.max(bullIgnition.score, bearIgnition.score);
     }
 
+        // 🛑 100% STRICT MACRO TREND LAW:
+    // If 4H is BEARISH: BUY is 100% FORBIDDEN. Only SELL (Short) allowed!
+    // If 4H is BULLISH: SELL is 100% FORBIDDEN. Only BUY (Long) allowed!
+    if (fourHourTrend === "BEARISH") {
+      bullTrendPoints = 0;
+      bullMomPoints = 0;
+      bullPatternPoints = 0;
+      if (direction === "BUY") {
+        direction = "NEUTRAL";
+        overallScore = 35;
+      }
+    } else if (fourHourTrend === "BULLISH") {
+      bearTrendPoints = 0;
+      bearMomPoints = 0;
+      bearPatternPoints = 0;
+      if (direction === "SELL") {
+        direction = "NEUTRAL";
+        overallScore = 35;
+      }
+    }
+
         // 🏛️ PURE PRICE ACTION + EMA 9/21 PULLBACK REJECTION ENGINE (Freqtrade / TradingView Benchmark):
     const pa = this.detectEmaPriceAction(bars15mUse, currentPrice);
     if (pa.signal !== "NONE" && pa.isTriggered) {
@@ -2437,6 +2459,7 @@ export class DeltaAutoTraderEngine {
     if (outcome === "LOSS") {
       this.lastLossTimestamp = Date.now();
       this.consecutiveLossCount += 1;
+      this.symbolBlacklist[pos.symbol.toUpperCase()] = Date.now() + (3 * 3600 * 1000); // 3-Hour Ban on losing asset!
     } else if (outcome === "WIN") {
       this.consecutiveLossCount = 0;
     }
@@ -2650,10 +2673,10 @@ export class DeltaAutoTraderEngine {
     let botState: AutoTraderStatus["botState"] = "PAUSED";
     if (circuitBreakerActive) {
       botState = "CIRCUIT_BREAKER_HALT";
-    } else if (this.settings.isEnabled) {
-      botState = isBatchCooling ? "BATCH_COOLDOWN" : "RUNNING";
     } else if (isCooldown) {
       botState = "COOLDOWN_ACTIVE";
+    } else if (this.settings.isEnabled) {
+      botState = isBatchCooling ? "BATCH_COOLDOWN" : "RUNNING";
     }
 
     const rollingCycleTotalSeconds = this.batchCooldownMinutes * 60; // 600s
@@ -2818,7 +2841,7 @@ export class DeltaAutoTraderEngine {
     // 3 concurrent slots x $10-$14 USD reward = $30-$42 USD per batch (~₹2,500-₹3,500 INR)
     // 2 winning batches = ₹5,000-₹7,000 INR daily profit target achieved!
     const effectiveRiskPct = Math.max(3.5, this.settings.riskPerTradePct || 3.5);
-    const dollarRiskAllowed = Math.max(6.80, accountEquity * (effectiveRiskPct / 100));
+    const dollarRiskAllowed = Math.min(1.80, Math.max(1.20, accountEquity * 0.01)); // Strictly $1.50-$1.80 max risk
     
     const sym = symbol.toUpperCase().trim();
     const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
@@ -2973,6 +2996,17 @@ export class DeltaAutoTraderEngine {
       };
     }
 
+    // 🛡️ ENFORCED LOSS COOLDOWN (45 Minutes Complete Silence)
+    const cooldownMs = (this.settings.cooldownMinutesAfterLoss || 45) * 60 * 1000;
+    const isLossCooldown = this.lastLossTimestamp > 0 && (Date.now() - this.lastLossTimestamp) < cooldownMs;
+    if (isLossCooldown && !forceImmediate) {
+      const remMins = Math.ceil((cooldownMs - (Date.now() - this.lastLossTimestamp)) / 60000);
+      return {
+        executed: false,
+        message: `⏳ ENFORCED LOSS COOLDOWN ACTIVE: Paused for ${remMins} more min(s) to protect capital.`
+      };
+    }
+
     if (this.consecutiveLossesCount >= MAX_CONSECUTIVE_LOSSES_ALLOWED) {
       return {
         executed: false,
@@ -3056,6 +3090,19 @@ export class DeltaAutoTraderEngine {
     const safeIndex = this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length;
     const currentAsset = CURATED_AUTO_TRADER_ASSETS[safeIndex];
     const sym = currentAsset.symbol;
+
+    // ⛔ 3-HOUR LOSS BLACKLIST CHECK:
+    const symKey = sym.toUpperCase();
+    if (this.symbolBlacklist[symKey] && Date.now() < this.symbolBlacklist[symKey]) {
+      const banRemainingMin = Math.ceil((this.symbolBlacklist[symKey] - Date.now()) / 60000);
+      this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+      this.inspectionStartTimeMs = Date.now();
+      const nextCoin = CURATED_AUTO_TRADER_ASSETS[this.currentAssetIndex];
+      return {
+        executed: false,
+        message: `⛔ ${symKey} is on 3-HOUR LOSS BAN (${banRemainingMin}m remaining). Auto-skipped to ${nextCoin.tag}.`
+      };
+    }
 
     // Fetch live candles for the currently inspected asset
     let candles15m: OHLCVBar[] = [];
