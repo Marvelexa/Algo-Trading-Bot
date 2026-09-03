@@ -2013,22 +2013,11 @@ export class DeltaAutoTraderEngine {
         // 🛑 100% STRICT MACRO TREND LAW:
     // If 4H is BEARISH: BUY is 100% FORBIDDEN. Only SELL (Short) allowed!
     // If 4H is BULLISH: SELL is 100% FORBIDDEN. Only BUY (Long) allowed!
-    if (fourHourTrend === "BEARISH") {
-      bullTrendPoints = 0;
-      bullMomPoints = 0;
-      bullPatternPoints = 0;
-      if (direction === "BUY") {
-        direction = "NEUTRAL";
-        overallScore = 35;
-      }
-    } else if (fourHourTrend === "BULLISH") {
-      bearTrendPoints = 0;
-      bearMomPoints = 0;
-      bearPatternPoints = 0;
-      if (direction === "SELL") {
-        direction = "NEUTRAL";
-        overallScore = 35;
-      }
+    // 4H Trend context adds weight, but does not block strong 15m/1h momentum breakouts:
+    if (fourHourTrend === "BULLISH" && direction === "BUY") {
+      overallScore = Math.min(98, overallScore + 10);
+    } else if (fourHourTrend === "BEARISH" && direction === "SELL") {
+      overallScore = Math.min(98, overallScore + 10);
     }
 
         // 🏛️ PURE PRICE ACTION + EMA 9/21 PULLBACK REJECTION ENGINE (Freqtrade / TradingView Benchmark):
@@ -2079,18 +2068,19 @@ export class DeltaAutoTraderEngine {
     const is1hBullTrend = currentPrice >= ema21_1h;
     const is1hBearTrend = currentPrice < ema21_1h;
 
-    const isBuyTrendAllowed = is1hBullTrend && fourHourTrend === "BULLISH";
-    const isSellTrendAllowed = is1hBearTrend && fourHourTrend === "BEARISH";
+    // 1-Hour & 15-Minute Trend Alignment (Dynamic & Responsive):
+    const isBuyTrendAllowed = currentPrice >= (ema21_1h * 0.995) || currentPrice >= ema9_15m;
+    const isSellTrendAllowed = currentPrice <= (ema21_1h * 1.005) || currentPrice <= ema9_15m;
 
     // 15m Momentum Alignment:
     const isEmaAligned = direction === "BUY"
-      ? (currentPrice >= ema9_15m)
+      ? (currentPrice >= ema9_15m * 0.997)
       : direction === "SELL"
-      ? (currentPrice <= ema9_15m)
+      ? (currentPrice <= ema9_15m * 1.003)
       : false;
 
-    // Anti-Exhaustion Guard (avoid buying extreme overbought or selling extreme oversold)
-    const isFreshOrPullback = direction === "BUY" ? (rsi15m <= 70) : (rsi15m >= 30);
+    // Anti-Exhaustion Guard (Safe range: 25 to 80 for crypto breakouts)
+    const isFreshOrPullback = direction === "BUY" ? (rsi15m <= 80) : (rsi15m >= 20);
 
     const isEntryValid = (
       direction !== "NEUTRAL" &&
