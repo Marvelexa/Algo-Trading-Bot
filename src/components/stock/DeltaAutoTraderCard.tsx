@@ -593,9 +593,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           <span className="text-[9px] text-gray-500 block font-mono">(${(settings.currentCapitalUSD ?? 0).toFixed(2)} USD)</span>
         </div>
         <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30">
-          <span className="text-[10px] text-emerald-400 block uppercase font-mono font-bold">5 Capital Reserves (1/5)</span>
-          <strong className="text-emerald-300 text-sm font-mono">₹3,270 per Trade</strong>
-          <span className="text-[9px] text-emerald-400/80 block font-mono">5x Leverage: ₹16,350 Notional</span>
+          <span className="text-[10px] text-emerald-400 block uppercase font-mono font-bold">Capital per Trade (25%)</span>
+          <strong className="text-emerald-300 text-sm font-mono">₹{(((settings.currentCapitalUSD ?? 180) * 0.25) * USD_TO_INR).toLocaleString(undefined, { maximumFractionDigits: 0 })} Margin</strong>
+          <span className="text-[9px] text-emerald-400/80 block font-mono">Max 25x Leverage (≤25x)</span>
         </div>
         <div className="p-2.5 rounded-xl bg-gray-950/80 border border-gray-800/80">
           <span className="text-[10px] text-gray-400 block uppercase font-mono">Required Move / R:R</span>
@@ -961,6 +961,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-950/60 border border-green-500/30 text-[10px] font-bold text-green-300">
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                           Auto-Managed R-Multiple Exit
+                        </div>
+                        <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-[10px] font-mono font-bold text-cyan-300">
+                          25% Margin (25x Lev)
                         </div>
                         <button
                           type="button"

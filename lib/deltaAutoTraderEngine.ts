@@ -27,7 +27,8 @@ export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours (1 Day) Tren
 export const FEE_BUFFER_PER_TRADE_USD = 0.60; // Fixed ₹50 INR Delta Exchange India (Brokerage + 18% GST + 1% TDS + Slippage)
 export const MAX_CONSECUTIVE_LOSSES_ALLOWED = 3; // Hard daily stop after 3 consecutive losses
 export const MAX_DAILY_LOSS_CAP_USD = 10.80; // ₹900 INR (~6% of ₹15,000 capital circuit breaker after 2-3 losses)
-export const DEFAULT_LEVERAGE = 5.0; // 5x dynamic margin leverage per slot
+export const DEFAULT_LEVERAGE = 25.0; // Max 25x dynamic margin leverage per slot (strictly <= 25x)
+export const MAX_LEVERAGE = 25.0;
 
 export interface OHLCVBar {
   time: number;
@@ -48,6 +49,8 @@ export interface AutoTraderPosition {
   stopLossPrice: number;
   targetPrice: number;
   initialRiskUSD: number;
+  marginUSD?: number;
+  leverage?: number;
   atrValue: number;
   confidenceScore: number;
   unrealizedPnLUSD: number;
@@ -267,6 +270,8 @@ export class DeltaAutoTraderEngine {
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
     minConfidenceThreshold: 70,
+    leverage: 25,
+    capitalPercentPerTrade: 25,
     maxConcurrentPositions: 2, // 🎯 SINGLE SNIPER MODE: Only 1 trade at a time with concentrated capital! (leaves 50% free margin buffer) (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
     inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
@@ -2225,6 +2230,8 @@ export class DeltaAutoTraderEngine {
       stopLossPrice,
       targetPrice,
       initialRiskUSD,
+      marginUSD: lotInfo.marginUSD,
+      leverage: lotInfo.leverage,
       atrValue: this.roundPrice(safeAtr),
       confidenceScore: analysis.overallScore,
       unrealizedPnLUSD: 0,
@@ -2247,6 +2254,7 @@ export class DeltaAutoTraderEngine {
     this.saveToStorage();
     // If LIVE mode, trigger execution on Delta Exchange API and attach native Stop-Loss & Take-Profit bracket
     if (this.settings.mode === "LIVE") {
+      deltaExchangeEngine.setLeverage(pos.symbol, pos.leverage || 25).catch(() => {});
       deltaExchangeEngine.placeOrder(
         symbol,
         position.type === "BUY" ? "buy" : "sell",
@@ -3040,6 +3048,8 @@ export class DeltaAutoTraderEngine {
     quantity: number;
     initialRiskUSD: number;
     accountEquity: number;
+    marginUSD: number;
+    leverage: number;
     rewardUSD?: number;
     rewardINR?: number;
     riskUSD?: number;
@@ -3054,48 +3064,46 @@ export class DeltaAutoTraderEngine {
         liveDeltaBalance = (deltaExchangeEngine as any).getAccountSummary()?.netEquityUSD;
       }
     } catch (e) {}
-    const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : 180.00; // ₹15,000 INR Account Equity
+    const accountEquity = (liveDeltaBalance && liveDeltaBalance > 5) ? liveDeltaBalance : (this.settings.currentCapitalUSD || 180.00);
     
-    // Per-Trade Economics (Part B1 Audit):
-    // Slot margin: ₹3,270 ($39.16 USD), 5x Leverage -> Notional = $195.80 USD (₹16,350 INR)
-    // Risk target: ₹390–420 ($4.70–$5.00 USD), sized strictly to match SL distance
-    // Reward target: ₹800–900 ($9.60–$10.80 USD)
-    // R:R Ratio = Reward / Risk ≈ 2.05 (Derived directly from values, NO phantom multiplier!)
-    // Required Breakout Move = Reward / Notional = $10.00 / $195.80 ≈ +5.1% to +5.2%
-    // 🎯 TARGETED LOT SIZING FOR ₹5,000–₹7,000 INR DAILY PROFIT HORIZON:
-    // 3 concurrent slots x $10-$14 USD reward = $30-$42 USD per batch (~₹2,500-₹3,500 INR)
-    // 2 winning batches = ₹5,000-₹7,000 INR daily profit target achieved!
-    const effectiveRiskPct = Math.max(3.5, this.settings.riskPerTradePct || 3.5);
-    // ⚡ OPTION 1 POWER SLOT SIZING (2 Slots on ₹15,000 Capital):
-    // Risk target: $5.50–$6.80 USD (~₹460–₹560 INR per slot, ~3.5% capital risk)
-    // Reward target: +$15.00–$19.00 USD (+₹1,250–+₹1,600 INR PROFIT per trade)!
-    const dollarRiskAllowed = Math.min(6.80, Math.max(5.50, (accountEquity / 2) * 0.065));
+    // 🎯 USER MANDATE: Exactly 25% of total capital deployed as margin per original trade
+    const capitalPct = (this.settings.capitalPercentPerTrade || 25) / 100;
+    const deployedMarginUSD = Number((accountEquity * capitalPct).toFixed(2));
+    
+    // 🛡️ USER MANDATE: Leverage strictly capped at 25x maximum (never > 25x)
+    const MAX_ALLOWED_LEVERAGE = 25.0;
+    const leverage = Math.min(MAX_ALLOWED_LEVERAGE, Math.max(1.0, this.settings.leverage || 25.0));
+    
+    // Total notional position size: Margin x Leverage
+    const notionalUSD = Number((deployedMarginUSD * leverage).toFixed(2));
     
     const sym = symbol.toUpperCase().trim();
     const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
       symbol: sym, minLot: 0.01, decimals: 2
     };
 
-    // Calculate quantity based on SL distance:
-    const safeSLDist = Math.max(currentPrice * 0.008, stopLossDistance);
-    let rawQty = dollarRiskAllowed / safeSLDist;
-
-    // Minimum contract allocation
+    // Calculate raw quantity from notional position size
+    let rawQty = currentPrice > 0 ? (notionalUSD / currentPrice) : 0;
+    
+    // Quantize quantity to asset minLot and decimals
     let quantity = Number(rawQty.toFixed(asset.decimals));
     if (quantity < asset.minLot) {
       quantity = asset.minLot;
     }
 
+    // Stop Loss Distance & Risk Calculation
+    const safeSLDist = Math.max(currentPrice * 0.008, stopLossDistance);
     const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
-    const notionalUSD = Number((currentPrice * quantity).toFixed(2));
-    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.4, 15.00)).toFixed(2)); // 🎯 Option 1 Power Reward: +₹1,250 - ₹1,600 INR profit per slot (2 slots = +₹2,500-₹3,200 batch profit)!
-    const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.05;
-    const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 5.2;
+    const targetRewardUSD = Number((initialRiskUSD * 2.5).toFixed(2));
+    const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.5;
+    const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 4.5;
 
     return {
       quantity,
       initialRiskUSD,
       accountEquity,
+      marginUSD: deployedMarginUSD,
+      leverage,
       rewardUSD: targetRewardUSD,
       rewardINR: Number((targetRewardUSD * 83.5).toFixed(0)),
       riskUSD: initialRiskUSD,

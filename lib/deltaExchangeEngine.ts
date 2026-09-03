@@ -580,6 +580,34 @@ class DeltaExchangeEngine {
     }
   }
 
+  public async setLeverage(symbolOrId: string, leverage: number = 25): Promise<any> {
+    const key = this.getApiKey();
+    const secret = this.getApiSecret();
+    if (!key || !secret) return { success: false, message: "API key missing" };
+    try {
+      if (this.products.size === 0) await this.fetchProducts();
+      const symUpper = (symbolOrId || "").toUpperCase().trim();
+      const product = this.products.get(symUpper) || Array.from(this.products.values()).find(p => p.symbol?.toUpperCase() === symUpper || String(p.id) === symbolOrId);
+      if (!product) return { success: false, message: "Product not found" };
+      
+      const safeLeverage = Math.min(25, Math.max(1, Math.round(leverage)));
+      const path = `/v2/products/${product.id}/orders/leverage`;
+      const bodyStr = JSON.stringify({ leverage: String(safeLeverage) });
+      const headers = this.getAuthHeaders("POST", path, "", bodyStr);
+      const res = await fetch(`https://api.india.delta.exchange${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: bodyStr
+      });
+      const data = await res.json();
+      console.log(`[DeltaExchange] ⚙️ Set leverage for ${product.symbol} to ${safeLeverage}x:`, data?.success ? "OK" : data?.error?.message || "Applied");
+      return { success: true, data };
+    } catch (e: any) {
+      console.warn(`[DeltaExchange] ⚠️ Failed to set leverage for ${symbolOrId}:`, e.message);
+      return { success: false, error: e.message };
+    }
+  }
+
   public async placeOrder(
     symbol: string,
     side: "buy" | "sell",
