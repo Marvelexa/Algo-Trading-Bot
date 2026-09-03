@@ -507,6 +507,7 @@ export class DeltaAutoTraderEngine {
       ? (pos.currentPrice - pos.entryPrice) * pos.quantity
       : (pos.entryPrice - pos.currentPrice) * pos.quantity;
     pos.unrealizedPnLUSD = Number(pnlUSD.toFixed(2));
+    pos.highestProfitUSD = Math.max(0, pos.unrealizedPnLUSD);
     
     // If LIVE mode, place incremental order on Delta Exchange
     if (this.settings.mode === "LIVE") {
@@ -2530,9 +2531,10 @@ export class DeltaAutoTraderEngine {
         }
 
         // Exit Check 2: Dynamic Peak Retracement Exit (If price retraces >= 35% from highest peak profit)
-        if (pos.highestProfitUSD >= initialRisk * 1.2 && pnlUSD <= (pos.highestProfitUSD * 0.70)) {
+        // Peak-Profit Lock: ONLY fire if trade is in strong profit (>= 0.6R) and pulling back from high peak (>= 1.5R)
+        if (pos.highestProfitUSD >= initialRisk * 1.5 && pnlUSD >= initialRisk * 0.6 && pnlUSD <= (pos.highestProfitUSD * 0.65)) {
           const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
-          triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} at +$${pos.unrealizedPnLUSD} (Peak was +$${pos.highestProfitUSD.toFixed(2)}) after 35% retracement!`);
+          triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} in solid profit at +${pos.unrealizedPnLUSD} (Peak was +${pos.highestProfitUSD.toFixed(2)}) after 35% retracement!`);
           return;
         }
 

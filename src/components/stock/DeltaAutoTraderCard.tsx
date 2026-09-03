@@ -963,7 +963,10 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                           Auto-Managed R-Multiple Exit
                         </div>
                         <button
-                          onClick={async () => {
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
                             try {
                               const res = await fetch("/api/autotrader/scale-up", {
                                 method: "POST",
@@ -976,7 +979,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
                               }
                             } catch (e) {}
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
                           title="Double contract size to Option 1 Power Slot"
                         >
                           <Zap className="w-3 h-3 text-emerald-400" />
