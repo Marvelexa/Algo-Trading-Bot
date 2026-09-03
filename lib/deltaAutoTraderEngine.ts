@@ -3167,10 +3167,10 @@ export class DeltaAutoTraderEngine {
     const sym = symbol.toUpperCase().trim();
     const base = sym.replace("USD", "").replace("USDT", "").trim();
 
-    // 1. Primary: Lightning-Fast Real Public Binance Vision Kline Engine (Real Live Dynamic Prices & Volume)
+    // 1. Primary: Binance.US API (Native to US-cloud where Render runs, 100% accessible, real volume & OHLCV)
     try {
-      const binancePair = `${base}USDT`;
-      const res = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`, {
+      const pair = `${base}USDT`;
+      const res = await fetch(`https://api.binance.us/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`, {
         signal: AbortSignal.timeout(3500)
       });
       if (res.ok) {
@@ -3185,7 +3185,6 @@ export class DeltaAutoTraderEngine {
             close: parseFloat(k[4]),
             volume: parseFloat(k[5])
           }));
-          // Ensure candles are genuine moving candles with real volume
           if (bars.some(b => b.volume > 0)) {
             return bars;
           }
@@ -3193,10 +3192,36 @@ export class DeltaAutoTraderEngine {
       }
     } catch (e) {}
 
-    // 2. Secondary Fallback: Standard Binance Public API
+    // 2. Secondary: Coinbase Public Pro API (US-native, zero restrictions)
     try {
-      const binancePair = `${base}USDT`;
-      const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePair}&interval=${interval}&limit=${limit}`, {
+      const granularity = interval === "15m" ? 900 : interval === "1h" ? 3600 : 14400;
+      const res = await fetch(`https://api.exchange.coinbase.com/products/${base}-USD/candles?granularity=${granularity}`, {
+        headers: { "User-Agent": "AlgoBot/1.0" },
+        signal: AbortSignal.timeout(3500)
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (Array.isArray(data) && data.length >= 10) {
+          const bars: OHLCVBar[] = data.slice(0, limit).reverse().map((k: any[]) => ({
+            time: k[0],
+            timestamp: new Date(k[0] * 1000).toISOString(),
+            open: parseFloat(k[3]),
+            high: parseFloat(k[2]),
+            low: parseFloat(k[1]),
+            close: parseFloat(k[4]),
+            volume: parseFloat(k[5])
+          }));
+          if (bars.some(b => b.volume > 0)) {
+            return bars;
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 3. Tertiary: Binance Vision
+    try {
+      const pair = `${base}USDT`;
+      const res = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`, {
         signal: AbortSignal.timeout(3000)
       });
       if (res.ok) {
@@ -3215,7 +3240,7 @@ export class DeltaAutoTraderEngine {
       }
     } catch (e) {}
 
-    // 3. Tertiary Fallback: Delta Exchange (strictly only if real dynamic candles with volume > 0)
+    // 4. Quaternary: Delta Exchange
     try {
       const deltaResolution = interval === "15m" ? "15m" : interval === "1h" ? "1h" : "4h";
       const deltaCandles = await deltaExchangeEngine.fetchCandles(sym, deltaResolution);
