@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS: AutoTraderSettings = {
   riskPerTradePct: 2.0,
   maxDailyLossPct: 3.0,
   maxTradesPerDay: 10,
-  maxConcurrentPositions: 3,
+  maxConcurrentPositions: 2,
   cooldownMinutesAfterLoss: 45,
   minConfidenceThreshold: 55
 };

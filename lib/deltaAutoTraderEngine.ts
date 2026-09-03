@@ -267,7 +267,7 @@ export class DeltaAutoTraderEngine {
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
     minConfidenceThreshold: 70,
-    maxConcurrentPositions: 3, // 🎯 SINGLE SNIPER MODE: Only 1 trade at a time with concentrated capital! (leaves 50% free margin buffer) (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
+    maxConcurrentPositions: 2, // 🎯 SINGLE SNIPER MODE: Only 1 trade at a time with concentrated capital! (leaves 50% free margin buffer) (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
     inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
 
@@ -408,7 +408,7 @@ export class DeltaAutoTraderEngine {
       this.settings.currentCapitalUSD = 180.00;
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
-      this.settings.maxConcurrentPositions = 3;
+      this.settings.maxConcurrentPositions = 2;
       this.settings.minConfidenceThreshold = 70;
       this.settings.inspectionWindowMinutes = 5;
     }
@@ -2139,7 +2139,7 @@ export class DeltaAutoTraderEngine {
 
     // 🛡️ DIRECTIONAL CONCENTRATION CAP (Max 3 same-direction positions out of 7 slots)
     // Prevents herd trading ("sab me BUY" ya "sab me SELL")
-    const maxSameDirection = 2; // Strict balance: Max 2 BUYs out of 3 slots so 3rd slot is reserved for SELL!
+    const maxSameDirection = 2; // Option 1: 2 Power Slots so 3rd slot is reserved for SELL!
     const sameDirectionCount = this.openPositions.filter(p => p.type === analysis.direction).length;
     if (sameDirectionCount >= maxSameDirection) {
       return {
@@ -2967,7 +2967,7 @@ export class DeltaAutoTraderEngine {
   }
 
   public updateSettings(newSettings: Partial<AutoTraderSettings>) {
-    this.settings = { ...this.settings, ...newSettings, maxConcurrentPositions: 3 }; // 3 Concurrent Slots
+    this.settings = { ...this.settings, ...newSettings, maxConcurrentPositions: 2 }; // 3 Concurrent Slots
     this.saveToStorage();
   }
 
@@ -3027,7 +3027,10 @@ export class DeltaAutoTraderEngine {
     // 3 concurrent slots x $10-$14 USD reward = $30-$42 USD per batch (~₹2,500-₹3,500 INR)
     // 2 winning batches = ₹5,000-₹7,000 INR daily profit target achieved!
     const effectiveRiskPct = Math.max(3.5, this.settings.riskPerTradePct || 3.5);
-    const dollarRiskAllowed = Math.min(3.60, Math.max(2.60, (accountEquity / 3) * 0.045)); // ₹220-₹300 INR risk per slot for ₹15,000 capital across 3 slots!
+    // ⚡ OPTION 1 POWER SLOT SIZING (2 Slots on ₹15,000 Capital):
+    // Risk target: $5.50–$6.80 USD (~₹460–₹560 INR per slot, ~3.5% capital risk)
+    // Reward target: +$15.00–$19.00 USD (+₹1,250–+₹1,600 INR PROFIT per trade)!
+    const dollarRiskAllowed = Math.min(6.80, Math.max(5.50, (accountEquity / 2) * 0.065));
     
     const sym = symbol.toUpperCase().trim();
     const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
@@ -3046,7 +3049,7 @@ export class DeltaAutoTraderEngine {
 
     const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
     const notionalUSD = Number((currentPrice * quantity).toFixed(2));
-    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.2, 6.50)).toFixed(2)); // 🎯 +₹550 - ₹750 INR profit per slot on ₹15,000 capital (3 slots = +₹1,600-₹2,200 batch profit)!
+    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.4, 15.00)).toFixed(2)); // 🎯 Option 1 Power Reward: +₹1,250 - ₹1,600 INR profit per slot (2 slots = +₹2,500-₹3,200 batch profit)!
     const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.05;
     const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 5.2;
 
