@@ -446,7 +446,7 @@ export class DeltaAutoTraderEngine {
         }
       }
       // Keep up to 5 concurrent positions
-      this.openPositions = validOpen.slice(0, 5);
+      this.openPositions = validOpen.slice(0, 1);
     }
     if (Array.isArray(parsed.closedRecords)) {
       // Clean up / Delete corrupted price anomaly records
@@ -494,7 +494,7 @@ export class DeltaAutoTraderEngine {
     this.openPositions = [];
     this.closedRecords = [];
     this.settings.isEnabled = true;
-    this.settings.maxConcurrentPositions = 3;
+    this.settings.maxConcurrentPositions = 1;
     this.settings.inspectionWindowMinutes = 5;
     this.settings.minConfidenceThreshold = 80;
     this.settings.riskPerTradePct = 2.4;
@@ -2127,6 +2127,9 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `🔒 Asset ${symbol} already has an active open position. No duplicates allowed.` };
     }
 
+    if (this.openPositions.length >= 1) {
+      return { success: false, message: `🔒 SINGLE SNIPER MODE: Already holding 1 active position (${this.openPositions[0].symbol}). No other trades allowed until this completes.` };
+    }
     if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
       return { success: false, message: `🔒 ALL 7 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
     }
@@ -2966,7 +2969,7 @@ export class DeltaAutoTraderEngine {
   }
 
   public updateSettings(newSettings: Partial<AutoTraderSettings>) {
-    this.settings = { ...this.settings, ...newSettings };
+    this.settings = { ...this.settings, ...newSettings, maxConcurrentPositions: 1 }; // Strictly force Single Sniper Mode
     this.saveToStorage();
   }
 
