@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS: AutoTraderSettings = {
   riskPerTradePct: 2.0,
   maxDailyLossPct: 3.0,
   maxTradesPerDay: 10,
-  maxConcurrentPositions: 1,
+  maxConcurrentPositions: 3,
   cooldownMinutesAfterLoss: 45,
   minConfidenceThreshold: 55
 };
@@ -1610,12 +1610,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
             </div>
 
             <div>
-              <label className="block text-gray-400 mb-1">Max Concurrent Positions (Single Sniper Mode = 1):</label>
+              <label className="block text-gray-400 mb-1">Max Concurrent Positions (3 Slots Portfolio):</label>
               <input
                 type="number"
                 min={1}
                 max={7}
-                value={settings.maxConcurrentPositions || 1}
+                value={settings.maxConcurrentPositions || 3}
                 onChange={e => handleUpdateSettings({ maxConcurrentPositions: Math.max(1, Number(e.target.value)) })}
                 className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 text-white"
               />

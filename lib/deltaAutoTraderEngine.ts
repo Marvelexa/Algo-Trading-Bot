@@ -267,7 +267,7 @@ export class DeltaAutoTraderEngine {
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
     minConfidenceThreshold: 80,
-    maxConcurrentPositions: 1, // 🎯 SINGLE SNIPER MODE: Only 1 trade at a time with concentrated capital! (leaves 50% free margin buffer) (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
+    maxConcurrentPositions: 3, // 🎯 SINGLE SNIPER MODE: Only 1 trade at a time with concentrated capital! (leaves 50% free margin buffer) (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
     inspectionWindowMinutes: 5 // 5 minutes dedicated inspection window per coin
   };
 
@@ -408,7 +408,7 @@ export class DeltaAutoTraderEngine {
       this.settings.currentCapitalUSD = 180.00;
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
-      this.settings.maxConcurrentPositions = 1;
+      this.settings.maxConcurrentPositions = 3;
       this.settings.minConfidenceThreshold = 80;
       this.settings.inspectionWindowMinutes = 5;
     }
@@ -446,7 +446,7 @@ export class DeltaAutoTraderEngine {
         }
       }
       // Keep up to 5 concurrent positions
-      this.openPositions = validOpen.slice(0, 1);
+      this.openPositions = validOpen.slice(0, 3);
     }
     if (Array.isArray(parsed.closedRecords)) {
       // Clean up / Delete corrupted price anomaly records
@@ -2127,9 +2127,7 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `🔒 Asset ${symbol} already has an active open position. No duplicates allowed.` };
     }
 
-    if (this.openPositions.length >= 1) {
-      return { success: false, message: `🔒 SINGLE SNIPER MODE: Already holding 1 active position (${this.openPositions[0].symbol}). No other trades allowed until this completes.` };
-    }
+    
     if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
       return { success: false, message: `🔒 ALL 7 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
     }
@@ -2969,7 +2967,7 @@ export class DeltaAutoTraderEngine {
   }
 
   public updateSettings(newSettings: Partial<AutoTraderSettings>) {
-    this.settings = { ...this.settings, ...newSettings, maxConcurrentPositions: 1 }; // Strictly force Single Sniper Mode
+    this.settings = { ...this.settings, ...newSettings, maxConcurrentPositions: 3 }; // 3 Concurrent Slots
     this.saveToStorage();
   }
 
@@ -3029,7 +3027,7 @@ export class DeltaAutoTraderEngine {
     // 3 concurrent slots x $10-$14 USD reward = $30-$42 USD per batch (~₹2,500-₹3,500 INR)
     // 2 winning batches = ₹5,000-₹7,000 INR daily profit target achieved!
     const effectiveRiskPct = Math.max(3.5, this.settings.riskPerTradePct || 3.5);
-    const dollarRiskAllowed = Math.min(5.50, Math.max(3.80, accountEquity * 0.025)); // ₹320-₹460 INR risk per trade for ₹15,000 capital (Target: +₹850-₹1,150 INR profit)!
+    const dollarRiskAllowed = Math.min(3.60, Math.max(2.60, (accountEquity / 3) * 0.045)); // ₹220-₹300 INR risk per slot for ₹15,000 capital across 3 slots!
     
     const sym = symbol.toUpperCase().trim();
     const asset = CURATED_AUTO_TRADER_ASSETS.find(a => a.symbol === sym || sym.includes(a.tag)) || {
@@ -3048,7 +3046,7 @@ export class DeltaAutoTraderEngine {
 
     const initialRiskUSD = Number((safeSLDist * quantity).toFixed(2));
     const notionalUSD = Number((currentPrice * quantity).toFixed(2));
-    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.2, 10.50)).toFixed(2)); // 🎯 +₹850 - ₹1,150 INR profit per trade on ₹15,000 capital (Crushes ₹50 fee completely!)
+    const targetRewardUSD = Number((Math.max(initialRiskUSD * 2.2, 6.50)).toFixed(2)); // 🎯 +₹550 - ₹750 INR profit per slot on ₹15,000 capital (3 slots = +₹1,600-₹2,200 batch profit)!
     const rrRatio = initialRiskUSD > 0 ? Number((targetRewardUSD / initialRiskUSD).toFixed(2)) : 2.05;
     const requiredBreakoutMovePct = notionalUSD > 0 ? Number(((targetRewardUSD / notionalUSD) * 100).toFixed(2)) : 5.2;
 
