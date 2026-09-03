@@ -2205,12 +2205,21 @@ export class DeltaAutoTraderEngine {
     });
 
     const entryPrice = this.roundPrice(price);
-    const stopLossPrice = tradeSig.stopLoss 
-      ? this.roundPrice(tradeSig.stopLoss) 
-      : this.roundPrice(analysis.direction === "BUY" ? price - price * 0.015 : price + price * 0.015);
-    const targetPrice = tradeSig.takeProfit 
-      ? this.roundPrice(tradeSig.takeProfit) 
-      : this.roundPrice(analysis.direction === "BUY" ? price + price * 0.030 : price - price * 0.030);
+
+    // 🛡️ PROFESSIONAL QUANT STOP-LOSS FLOOR (Anchored strictly to Entry Price):
+    // BTC/ETH: Minimum 1.5% breathing room (avoids getting stopped out by $3-$5 tick noise on $2,500+ assets)
+    // Altcoins (SOL, XRP, DOGE, ADA): Minimum 2.2% breathing room to absorb normal wick spread
+    const isMajor = ["BTC", "ETH"].some(m => symbol.toUpperCase().includes(m));
+    const minSlPercent = isMajor ? 0.015 : 0.022;
+    const rawSlDist = tradeSig.slDistance || (tradeSig.stopLoss ? Math.abs(entryPrice - tradeSig.stopLoss) : entryPrice * minSlPercent);
+    const effectiveSlDist = Math.max(entryPrice * minSlPercent, rawSlDist);
+
+    const stopLossPrice = this.roundPrice(
+      analysis.direction === "BUY" ? entryPrice - effectiveSlDist : entryPrice + effectiveSlDist
+    );
+    const targetPrice = this.roundPrice(
+      analysis.direction === "BUY" ? entryPrice + (effectiveSlDist * 2.5) : entryPrice - (effectiveSlDist * 2.5)
+    );
     const slDistance = Math.abs(entryPrice - stopLossPrice);
     const safeAtr = tradeSig.atrValue || (price * 0.010);
 
