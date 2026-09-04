@@ -1617,6 +1617,41 @@ export class DeltaAutoTraderEngine {
       };
     }
 
+    // 🎯 MASTER MOVE 2B: GOLDEN FIRST PULLBACK INTO 15M EMA 9 (Early-Trend Inception Buy)
+    const closesAll = bars15m.map(b => b.close);
+    const curEma9 = this.calculateEMA(closesAll, 9);
+    const curEma21 = this.calculateEMA(closesAll, 21);
+    const isEmaBull = curEma9 > curEma21;
+    const touchedEma9 = trigger.low <= curEma9 * 1.002 && trigger.close >= curEma9 * 0.998;
+    const isHammerBounce = lowerWick >= body * 1.1 && trigger.close > trigger.open;
+    const rsi14 = this.calculateRSI(closesAll, 14);
+
+    if (isEmaBull && touchedEma9 && isHammerBounce && rsi14 >= 40 && rsi14 <= 60) {
+      return {
+        signal: "BUY",
+        setupName: "GOLDEN_PULLBACK_TREND_INCEPTION_BUY",
+        score: 94,
+        triggerPrice: currentPrice,
+        slPrice: this.roundPrice(Math.min(trigger.low, curEma21) * 0.998),
+        detail: `👑 MASTER EARLY-BUY: Sniper First Pullback to 15m EMA 9 with Hammer Rejection. Inception Buy before secondary explosion!`
+      };
+    }
+
+    // 🎯 MASTER MOVE 2C: INSTITUTIONAL DEMAND RECLAIM (High-Volume Launch Reclaim)
+    const prev10Vols = bars15m.slice(-12, -2).map(b => b.volume);
+    const avgVol = prev10Vols.reduce((a, b) => a + b, 0) / (prev10Vols.length || 1);
+    const isHighVolReclaim = trigger.close > curEma9 && trigger.open < curEma9 && trigger.volume > avgVol * 1.3;
+    if (isHighVolReclaim && trigger.close > trigger.open && (trigger.close - trigger.low) >= 0.7 * range && rsi14 >= 45 && rsi14 <= 62) {
+      return {
+        signal: "BUY",
+        setupName: "INSTITUTIONAL_DEMAND_RECLAIM_BUY",
+        score: 93,
+        triggerPrice: currentPrice,
+        slPrice: this.roundPrice(trigger.low * 0.997),
+        detail: `👑 MASTER EARLY-BUY: High-Volume Demand Reclaim above EMA 9. Bullish run starting!`
+      };
+    }
+
     // 🎯 MASTER MOVE 3: VOLATILITY SQUEEZE INCEPTION (Catches Trend on Candle #1, Never Misses Trends!)
     const closes = bars15m.map(b => b.close);
     const period = 20;
