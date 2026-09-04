@@ -301,7 +301,16 @@ export function calculateCompositeScore(
     ? Math.min(35, Math.round(lastKama.efficiencyRatio * 35))
     : 0;
 
-  const structurePoints = directionAgrees ? 35 : 0;
+  // 🛡️ ANTI-TRAP STRUCTURE VALIDATION (Filters out breakout exhaustion wicks):
+  const lastCandle = candles[candles.length - 1];
+  const lastRange = lastCandle ? (lastCandle.high - lastCandle.low) : 0;
+  const upperWick = lastCandle ? (lastCandle.high - Math.max(lastCandle.close, lastCandle.open)) : 0;
+  const lowerWick = lastCandle ? (Math.min(lastCandle.close, lastCandle.open) - lastCandle.low) : 0;
+
+  const isBullTrap = bullishStructure && lastRange > 0 && (upperWick / lastRange > 0.35);
+  const isBearTrap = bearishStructure && lastRange > 0 && (lowerWick / lastRange > 0.35);
+
+  const structurePoints = (directionAgrees && !isBullTrap && !isBearTrap) ? 35 : 0;
 
   const adxPoints = lastAdx.adx > 20 ? Math.min(15, Math.round(((lastAdx.adx - 20) / 30) * 15)) : 0;
 
