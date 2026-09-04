@@ -1208,7 +1208,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               Self-Learning Protection Engine Active (Applied!)
             </div>
             <p className="text-[11px] text-gray-300">
-              AI ne mistakes analyze karke rules update kiye hain: <strong>1) Early Breakeven Shield at +0.35R</strong> (trade green hote hi SL entry price par lock), <strong>2) Dynamic Peak Retracement at +0.45R</strong> (profit reverse hone se pehle auto-bank), aur <strong>3) Fast 35-Min Momentum Decay Exit</strong>.
+              Strict 100% SL/TP Binary Exit Rule: <strong>1) Target (TP) Hit</strong> hone par guaranteed profit booking, <strong>2) Stop-Loss (SL) Hit</strong> par strictly defined risk protection. Beech mein koi premature auto-exit nahi hoga.
             </p>
           </div>
 

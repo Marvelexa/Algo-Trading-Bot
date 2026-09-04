@@ -2578,103 +2578,10 @@ export class DeltaAutoTraderEngine {
         const holdTimeMs = Date.now() - (pos.entryTimeMs || Date.now());
         const isInBreathingRoom = holdTimeMs < (15 * 60 * 1000);
 
-        if (!isInBreathingRoom) {
-          if (pos.type === "BUY" && kamaSignal.action === "EXIT_LONG") {
-            const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
-            const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed LONG " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
-            console.log("[DeltaAutoTrader] " + msg);
-            logs.push(msg);
-            continue;
-          } else if (pos.type === "SELL" && kamaSignal.action === "EXIT_SHORT") {
-            const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
-            const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed SHORT " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
-            console.log("[DeltaAutoTrader] " + msg);
-            logs.push(msg);
-            continue;
-          }
-        }
-
-        if (pos.type === "BUY") {
-          const isBearEngulf = last15m.close < last15m.open && last15m.close < prev15m.low;
-          const isEmaBreakdown = currentPrice < ema9_15m && last15m.close < ema21_15m;
-          const isOppositeSignal = analysis.direction === "SELL" && analysis.overallScore >= 70;
-
-          if (isOppositeSignal) {
-            dangerDetected = true;
-            dangerReason = "Macro AI flipped to SELL (" + analysis.overallScore + "/100)";
-          } else if (isBearEngulf && currentPrice < ema9_15m) {
-            dangerDetected = true;
-            dangerReason = "15m Bearish Engulfing Breakdown below EMA 9";
-          } else if (isEmaBreakdown && last15m.volume > (prev15m.volume || 1) * 1.3) {
-            dangerDetected = true;
-            dangerReason = "Heavy Volume EMA 9/21 Breakdown";
-          }
-        } else if (pos.type === "SELL") {
-          const isBullEngulf = last15m.close > last15m.open && last15m.close > prev15m.high;
-          const isEmaBreakout = currentPrice > ema9_15m && last15m.close > ema21_15m;
-          const isOppositeSignal = analysis.direction === "BUY" && analysis.overallScore >= 70;
-
-          if (isOppositeSignal) {
-            dangerDetected = true;
-            dangerReason = "Macro AI flipped to BUY (" + analysis.overallScore + "/100)";
-          } else if (isBullEngulf && currentPrice > ema9_15m) {
-            dangerDetected = true;
-            dangerReason = "15m Bullish Engulfing Breakout above EMA 9";
-          } else if (isEmaBreakout && last15m.volume > (prev15m.volume || 1) * 1.3) {
-            dangerDetected = true;
-            dangerReason = "Heavy Volume EMA 9/21 Breakout";
-          }
-        }
-
-        // 🎯 ACTION 1: INSTANT PROFIT TAKE EXIT IF IN GREEN (Save profit before it dumps!)
-        // 🛡️ ACTION 1A: FAST DEFENSIVE CUT IN RED (Only after breathing room to avoid shaking out early)
-        if (!isInBreathingRoom && dangerDetected && pnlUSD <= -pos.initialRiskUSD * 0.45) {
-          const res = this.closePosition(pos.id, currentPrice, "EARLY_MOMENTUM_REVERSAL");
-          const msg = "🛡️ DEFENSIVE TREND CUT: Exited " + pos.symbol + " early at small loss ($" + pnlUSD.toFixed(2) + " USD) because " + dangerReason + ". Prevented full -1.0R Stop-Loss hit!";
-          console.log("[DeltaAutoTrader] " + msg);
-          logs.push(msg);
-          continue;
-        }
-
-        // 🎯 ACTION 1B: INSTANT PROFIT TAKE EXIT IF IN GREEN (Save profit before it dumps!)
-        if (dangerDetected && pnlUSD >= 1.80) {
-          const res = this.closePosition(pos.id, currentPrice, "PEAK_RETRACEMENT_EXIT");
-          const msg = "🚨 DANGER REVERSAL PROFIT LOCK: Closed " + pos.symbol + " in profit (+$" + pnlUSD.toFixed(2) + " USD / +₹" + (pnlUSD * 83.5).toFixed(0) + " INR) because " + dangerReason + "! Avoided potential drawdown.";
-          console.log("[DeltaAutoTrader] " + msg);
-          logs.push(msg);
-          continue;
-        }
-
-        // 🎯 ACTION 2: ULTRA-AGGRESSIVE SL RATCHET IN GREEN (Lock profit so trade cannot lose!)
-        if (pnlUSD >= 1.20) {
-          const profitBufferUSD = Math.max(0.60, pnlUSD * 0.65);
-          const bufferPriceDist = profitBufferUSD / pos.quantity;
-          const securedSL = this.roundPrice(
-            pos.type === "BUY" ? pos.entryPrice + bufferPriceDist : pos.entryPrice - bufferPriceDist
-          );
-
-          if ((pos.type === "BUY" && securedSL > pos.stopLossPrice) ||
-              (pos.type === "SELL" && securedSL < pos.stopLossPrice)) {
-            pos.stopLossPrice = securedSL;
-            pos.trailingStopActive = true;
-            pos.lockedProfitUSD = Number(profitBufferUSD.toFixed(2));
-            const msg = "🔒 DYNAMIC SL PROFIT SHIELD for " + pos.symbol + ": Current gain +$" + pnlUSD.toFixed(2) + ". SL moved into guaranteed profit @ $" + pos.stopLossPrice + " (+$" + profitBufferUSD.toFixed(2) + " locked)!";
-            console.log("[DeltaAutoTrader] " + msg);
-            logs.push(msg);
-            if (this.settings.mode === "LIVE") {
-              deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(() => {});
-            }
-          }
-        } else if (pnlUSD >= 1.20 && pos.stopLossPrice === pos.initialStopLoss) { // Lock breakeven after ₹100 move to cover ₹50 fee completely
-          const beBuffer = 0.05 / pos.quantity;
-          const bePrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + beBuffer : pos.entryPrice - beBuffer);
-          pos.stopLossPrice = bePrice;
-          const msg = "🛡️ EARLY BREAKEVEN SHIELD: " + pos.symbol + " reached +$" + pnlUSD.toFixed(2) + ". SL moved to Entry ($" + bePrice + ") - 100% Risk-Free!";
-          console.log("[DeltaAutoTrader] " + msg);
-          logs.push(msg);
-          if (this.settings.mode === "LIVE") {
-            deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(() => {});
-          }
+        // 🛡️ STRICT SL/TP COMPLIANCE: Do not close positions prematurely on candle wiggles.
+        // Positions must strictly run until Target (TP) or Stop Loss (SL) is touched.
+        if (dangerDetected) {
+          console.log(`[DeltaAutoTrader] ℹ️ Advisory danger note for ${pos.symbol}: ${dangerReason} (Trade continues to run until SL or TP is reached).`);
         }
       } catch (err) {
         // quiet catch
@@ -2732,118 +2639,40 @@ export class DeltaAutoTraderEngine {
         }
 
         // ────────────────────────────────────────────
-        // 🎯 DYNAMIC STEP-UP TARGET RATCHET & MULTI-TIER PROFIT LADDER ENGINE
-        // (e.g. Goal 1 Achieved -> Ratchet Target to 120 -> 140+ with Trailing SL Locked Behind Price)
+        // 🎯 STRICT TAKE PROFIT (TP) & STOP LOSS (SL) BINARY EXIT ENGINE
+        // Trade runs strictly until Target Price (TP) or Stop Loss (SL) is reached.
+        // No premature early exits, no momentum cuts, no time stalls, no retracement panic exits!
         // ────────────────────────────────────────────
-        const prevSL = pos.stopLossPrice;
-        const prevTP = pos.targetPrice;
 
+        // 🎯 Exit Check 1: STRICT TAKE PROFIT (TP) TARGET HIT
         const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
         if (isTPHit) {
-          pos.ratchetTier = (pos.ratchetTier || 0) + 1;
-          pos.trailingStopActive = true;
-
-          const currentGainDist = Math.abs(pos.targetPrice - pos.entryPrice);
-          const nextTargetDist = currentGainDist * 1.40; // Expand target by +40% (e.g. 90 -> 126 -> 176...)
-          pos.targetPrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + nextTargetDist : pos.entryPrice - nextTargetDist);
-
-          // Trail Stop Loss UP into guaranteed profit (Locking in 70% of current gain)
-          const lockedGainDist = currentGainDist * 0.70;
-          const ratchetedSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + lockedGainDist : pos.entryPrice - lockedGainDist);
-          if ((pos.type === "BUY" && ratchetedSL > pos.stopLossPrice) || (pos.type === "SELL" && ratchetedSL < pos.stopLossPrice)) {
-            pos.stopLossPrice = ratchetedSL;
-          }
-          pos.lockedProfitUSD = Number((lockedGainDist * pos.quantity).toFixed(2));
-
-          const ratchetMsg = `🚀 STEP-UP RATCHET (Tier #${pos.ratchetTier}) for ${pos.symbol}: Target extended UP to $${pos.targetPrice} | Guaranteed profit locked at SL $${pos.stopLossPrice} (+$${pos.lockedProfitUSD} USD / +₹${(pos.lockedProfitUSD * 95.71).toFixed(0)} INR)! Trend run continuing...`;
-          console.log(`[DeltaAutoTrader] ${ratchetMsg}`);
-          triggeredLogs.push(ratchetMsg);
-          this.saveToStorage();
-        }
-
-        
-        // 🛡️ Halfway 2-Hour Target Shield (+2.50 USD Gain -> Lock Stop-Loss to Breakeven):
-        if (pnlUSD >= 2.50 && pos.stopLossPrice === (pos.type === "BUY" ? this.roundPrice(pos.entryPrice - (pos.initialRiskUSD / pos.quantity)) : this.roundPrice(pos.entryPrice + (pos.initialRiskUSD / pos.quantity)))) {
-          const beBuffer = 0.05 / pos.quantity;
-          const bePrice = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + beBuffer : pos.entryPrice - beBuffer);
-          pos.stopLossPrice = bePrice;
-          triggeredLogs.push("🛡️ 2-Hour Target Shield Activated: " + pos.symbol + " reached +$" + pnlUSD.toFixed(2) + ". SL moved to Breakeven ($" + bePrice + ") - Zero Risk for remainder of 2h!");
-          if (this.settings.mode === "LIVE") {
-            deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(()=>{});
-          }
-        }
-
-        // Tier 1: Instant Breakeven + Buffer Risk-Free Lock (+0.70R gain -> SL moved to Entry + 0.1R buffer)
-        if (pnlUSD >= initialRisk * 1.2 && !pos.trailingStopActive && !pos.ratchetTier) {
-          pos.trailingStopActive = true;
-          const rBufferPrice = (initialRisk * 0.10) / pos.quantity;
-          const newSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + rBufferPrice : pos.entryPrice - rBufferPrice);
-          if ((pos.type === "BUY" && newSL < pos.currentPrice && newSL > pos.stopLossPrice) ||
-              (pos.type === "SELL" && newSL > pos.currentPrice && newSL < pos.stopLossPrice)) {
-            pos.stopLossPrice = newSL;
-            triggeredLogs.push(`🔒 Tier 1 (+0.30R) Risk-Free Lock for ${pos.symbol}: SL moved to Entry + 0.1R buffer @ $${pos.stopLossPrice}!`);
-          }
-        }
-
-        // Dynamic High-Water Mark Trailing: As price climbs higher, continuously trail SL 30% below highest peak
-        if (pos.highestProfitUSD >= initialRisk * 1.2) {
-          const dynamicLockUSD = pos.highestProfitUSD * 0.70; // 70% of peak profit locked
-          const lockDist = dynamicLockUSD / pos.quantity;
-          const dynamicSL = this.roundPrice(pos.type === "BUY" ? pos.entryPrice + lockDist : pos.entryPrice - lockDist);
-
-          if ((pos.type === "BUY" && dynamicSL > pos.stopLossPrice && dynamicSL < pos.currentPrice) ||
-              (pos.type === "SELL" && dynamicSL < pos.stopLossPrice && dynamicSL > pos.currentPrice)) {
-            pos.stopLossPrice = dynamicSL;
-            pos.trailingStopActive = true;
-            pos.lockedProfitUSD = Number(dynamicLockUSD.toFixed(2));
-          }
-        }
-
-        // 🔄 Live Exchange Bracket Synchronization: If SL or TP moved, modify the active bracket order on Delta Exchange via PUT /v2/orders/bracket
-        if (this.settings.mode === "LIVE" && (pos.stopLossPrice !== prevSL || pos.targetPrice !== prevTP)) {
-          deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch(err => {
-            console.warn(`[DeltaAutoTrader] Error updating live bracket order on ${pos.symbol}:`, err);
-          });
-        }
-
-        // Exit Check 2: Dynamic Peak Retracement Exit (If price retraces >= 35% from highest peak profit)
-        // Peak-Profit Lock: ONLY fire if trade is in strong profit (>= 0.6R) and pulling back from high peak (>= 1.5R)
-        if (pos.highestProfitUSD >= initialRisk * 1.5 && pnlUSD >= initialRisk * 0.6 && pnlUSD <= (pos.highestProfitUSD * 0.65)) {
-          const res = this.closePosition(pos.id, pos.currentPrice, "PEAK_RETRACEMENT_EXIT");
-          triggeredLogs.push(`🎯 Peak-Profit Banked: Auto-closed ${pos.symbol} in solid profit at +${pos.unrealizedPnLUSD} (Peak was +${pos.highestProfitUSD.toFixed(2)}) after 35% retracement!`);
+          const exitPrice = pos.targetPrice || pos.currentPrice;
+          const res = this.closePosition(pos.id, exitPrice, "TARGET_HIT");
+          const msg = `🎯 TARGET (TP) HIT: Successfully closed ${pos.type} ${pos.symbol} @ $${pos.currentPrice} (Target: $${pos.targetPrice} | PnL: +$${pnlUSD.toFixed(2)} USD / +₹${(pnlUSD * 83.5).toFixed(0)} INR)!`;
+          console.log(`[DeltaAutoTrader] ${msg}`);
+          triggeredLogs.push(msg);
           return;
         }
 
-        // Exit Check 3: Trailing Stop / Hard Stop-Loss Hit (Automatic market exit on Delta Exchange)
+        // 🛑 Exit Check 2: STRICT STOP LOSS (SL) HIT
         const isSLHit = pos.type === "BUY" ? pos.currentPrice <= pos.stopLossPrice : pos.currentPrice >= pos.stopLossPrice;
         if (isSLHit) {
-          const reason = pos.trailingStopActive ? "TRAILING_PROFIT_LOCKED" : "STOP_LOSS_HIT";
-          const res = this.closePosition(pos.id, pos.currentPrice, reason);
-          triggeredLogs.push(res.message);
+          const exitPrice = pos.stopLossPrice || pos.currentPrice;
+          const res = this.closePosition(pos.id, exitPrice, "STOP_LOSS_HIT");
+          const msg = `🛑 STOP LOSS (SL) HIT: Closed ${pos.type} ${pos.symbol} @ $${pos.currentPrice} (SL: $${pos.stopLossPrice} | PnL: -$${Math.abs(pnlUSD).toFixed(2)} USD).`;
+          console.log(`[DeltaAutoTrader] ${msg}`);
+          triggeredLogs.push(msg);
           return;
         }
 
-        // Exit Check 4: v3 Momentum Decay / Reversal Exit (2-4 Hours: In profit >= +0.4R earlier, now decaying toward scratch after 120m)
+        // ⏰ Exit Check 3: 24-Hour Swing Horizon Expiry (only after a full 24-hour day to prevent stale forgotten trades)
         const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
         const holdDurationMins = (now - entryMs) / 60000;
-        if (holdDurationMins >= 120 && pos.highestProfitUSD >= initialRisk * 0.20 && pnlUSD < initialRisk * 0.10) {
-          const res = this.closePosition(pos.id, pos.currentPrice, "EARLY_MOMENTUM_REVERSAL");
-          triggeredLogs.push(`⚠️ v3 Momentum Decay Exit: Closed ${pos.symbol} at scratch ($${pos.unrealizedPnLUSD}) after 2h+ hold before slipping negative.`);
-          return;
-        }
-
-        // Exit Check 5: v3 Stagnant Chop Stall Exit (Holding > 6 Hours with flat momentum < 0.20%)
-        if (holdDurationMins >= 360 && Math.abs(pos.unrealizedPnLPct) < 0.20) {
-          const res = this.closePosition(pos.id, pos.currentPrice, "TIME_STALL_EXIT");
-          triggeredLogs.push(`⏳ v3 6-Hour Stale Trade Exit: Closed ${pos.symbol} at scratch to release capital.`);
-          return;
-        }
-
-        // Exit Check 6: v3 24-Hour Swing Horizon Rule
         if (now >= pos.maxHoldTimeExpiry || holdDurationMins >= 1440) {
           const reason = pnlUSD > 0.05 ? "TARGET_HIT" : "MAX_TIME_24H";
           const res = this.closePosition(pos.id, pos.currentPrice, reason);
-          triggeredLogs.push(`⏰ v3 24-Hour Horizon Complete: Closed ${pos.symbol} @ $${pos.currentPrice} (${pnlUSD >= 0 ? "+$" + pnlUSD.toFixed(2) : "-$" + Math.abs(pnlUSD).toFixed(2)})`);
+          triggeredLogs.push(`⏰ 24-Hour Horizon Complete: Closed ${pos.symbol} @ $${pos.currentPrice} (${pnlUSD >= 0 ? "+$" + pnlUSD.toFixed(2) : "-$" + Math.abs(pnlUSD).toFixed(2)})`);
           return;
         }
       }

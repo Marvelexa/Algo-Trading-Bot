@@ -1,5 +1,32 @@
 [
   {
+    "id": "DAT-1788522488452-2119",
+    "symbol": "BTCUSD",
+    "type": "BUY",
+    "quantity": 0.0037,
+    "entryPrice": 81227.2,
+    "exitPrice": 79643.5,
+    "realizedPnLUSD": -6.46,
+    "realizedPnLPct": -2.15,
+    "confidenceScore": 93,
+    "outcome": "LOSS",
+    "exitReason": "STOP_LOSS_HIT",
+    "entryTimestamp": "2026-09-04 11:48:08",
+    "exitTimestamp": "2026-09-04 17:20:32",
+    "subScores": {
+      "trend": 35,
+      "momentum": 30,
+      "pattern": 18,
+      "volume": 5
+    },
+    "adxValue": 35.7,
+    "rsiValue": 43.5,
+    "atrValue": 812.27,
+    "entryEVUSD": 2.81,
+    "realizedRMultiple": -1.43,
+    "feeUSD": 0.6
+  },
+  {
     "id": "DAT-1788434423952-4352",
     "symbol": "LINKUSD",
     "type": "BUY",
