@@ -563,6 +563,17 @@ async function startServer() {
         console.log("[Server] 🚀 24/7 Delta Auto-Trader state hydrated from disk (.delta_auto_trader_state.json)");
       }
     }
+    const historyFile = path.join(process.cwd(), "public", "closed_trades_history.json");
+    if (fs.existsSync(historyFile)) {
+      const rawHistory = fs.readFileSync(historyFile, "utf-8");
+      if (rawHistory) {
+        const historyList = JSON.parse(rawHistory);
+        if (Array.isArray(historyList) && historyList.length > 0) {
+          (deltaAutoTraderEngine as any).applyParsedState({ closedRecords: historyList });
+          console.log(`[Server] 📜 Restored ${historyList.length} trades from public/closed_trades_history.json`);
+        }
+      }
+    }
   } catch (e) {
     console.warn("[Server] ⚠️ Could not hydrate delta state from disk:", e);
   }
@@ -649,8 +660,24 @@ async function startServer() {
   });
 
   app.post("/api/autotrader/state", (req, res) => {
-    // 🛡️ Protected: Server engine is the single source of truth!
+    try {
+      if (req.body) {
+        (deltaAutoTraderEngine as any).applyParsedState(req.body);
+        deltaAutoTraderEngine.saveToStorage();
+      }
+    } catch (e) {
+      console.warn("[Server] ⚠️ Failed to apply client state sync:", e);
+    }
     return res.json({ success: true, state: deltaAutoTraderEngine.getLiveFullState() });
+  });
+
+  app.get("/api/autotrader/trade-history", (req, res) => {
+    try {
+      const records = deltaAutoTraderEngine.getClosedRecords();
+      return res.json({ success: true, count: records.length, records });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
   });
 
   

@@ -71,7 +71,15 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const [status, setStatus] = useState<AutoTraderStatus>(DEFAULT_STATUS);
   const [settings, setSettings] = useState<AutoTraderSettings>(DEFAULT_SETTINGS);
   const [positions, setPositions] = useState<AutoTraderPosition[]>([]);
-  const [records, setRecords] = useState<AutoTraderClosedRecord[]>([]);
+  const [records, setRecords] = useState<AutoTraderClosedRecord[]>(() => {
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        const saved = localStorage.getItem("delta_permanent_trade_history_v1");
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [news, setNews] = useState<CryptoNewsItem[]>([]);
   const [mistakesList, setMistakesList] = useState<any[]>([]);
   const [latestAnalysis, setLatestAnalysis] = useState<any>({});
@@ -93,7 +101,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     return price.toFixed(6);
   };
 
-  // 🌐 Server-First State Poller with Instant Engine Fallback
+  // 🌐 Server-First State Poller with Permanent LocalStorage Shield
   const fetchServerState = useCallback(async () => {
     try {
       const res = await fetch("/api/autotrader/state");
@@ -102,7 +110,34 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         if (data?.success && data?.state) {
           if (data.state.settings) setSettings(data.state.settings);
           if (data.state.openPositions) setPositions(data.state.openPositions);
-          if (data.state.closedRecords) setRecords(data.state.closedRecords);
+          if (data.state.closedRecords) {
+            let finalRecords: AutoTraderClosedRecord[] = data.state.closedRecords;
+            // 🛡️ Dual-Storage Shield: Merge with local backup so server restarts NEVER wipe out trade log
+            try {
+              const localSaved = localStorage.getItem("delta_permanent_trade_history_v1");
+              if (localSaved) {
+                const parsedLocal = JSON.parse(localSaved);
+                if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                  const map = new Map<string, AutoTraderClosedRecord>();
+                  parsedLocal.forEach((r: AutoTraderClosedRecord) => map.set(r.id || `${r.symbol}_${r.exitTimestamp}`, r));
+                  finalRecords.forEach((r: AutoTraderClosedRecord) => map.set(r.id || `${r.symbol}_${r.exitTimestamp}`, r));
+                  finalRecords = Array.from(map.values()).sort((a, b) => 
+                    (new Date(b.exitTimestamp).getTime() || 0) - (new Date(a.exitTimestamp).getTime() || 0)
+                  );
+                  // If browser had more records than server (e.g. server rebooted), sync back to server
+                  if (finalRecords.length > data.state.closedRecords.length) {
+                    fetch("/api/autotrader/state", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ closedRecords: finalRecords })
+                    }).catch(() => {});
+                  }
+                }
+              }
+              localStorage.setItem("delta_permanent_trade_history_v1", JSON.stringify(finalRecords));
+            } catch (e) {}
+            setRecords(finalRecords);
+          }
           if (data.state.status) setStatus(data.state.status);
           if (data.state.cryptoNews) setNews(data.state.cryptoNews);
           if (data.state.mistakes) setMistakesList(data.state.mistakes);
@@ -120,7 +155,9 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
       if (localState && localState.openPositions && localState.openPositions.length > 0) {
         setSettings(localState.settings);
         setPositions(prev => prev.length > 0 ? prev : localState.openPositions);
-        setRecords(localState.closedRecords);
+        if (localState.closedRecords && localState.closedRecords.length > 0) {
+          setRecords(localState.closedRecords);
+        }
         setStatus(localState.status);
         setNews(localState.cryptoNews);
         if ((localState as any).mistakes) setMistakesList((localState as any).mistakes);

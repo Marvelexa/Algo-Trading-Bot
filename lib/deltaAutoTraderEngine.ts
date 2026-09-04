@@ -396,10 +396,20 @@ export class DeltaAutoTraderEngine {
         const fs = await import("fs");
         const path = await import("path");
         const filePath = path.join(process.cwd(), ".delta_auto_trader_state.json");
+        const historyPath = path.join(process.cwd(), "public", "closed_trades_history.json");
         if (fs.existsSync(filePath)) {
           const raw = fs.readFileSync(filePath, "utf-8");
           if (raw) {
             this.applyParsedState(JSON.parse(raw));
+          }
+        }
+        if (fs.existsSync(historyPath)) {
+          const rawHistory = fs.readFileSync(historyPath, "utf-8");
+          if (rawHistory) {
+            const historyList = JSON.parse(rawHistory);
+            if (Array.isArray(historyList) && historyList.length > 0) {
+              this.applyParsedState({ closedRecords: historyList });
+            }
           }
         }
       } catch (e) {}
@@ -468,17 +478,22 @@ export class DeltaAutoTraderEngine {
 
     }
     if (Array.isArray(parsed.closedRecords)) {
-      // Clean up / Delete corrupted price anomaly records
-      this.closedRecords = parsed.closedRecords.filter((r: any) => {
-        if (!r.symbol || !r.entryPrice || !r.exitPrice) return false;
-        if (r.exitReason === "TIME_STALL_EXIT") return false;
-        if (r.realizedPnLUSD <= -10) return false;
-        const baseline = this.getAssetBaselinePrice(r.symbol);
-        if (baseline > 0) {
-          if (r.entryPrice > baseline * 3 || r.entryPrice < baseline * 0.3) return false;
-          if (r.exitPrice > baseline * 3 || r.exitPrice < baseline * 0.3) return false;
+      // 🛡️ High-Fidelity Record Merging: Preserve all executed trades across server reboots & client syncs
+      const recordMap = new Map<string, AutoTraderClosedRecord>();
+      this.closedRecords.forEach(r => {
+        const key = r.id || `${r.symbol}_${r.exitTimestamp}`;
+        recordMap.set(key, r);
+      });
+      parsed.closedRecords.forEach((r: any) => {
+        if (r && r.symbol && r.entryPrice && r.exitPrice) {
+          const key = r.id || `${r.symbol}_${r.exitTimestamp}`;
+          recordMap.set(key, r);
         }
-        return true;
+      });
+      this.closedRecords = Array.from(recordMap.values()).sort((a, b) => {
+        const tA = new Date(a.exitTimestamp).getTime() || 0;
+        const tB = new Date(b.exitTimestamp).getTime() || 0;
+        return tB - tA;
       });
     }
     if (parsed.lastLossTimestamp) this.lastLossTimestamp = parsed.lastLossTimestamp;
@@ -610,6 +625,12 @@ export class DeltaAutoTraderEngine {
           import("path").then(path => {
             const filePath = path.join(process.cwd(), ".delta_auto_trader_state.json");
             fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+
+            // Also keep public/closed_trades_history.json updated so Git deployments & restarts never lose trade log!
+            if (Array.isArray(this.closedRecords) && this.closedRecords.length > 0) {
+              const historyPath = path.join(process.cwd(), "public", "closed_trades_history.json");
+              fs.writeFileSync(historyPath, JSON.stringify(this.closedRecords, null, 2), "utf-8");
+            }
           });
         }).catch(() => {});
       } catch (e) {}
@@ -2551,18 +2572,26 @@ export class DeltaAutoTraderEngine {
           swingLookback: 3
         });
 
-        if (pos.type === "BUY" && kamaSignal.action === "EXIT_LONG") {
-          const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
-          const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed LONG " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
-          console.log("[DeltaAutoTrader] " + msg);
-          logs.push(msg);
-          continue;
-        } else if (pos.type === "SELL" && kamaSignal.action === "EXIT_SHORT") {
-          const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
-          const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed SHORT " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
-          console.log("[DeltaAutoTrader] " + msg);
-          logs.push(msg);
-          continue;
+        // 🛡️ ANTI-WHIPSAW BREATHING ROOM (15-Minute / 1 Bar Grace Period):
+        // Never cut a trade on micro-wiggles within the first 15 minutes of entry.
+        // Hard Stop-Loss ($4.50 max cap) remains 100% active at all times to prevent real danger.
+        const holdTimeMs = Date.now() - (pos.entryTimeMs || Date.now());
+        const isInBreathingRoom = holdTimeMs < (15 * 60 * 1000);
+
+        if (!isInBreathingRoom) {
+          if (pos.type === "BUY" && kamaSignal.action === "EXIT_LONG") {
+            const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
+            const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed LONG " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
+            console.log("[DeltaAutoTrader] " + msg);
+            logs.push(msg);
+            continue;
+          } else if (pos.type === "SELL" && kamaSignal.action === "EXIT_SHORT") {
+            const res = this.closePosition(pos.id, currentPrice, "STRUCTURE_INVALIDATION_EXIT");
+            const msg = "⚡ KAMA STRUCTURE EARLY EXIT: Closed SHORT " + pos.symbol + " @ $" + currentPrice + " (PnL: $" + pnlUSD.toFixed(2) + " USD). Reason: " + kamaSignal.reason + ". Saved capital before full ATR SL hit!";
+            console.log("[DeltaAutoTrader] " + msg);
+            logs.push(msg);
+            continue;
+          }
         }
 
         if (pos.type === "BUY") {
@@ -2598,8 +2627,8 @@ export class DeltaAutoTraderEngine {
         }
 
         // 🎯 ACTION 1: INSTANT PROFIT TAKE EXIT IF IN GREEN (Save profit before it dumps!)
-        // 🛡️ ACTION 1A: FAST DEFENSIVE CUT IN RED (Exit early on heavy volume breakdown instead of bleeding full SL)
-        if (dangerDetected && pnlUSD <= -pos.initialRiskUSD * 0.45) {
+        // 🛡️ ACTION 1A: FAST DEFENSIVE CUT IN RED (Only after breathing room to avoid shaking out early)
+        if (!isInBreathingRoom && dangerDetected && pnlUSD <= -pos.initialRiskUSD * 0.45) {
           const res = this.closePosition(pos.id, currentPrice, "EARLY_MOMENTUM_REVERSAL");
           const msg = "🛡️ DEFENSIVE TREND CUT: Exited " + pos.symbol + " early at small loss ($" + pnlUSD.toFixed(2) + " USD) because " + dangerReason + ". Prevented full -1.0R Stop-Loss hit!";
           console.log("[DeltaAutoTrader] " + msg);
