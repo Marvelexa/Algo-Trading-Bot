@@ -289,6 +289,7 @@ export class DeltaAutoTraderEngine {
   private analysisCache: Map<string, MultiTimeframeAnalysis> = new Map();
   private latestPrices: Map<string, number> = new Map();
   private stoppedAssetCooldowns: Map<string, number> = new Map(); // Asset re-entry cooldown after SL
+  private lastClosedDirectionBySymbol: Map<string, { direction: "BUY" | "SELL"; timestamp: number }> = new Map();
   private isScanningLoopActive: boolean = false;
   // 🔄 Sequential 10-Coin Round-Robin Engine (5-min inspection per coin)
   private currentAssetIndex: number = 0;
@@ -2359,9 +2360,34 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `⏳ LOSS COOLDOWN ACTIVE: Paused for ${status.cooldownRemainingMins} more min(s) following recent loss.` };
     }
 
-    // 🛡️ STRICT DIVERSIFICATION: NO DUPLICATE COIN TRADES!
+    // 🛡️ 1. STRICT ASSET DIVERSIFICATION: NO DUPLICATE COIN TRADES!
     if (this.openPositions.some(p => p.symbol.toUpperCase().replace("USDT","").replace("USD","") === symbol.toUpperCase().replace("USDT","").replace("USD",""))) {
       return { success: false, message: `🔒 Asset ${symbol} already has an active open position. No duplicates allowed.` };
+    }
+
+    // 🛡️ 2. MUTUAL DIRECTIONAL EXCLUSIVITY (ZERO BUY/SELL OVERLAP ACROSS PORTFOLIO):
+    // All active positions in the bot must point in the SAME direction!
+    // If holding a SELL, new BUY trades are 100% BLOCKED.
+    // If holding a BUY, new SELL trades are 100% BLOCKED.
+    // Completely eliminates conflicting hedging, opposite whipsaws, and self-cannibalization!
+    const activeDirections = new Set(this.openPositions.map(p => p.type));
+    if (activeDirections.size > 0 && !activeDirections.has(analysis.direction)) {
+      const existingDirection = Array.from(activeDirections)[0];
+      return {
+        success: false,
+        message: `🛡️ Anti-Overlap Shield: Active ${existingDirection} position is running in the portfolio. Cannot open opposite ${analysis.direction} trade to prevent conflicting overlap.`
+      };
+    }
+
+    // 🛡️ 3. ANTI-WHIPSAW FLIP-FLOP COOLDOWN (15-Min Buffer between opposite directions on same coin):
+    const cleanSymUpper = symbol.toUpperCase().replace("USDT", "").replace("USD", "").trim();
+    const lastClosed = this.lastClosedDirectionBySymbol.get(cleanSymUpper);
+    if (lastClosed && lastClosed.direction !== analysis.direction && (Date.now() - lastClosed.timestamp < 15 * 60 * 1000)) {
+      const remainingMins = Math.ceil((15 * 60 * 1000 - (Date.now() - lastClosed.timestamp)) / 60000);
+      return {
+        success: false,
+        message: `⏳ Anti-Whipsaw Cooldown: ${symbol} recently closed a ${lastClosed.direction}. Waiting ${remainingMins}m before allowing reverse ${analysis.direction}.`
+      };
     }
 
     
@@ -2909,6 +2935,9 @@ export class DeltaAutoTraderEngine {
     } else if (outcome === "WIN") {
       this.consecutiveLossCount = 0;
     }
+
+    const cleanCloseSym = pos.symbol.toUpperCase().replace("USDT", "").replace("USD", "").trim();
+    this.lastClosedDirectionBySymbol.set(cleanCloseSym, { direction: pos.type, timestamp: Date.now() });
 
     this.openPositions = this.openPositions.filter(p => p.id !== positionId);
     this.closedRecords.unshift(record);
