@@ -58,7 +58,7 @@ const DEFAULT_SETTINGS: AutoTraderSettings = {
   maxTradesPerDay: 10,
   maxConcurrentPositions: 2,
   cooldownMinutesAfterLoss: 45,
-  minConfidenceThreshold: 55
+  minConfidenceThreshold: 88
 };
 
 export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({

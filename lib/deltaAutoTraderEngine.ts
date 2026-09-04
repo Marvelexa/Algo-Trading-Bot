@@ -269,7 +269,7 @@ export class DeltaAutoTraderEngine {
     maxDailyLossPct: 3.0,
     maxTradesPerDay: 10,
     cooldownMinutesAfterLoss: 45,
-    minConfidenceThreshold: 70,
+    minConfidenceThreshold: 88,
     leverage: 25,
     capitalPercentPerTrade: 25,
     maxConcurrentPositions: 2, // 🎯 SINGLE SNIPER MODE: Only 1 trade at a time with concentrated capital! (leaves 50% free margin buffer) (Pipelined 5-min round-robin) (Pipelined 5-min round-robin)
@@ -425,7 +425,7 @@ export class DeltaAutoTraderEngine {
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
       this.settings.maxTradesPerDay = 10;
       this.settings.maxConcurrentPositions = 2;
-      this.settings.minConfidenceThreshold = 70;
+      this.settings.minConfidenceThreshold = 88;
       this.settings.inspectionWindowMinutes = 5;
     }
     if (Array.isArray(parsed.openPositions)) {
@@ -568,7 +568,7 @@ export class DeltaAutoTraderEngine {
     this.settings.isEnabled = true;
     this.settings.maxConcurrentPositions = 1;
     this.settings.inspectionWindowMinutes = 5;
-    this.settings.minConfidenceThreshold = 70;
+    this.settings.minConfidenceThreshold = 88;
     this.settings.riskPerTradePct = 2.4;
     this.settings.currentCapitalUSD = this.settings.initialCapitalUSD;
     this.dailyStartCapitalUSD = this.settings.initialCapitalUSD;
@@ -2104,7 +2104,7 @@ export class DeltaAutoTraderEngine {
     let projectedProfitUSD = 0;
     let profitProbabilityPct = 50;
 
-    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 70;
+    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 88;
     const prevAnalysis = this.analysisCache.get(sym);
 
     // Anti-Flicker Hysteresis Filter (Prevents 2-minute flip-flopping across intra-candle ticks):
@@ -2306,7 +2306,7 @@ export class DeltaAutoTraderEngine {
 
     const isEntryValid = (
       direction !== "NEUTRAL" &&
-      overallScore >= (this.settings.minConfidenceThreshold || 70)
+      overallScore >= (this.settings.minConfidenceThreshold || 88)
     );
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
 
@@ -2860,52 +2860,55 @@ export class DeltaAutoTraderEngine {
   private logTradeMistake(record: AutoTraderClosedRecord) {
     if (record.realizedPnLUSD >= 0) return;
     try {
-      const fs = require("fs");
-      const path = require("path");
-      const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
-      
-      let mistakes = [];
-      if (fs.existsSync(mistakesPath)) {
-        mistakes = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
-      }
+      import("fs").then(fs => {
+        import("path").then(path => {
+          const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
+          
+          let mistakes = [];
+          if (fs.existsSync(mistakesPath)) {
+            try {
+              mistakes = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
+            } catch (e) {}
+          }
 
-      let rootCause = "TREND_REVERSAL_STOP_LOSS";
-      let analysis = `Trade entered at ${record.entryPrice} but price moved against entry, resulting in a ${record.realizedPnLUSD} loss.`;
-      let correction = ["Tighten Stop-Loss distance.", "Require ADX > 15 for stronger momentum before entering."];
+          let rootCause = "TREND_REVERSAL_STOP_LOSS";
+          let analysis = `Trade entered at ${record.entryPrice} but price moved against entry, resulting in a ${record.realizedPnLUSD} loss.`;
+          let correction = ["Tighten Stop-Loss distance.", "Require ADX > 15 for stronger momentum before entering."];
 
-      if (record.exitReason === "MANUAL_UI_CLOSE") {
-        rootCause = "MANUAL_ABORT_PREVENTATIVE_LOSS";
-        analysis = `User manually aborted the ${record.type} position at ${record.exitPrice} to prevent further drawdown. Bot failed to hit Take-Profit.`;
-        correction = ["Activate early breakeven shield at +0.35R.", "Enable faster dynamic trailing stops to lock profit early."];
-      } else if (record.exitReason === "TIME_STALL_EXIT") {
-        rootCause = "PROLONGED_CHOP_MOMENTUM_DECAY";
-        analysis = `Trade stalled for too long without hitting target. Exited due to momentum decay.`;
-      } else if (record.exitReason === "STOP_LOSS_HIT") {
-        rootCause = "HARD_STOP_LOSS_HIT";
-        analysis = `Market reversed sharply against the ${record.type} position, hitting safety stop-loss at ${record.exitPrice}.`;
-      }
+          if (record.exitReason === "MANUAL_UI_CLOSE") {
+            rootCause = "MANUAL_ABORT_PREVENTATIVE_LOSS";
+            analysis = `User manually aborted the ${record.type} position at ${record.exitPrice} to prevent further drawdown. Bot failed to hit Take-Profit.`;
+            correction = ["Activate early breakeven shield at +0.35R.", "Enable faster dynamic trailing stops to lock profit early."];
+          } else if (record.exitReason === "TIME_STALL_EXIT") {
+            rootCause = "PROLONGED_CHOP_MOMENTUM_DECAY";
+            analysis = `Trade stalled for too long without hitting target. Exited due to momentum decay.`;
+          } else if (record.exitReason === "STOP_LOSS_HIT") {
+            rootCause = "HARD_STOP_LOSS_HIT";
+            analysis = `Market reversed sharply against the ${record.type} position, hitting safety stop-loss at ${record.exitPrice}.`;
+          }
 
-      const mistakeData = {
-        id: `MSTK-${Date.now()}-${record.symbol}`,
-        timestamp: record.exitTimestamp,
-        symbol: record.symbol,
-        type: record.type,
-        entryPrice: record.entryPrice,
-        exitPrice: record.exitPrice,
-        lossUSD: record.realizedPnLUSD,
-        lossPct: record.realizedPnLPct,
-        confidenceScore: record.confidenceScore || 85,
-        primaryTrigger: `EMA 9/21 · ADX ${record.adxValue || 20}`,
-        rootCauseCategory: rootCause,
-        detailedMistakeAnalysis: analysis,
-        aiLearnedCorrections: correction
-      };
+          const mistakeData = {
+            id: `MSTK-${Date.now()}-${record.symbol}`,
+            timestamp: record.exitTimestamp,
+            symbol: record.symbol,
+            type: record.type,
+            entryPrice: record.entryPrice,
+            exitPrice: record.exitPrice,
+            lossUSD: record.realizedPnLUSD,
+            lossPct: record.realizedPnLPct,
+            confidenceScore: record.confidenceScore || 85,
+            primaryTrigger: `EMA 9/21 · ADX ${record.adxValue || 20}`,
+            rootCauseCategory: rootCause,
+            detailedMistakeAnalysis: analysis,
+            aiLearnedCorrections: correction
+          };
 
-      mistakes.unshift(mistakeData);
-      if (mistakes.length > 50) mistakes = mistakes.slice(0, 50);
-      
-      fs.writeFileSync(mistakesPath, JSON.stringify(mistakes, null, 2), "utf-8");
-      
+          mistakes.unshift(mistakeData);
+          if (mistakes.length > 50) mistakes = mistakes.slice(0, 50);
+          
+          fs.writeFileSync(mistakesPath, JSON.stringify(mistakes, null, 2), "utf-8");
+        }).catch(() => {});
+      }).catch(() => {});
     } catch(e) {
       console.warn("[AutoTrader] Error logging AI mistake:", e);
     }
@@ -3601,7 +3604,7 @@ export class DeltaAutoTraderEngine {
       const validScans = scans.filter((s): s is NonNullable<typeof s> => s !== null);
       validScans.sort((a, b) => b.analysis.overallScore - a.analysis.overallScore);
 
-      const bestCandidate = validScans.find(s => s.analysis.isEntryValid && s.analysis.direction !== "NEUTRAL" && s.analysis.overallScore >= (this.settings.minConfidenceThreshold || 55));
+      const bestCandidate = validScans.find(s => s.analysis.isEntryValid && s.analysis.direction !== "NEUTRAL" && s.analysis.overallScore >= (this.settings.minConfidenceThreshold || 88));
       if (bestCandidate) {
         const res = this.evaluateAndExecuteAutoTrade(
           bestCandidate.asset.symbol,
@@ -3622,7 +3625,7 @@ export class DeltaAutoTraderEngine {
       return {
         executed: false,
         message: top
-          ? `🔍 Market Scan: Best candidate is ${top.asset.tag} (${top.asset.symbol}) with Score ${top.analysis.overallScore}/100 [${top.analysis.direction}]. Threshold is ${this.settings.minConfidenceThreshold || 55}/100.`
+          ? `🔍 Market Scan: Best candidate is ${top.asset.tag} (${top.asset.symbol}) with Score ${top.analysis.overallScore}/100 [${top.analysis.direction}]. Threshold is ${this.settings.minConfidenceThreshold || 88}/100.`
           : "🔍 Market Scan completed: All assets currently in low-volatility consolidation."
       };
     }
@@ -3689,7 +3692,7 @@ export class DeltaAutoTraderEngine {
     }
 
     // 3. Inspection Completed! Evaluate Trade Decision:
-    if (analysis.isEntryValid && analysis.direction !== "NEUTRAL" && analysis.overallScore >= (this.settings.minConfidenceThreshold || 55)) {
+    if (analysis.isEntryValid && analysis.direction !== "NEUTRAL" && analysis.overallScore >= (this.settings.minConfidenceThreshold || 88)) {
       const res = this.evaluateAndExecuteAutoTrade(sym, candles15m, candles1h, candles4h, currentPrice);
       if (res.success && res.position) {
         this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
