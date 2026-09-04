@@ -3191,7 +3191,15 @@ export class DeltaAutoTraderEngine {
     const rollingCycleRemainingSeconds = rollingCycleTotalSeconds - cycleElapsedSeconds;
 
     const inspectionTotalSeconds = 15; // 15-second dedicated inspection window
-    const inspectionElapsedSeconds = this.inspectionStartTimeMs > 0 ? Math.floor((now - this.inspectionStartTimeMs) / 1000) : 0;
+    if (this.inspectionStartTimeMs === 0) {
+      this.inspectionStartTimeMs = now;
+    }
+    const elapsedInspectionMs = now - this.inspectionStartTimeMs;
+    if (elapsedInspectionMs >= inspectionTotalSeconds * 1000) {
+      this.currentAssetIndex = (this.currentAssetIndex + 1) % CURATED_AUTO_TRADER_ASSETS.length;
+      this.inspectionStartTimeMs = now;
+    }
+    const inspectionElapsedSeconds = Math.floor((now - this.inspectionStartTimeMs) / 1000);
     const inspectionRemainingSeconds = Math.max(0, inspectionTotalSeconds - inspectionElapsedSeconds);
 
     const safeIndex = this.currentAssetIndex % CURATED_AUTO_TRADER_ASSETS.length;

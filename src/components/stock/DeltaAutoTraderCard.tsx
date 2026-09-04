@@ -170,6 +170,22 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     fetchServerState();
     const serverPollInterval = setInterval(fetchServerState, 1500);
 
+    // ⏱️ Smooth 1-Second Countdown Ticker for Analysis Timer (15s -> 0s):
+    const countdownInterval = setInterval(() => {
+      setStatus(prev => {
+        if (!prev?.currentInspection) return prev;
+        const currentRem = prev.currentInspection.inspectionRemainingSeconds;
+        const nextRem = (typeof currentRem === "number" && currentRem > 0) ? currentRem - 1 : 15;
+        return {
+          ...prev,
+          currentInspection: {
+            ...prev.currentInspection,
+            inspectionRemainingSeconds: nextRem
+          }
+        };
+      });
+    }, 1000);
+
     // 📱 Screen WakeLock: Prevents mobile and laptop screen from sleeping while Auto-Trader is running
     let wakeLockSentinel: any = null;
     const requestWakeLock = async () => {
@@ -196,6 +212,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
 
     return () => {
       clearInterval(serverPollInterval);
+      clearInterval(countdownInterval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (wakeLockSentinel && typeof wakeLockSentinel.release === "function") {
         wakeLockSentinel.release().catch(() => {});
