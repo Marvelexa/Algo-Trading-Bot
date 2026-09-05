@@ -420,7 +420,12 @@ export class DeltaAutoTraderEngine {
   private applyParsedState(parsed: any) {
     if (!parsed) return;
     if (parsed.settings) {
+      const wasEnabled = this.settings.isEnabled;
       this.settings = { ...this.settings, ...parsed.settings };
+      // Prevent stale background state syncs or restored snapshots from silently turning bot ON if it was OFF
+      if (!wasEnabled && parsed.settings.isEnabled !== undefined) {
+        this.settings.isEnabled = false;
+      }
       this.settings.initialCapitalUSD = 180.00; // ₹15,000 INR Base Capital
       this.settings.currentCapitalUSD = 180.00;
       this.settings.riskPerTradePct = 2.4; // 2.4% risk ($4.70-$5.00) -> $9.60-$10.80 (+₹800-₹900) Target!
@@ -595,9 +600,9 @@ export class DeltaAutoTraderEngine {
     this.lastLossTimestamp = 0;
     this.dailyStartCapitalUSD = this.settings.currentCapitalUSD;
     this.tradesTakenTodayCount = this.openPositions.length;
-    this.settings.isEnabled = true;
+    this.settings.isEnabled = false; // Keep OFF until user explicitly clicks Start!
     this.saveToStorage();
-    return { success: true, message: "Circuit breaker cleared! Bot resumed active trading." };
+    return { success: true, message: "Circuit breaker cleared! Bot is PAUSED (OFF). Click Start Auto-Trader to resume." };
   }
 
   public resetDailyCounters() {
@@ -644,10 +649,8 @@ export class DeltaAutoTraderEngine {
             fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
 
             // Also keep public/closed_trades_history.json updated so Git deployments & restarts never lose trade log!
-            if (Array.isArray(this.closedRecords) && this.closedRecords.length > 0) {
-              const historyPath = path.join(process.cwd(), "public", "closed_trades_history.json");
-              fs.writeFileSync(historyPath, JSON.stringify(this.closedRecords, null, 2), "utf-8");
-            }
+            const historyPath = path.join(process.cwd(), "public", "closed_trades_history.json");
+            fs.writeFileSync(historyPath, JSON.stringify(this.closedRecords || [], null, 2), "utf-8");
           });
         }).catch(() => {});
       } catch (e) {}

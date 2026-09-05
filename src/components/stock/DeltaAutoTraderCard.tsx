@@ -89,6 +89,7 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   const [diagnostics, setDiagnostics] = useState<ScanDiagnosticReport | null>(null);
   const [isForcing, setIsForcing] = useState<boolean>(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const USD_TO_INR = 83.50;
   const isSettingsLocked = positions.length > 0;
@@ -112,29 +113,26 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           if (data.state.openPositions) setPositions(data.state.openPositions);
           if (data.state.closedRecords) {
             let finalRecords: AutoTraderClosedRecord[] = data.state.closedRecords;
-            // 🛡️ Dual-Storage Shield: Merge with local backup so server restarts NEVER wipe out trade log
             try {
-              const localSaved = localStorage.getItem("delta_permanent_trade_history_v1");
-              if (localSaved) {
-                const parsedLocal = JSON.parse(localSaved);
-                if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
-                  const map = new Map<string, AutoTraderClosedRecord>();
-                  parsedLocal.forEach((r: AutoTraderClosedRecord) => map.set(r.id || `${r.symbol}_${r.exitTimestamp}`, r));
-                  finalRecords.forEach((r: AutoTraderClosedRecord) => map.set(r.id || `${r.symbol}_${r.exitTimestamp}`, r));
-                  finalRecords = Array.from(map.values()).sort((a, b) => 
-                    (new Date(b.exitTimestamp).getTime() || 0) - (new Date(a.exitTimestamp).getTime() || 0)
-                  );
-                  // If browser had more records than server (e.g. server rebooted), sync back to server
-                  if (finalRecords.length > data.state.closedRecords.length) {
-                    fetch("/api/autotrader/state", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ closedRecords: finalRecords })
-                    }).catch(() => {});
+              if (data.state.closedRecords.length === 0) {
+                // Server is clean / reset - clear local backup so old trades do not resurrect
+                localStorage.setItem("delta_permanent_trade_history_v1", JSON.stringify([]));
+                finalRecords = [];
+              } else {
+                const localSaved = localStorage.getItem("delta_permanent_trade_history_v1");
+                if (localSaved) {
+                  const parsedLocal = JSON.parse(localSaved);
+                  if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                    const map = new Map<string, AutoTraderClosedRecord>();
+                    parsedLocal.forEach((r: AutoTraderClosedRecord) => map.set(r.id || `${r.symbol}_${r.exitTimestamp}`, r));
+                    finalRecords.forEach((r: AutoTraderClosedRecord) => map.set(r.id || `${r.symbol}_${r.exitTimestamp}`, r));
+                    finalRecords = Array.from(map.values()).sort((a, b) => 
+                      (new Date(b.exitTimestamp).getTime() || 0) - (new Date(a.exitTimestamp).getTime() || 0)
+                    );
                   }
                 }
+                localStorage.setItem("delta_permanent_trade_history_v1", JSON.stringify(finalRecords));
               }
-              localStorage.setItem("delta_permanent_trade_history_v1", JSON.stringify(finalRecords));
             } catch (e) {}
             setRecords(finalRecords);
           }
@@ -443,31 +441,60 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   };
 
   const handleResetTrades = async () => {
+    if (isResetting) return;
+    if (!confirm("Are you sure you want to reset all trades, wipe counters, and turn the bot OFF?")) return;
+    setIsResetting(true);
+    setNotification("🧹 Resetting trades, clearing storage, and setting bot OFF...");
+
+    // 1. Immediately turn bot OFF in React state so UI updates instantly
+    setSettings(prev => ({ ...prev, isEnabled: false }));
+    setStatus(prev => ({ ...prev, botState: "PAUSED" }));
+    setPositions([]);
+    setRecords([]);
+
+    // 2. Clear browser localStorage backups so fetchServerState does not re-upload old trades
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.removeItem("delta_autotrader_state_v3");
+        window.localStorage.removeItem("delta_permanent_trade_history_v1");
+        window.localStorage.setItem("delta_permanent_trade_history_v1", JSON.stringify([]));
+      } catch (e) {}
+    }
+
+    // 3. Reset client engine instance
     try {
-      const res = await fetch("/api/autotrader/reset", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        setNotification(data?.message || "🧹 Trades reset successfully & Bot set to OFF.");
-      }
+      deltaAutoTraderEngine.resetSystemCleanly();
+      deltaAutoTraderEngine.toggleBot(false);
     } catch (e) {}
 
     try {
-      deltaAutoTraderEngine.resetSystemCleanly();
-      const local = deltaAutoTraderEngine.getLiveFullState();
-      if (local) {
-        setSettings(local.settings);
-        setPositions(local.openPositions);
-        setRecords(local.closedRecords);
-        setStatus(local.status);
-      }
-      if (typeof window !== "undefined" && window.localStorage) {
-        window.localStorage.removeItem("delta_autotrader_state_v3");
-      }
-      setNotification("🧹 Trades reset successfully & Bot set to OFF.");
-    } catch (err) {}
+      // 4. Send explicit toggle OFF to server
+      await fetch("/api/autotrader/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled: false })
+      });
 
-    fetchServerState();
-    setTimeout(() => setNotification(null), 5000);
+      // 5. Send reset request to server
+      const res = await fetch("/api/autotrader/reset", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state) {
+          if (data.state.settings) setSettings({ ...data.state.settings, isEnabled: false });
+          if (data.state.openPositions) setPositions(data.state.openPositions);
+          if (data.state.closedRecords) setRecords(data.state.closedRecords);
+          if (data.state.status) setStatus({ ...data.state.status, botState: "PAUSED" });
+        }
+        setNotification(data?.message || "🧹 Trades reset successfully & Bot is now OFF.");
+      }
+    } catch (e) {
+      console.error("Reset trades error:", e);
+      setNotification("🧹 Trades reset & Bot set to OFF.");
+    } finally {
+      setIsResetting(false);
+      fetchServerState();
+      setTimeout(() => setNotification(null), 5000);
+    }
   };
 
   const handleClosePosition = async (positionId: string, currentPrice: number) => {
@@ -1032,10 +1059,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
               </h3>
               <button
                 onClick={handleResetTrades}
-                className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold text-[10px] transition flex items-center gap-1 cursor-pointer"
+                disabled={isResetting}
+                className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold text-[10px] transition flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Reset all trades, clear counters, and ensure bot is turned OFF"
               >
-                <X className="w-3 h-3" />
-                🧹 Reset Trades & Set Bot OFF
+                <X className={`w-3 h-3 ${isResetting ? "animate-spin" : ""}`} />
+                {isResetting ? "Resetting & Turning OFF..." : "🧹 Reset Trades & Set Bot OFF"}
               </button>
             </div>
 

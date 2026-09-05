@@ -765,8 +765,21 @@ async function startServer() {
 
   app.post("/api/autotrader/reset", (req, res) => {
     try {
+      deltaAutoTraderEngine.toggleBot(false);
+      try {
+        deltaAutoTraderEngine.closeAllOpenPositions("MANUAL_EXIT");
+      } catch (e) {}
       const result = deltaAutoTraderEngine.resetSystemCleanly();
-      return res.json({ success: true, message: result.message, state: deltaAutoTraderEngine.getLiveFullState() });
+      deltaAutoTraderEngine.toggleBot(false);
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      fullState.settings.isEnabled = false;
+      fullState.status.botState = "PAUSED";
+      try {
+        fs.writeFileSync(DELTA_STATE_FILE, JSON.stringify(fullState, null, 2), "utf-8");
+        const historyFile = path.join(process.cwd(), "public", "closed_trades_history.json");
+        fs.writeFileSync(historyFile, JSON.stringify([], null, 2), "utf-8");
+      } catch (e) {}
+      return res.json({ success: true, message: result.message, state: fullState });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -775,7 +788,11 @@ async function startServer() {
   app.post("/api/autotrader/reset-circuit-breaker", (req, res) => {
     try {
       const result = deltaAutoTraderEngine.resetCircuitBreaker();
-      return res.json({ success: true, message: result.message, state: deltaAutoTraderEngine.getLiveFullState() });
+      const fullState = deltaAutoTraderEngine.getLiveFullState();
+      try {
+        fs.writeFileSync(DELTA_STATE_FILE, JSON.stringify(fullState, null, 2), "utf-8");
+      } catch (e) {}
+      return res.json({ success: true, message: result.message, state: fullState });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
