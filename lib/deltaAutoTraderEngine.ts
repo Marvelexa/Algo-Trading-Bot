@@ -1720,6 +1720,127 @@ export class DeltaAutoTraderEngine {
     };
   }
 
+  // ────────────────────────────────────────────
+  // 💥 QUANT VOLATILITY IMPULSE BOOM & CASCADE DUMP ENGINE (Whale Breakout / Crash Mode)
+  // ────────────────────────────────────────────
+  public detectVolatilityImpulseBoom(bars: OHLCVBar[], currentPrice: number): {
+    isImpulse: boolean;
+    signal: "BUY" | "SELL" | "NEUTRAL";
+    setupName: string;
+    score: number;
+    detail: string;
+    slPrice: number;
+    tpMultiplier: number;
+  } {
+    if (!bars || bars.length < 8) {
+      return { isImpulse: false, signal: "NEUTRAL", setupName: "NONE", score: 50, detail: "", slPrice: 0, tpMultiplier: 2.5 };
+    }
+
+    const last = bars[bars.length - 1];
+    const prev = bars[bars.length - 2];
+    if (!last || !prev) {
+      return { isImpulse: false, signal: "NEUTRAL", setupName: "NONE", score: 50, detail: "", slPrice: 0, tpMultiplier: 2.5 };
+    }
+
+    const lookback = Math.min(15, bars.length - 1);
+    const contextBars = bars.slice(-lookback - 1, -1);
+    const avgRange = Math.max(0.0001, contextBars.reduce((sum, b) => sum + (b.high - b.low), 0) / contextBars.length);
+    const avgVolume = Math.max(1, contextBars.reduce((sum, b) => sum + (b.volume || 1), 0) / contextBars.length);
+    const highestHighContext = Math.max(...contextBars.map(b => b.high));
+    const lowestLowContext = Math.min(...contextBars.map(b => b.low));
+
+    const curRange = Math.max(0.0001, last.high - last.low);
+    const curBody = Math.abs(last.close - last.open);
+    const curVolume = last.volume || 1;
+    const bodyRatio = curBody / curRange;
+    const rangeExpansion = curRange / avgRange;
+    const volumeExpansion = curVolume / avgVolume;
+
+    const isGreen = last.close >= last.open;
+    const isRed = last.close < last.open;
+    const upperWick = last.high - Math.max(last.close, last.open);
+    const lowerWick = Math.min(last.close, last.open) - last.low;
+    const upperWickRatio = upperWick / curRange;
+    const lowerWickRatio = lowerWick / curRange;
+
+    // 💥 1. BULLISH EXPLOSIVE BOOM (Screenshot 1: Huge Green Breakout Candle)
+    const isBreakoutResistance = last.close > highestHighContext;
+    const isStrongGreenExpansion = isGreen && rangeExpansion >= 1.4 && bodyRatio >= 0.52 && upperWickRatio <= 0.30;
+    if (isStrongGreenExpansion && (isBreakoutResistance || rangeExpansion >= 1.9) && (volumeExpansion >= 1.15 || rangeExpansion >= 2.2)) {
+      return {
+        isImpulse: true,
+        signal: "BUY",
+        setupName: "VOLATILITY_BOOM_BREAKOUT",
+        score: 96,
+        detail: `💥 VOLATILITY BOOM: Explosive Green Breakout (${rangeExpansion.toFixed(1)}x ATR range, ${volumeExpansion.toFixed(1)}x Vol) breaking resistance ($${highestHighContext}). Whales driving impulse surge!`,
+        slPrice: this.roundPrice(Math.min(last.low, prev.low) * 0.996),
+        tpMultiplier: 3.0
+      };
+    }
+
+    // 🚀 1B. CONSECUTIVE BULLISH ACCELERATION (Two consecutive green expanding bars)
+    const prevRange = prev.high - prev.low;
+    const isPrevGreen = prev.close >= prev.open;
+    if (isGreen && isPrevGreen && last.close > prev.high && (curRange + prevRange) >= 2.2 * avgRange && volumeExpansion >= 1.1) {
+      return {
+        isImpulse: true,
+        signal: "BUY",
+        setupName: "CONSECUTIVE_BULLISH_SURGE",
+        score: 95,
+        detail: `🚀 BULLISH SURGE: Back-to-back expanding green candles surging with volume continuation!`,
+        slPrice: this.roundPrice(prev.low * 0.996),
+        tpMultiplier: 2.8
+      };
+    }
+
+    // 🚨 2. BEARISH EXPLOSIVE DUMP (Screenshot 2: Violent Red Breakdown Candle)
+    const isBreakdownSupport = last.close < lowestLowContext;
+    const isStrongRedExpansion = isRed && rangeExpansion >= 1.4 && bodyRatio >= 0.52 && lowerWickRatio <= 0.30;
+    if (isStrongRedExpansion && (isBreakdownSupport || rangeExpansion >= 1.9) && (volumeExpansion >= 1.15 || rangeExpansion >= 2.2)) {
+      return {
+        isImpulse: true,
+        signal: "SELL",
+        setupName: "VOLATILITY_DUMP_BREAKDOWN",
+        score: 96,
+        detail: `🚨 VOLATILITY DUMP: Violent Red Breakdown (${rangeExpansion.toFixed(1)}x ATR range, ${volumeExpansion.toFixed(1)}x Vol) slicing support ($${lowestLowContext}). Whales dumping supply!`,
+        slPrice: this.roundPrice(Math.max(last.high, prev.high) * 1.004),
+        tpMultiplier: 3.0
+      };
+    }
+
+    // 🌊 3. WATERFALL CASCADE DUMP (Screenshot 3: Multi-Candle Freefall)
+    if (bars.length >= 3) {
+      const b0 = bars[bars.length - 1];
+      const b1 = bars[bars.length - 2];
+      const b2 = bars[bars.length - 3];
+      const is3ConsecutiveRed = (b0.close < b0.open) && (b1.close < b1.open) && (b2.close < b2.open);
+      const isProgressivelyLower = (b0.close < b1.close) && (b1.close < b2.close);
+      const cascadeDrop = (b2.open - b0.close);
+
+      if (is3ConsecutiveRed && isProgressivelyLower && cascadeDrop >= 1.8 * avgRange) {
+        return {
+          isImpulse: true,
+          signal: "SELL",
+          setupName: "WATERFALL_CASCADE_FREEFALL",
+          score: 95,
+          detail: `🌊 WATERFALL CASCADE: 3 consecutive expanding red candles in freefall (${(cascadeDrop / avgRange).toFixed(1)}x ATR displacement). Bearish trend wave active!`,
+          slPrice: this.roundPrice(b1.high * 1.004),
+          tpMultiplier: 2.8
+        };
+      }
+    }
+
+    return {
+      isImpulse: false,
+      signal: "NEUTRAL",
+      setupName: "NONE",
+      score: 50,
+      detail: "",
+      slPrice: 0,
+      tpMultiplier: 2.5
+    };
+  }
+
   public analyzeMultiTimeframe(symbol: string, bars15m: OHLCVBar[], bars1h: OHLCVBar[], bars4h: OHLCVBar[]): MultiTimeframeAnalysis {
     const sym = (symbol || "BTCUSD").toUpperCase().trim();
 
@@ -1835,6 +1956,7 @@ export class DeltaAutoTraderEngine {
     // 3. 15-Minute Multi-Candle Pattern Recognition & Trigger
     const bars15mUse = bars15m && bars15m.length >= 5 ? bars15m : bars1h.slice(-5);
     const patternInfo = this.detect15mCandlePattern(bars15mUse);
+    const impulse = this.detectVolatilityImpulseBoom(bars15mUse, currentPrice);
     const avgVol15m = bars15mUse.slice(-5).reduce((a, b) => a + (b.volume || 1), 0) / 5;
     const last15m = bars15mUse[bars15mUse.length - 1];
     const prev15m = bars15mUse.length >= 2 ? bars15mUse[bars15mUse.length - 2] : last15m;
@@ -1857,8 +1979,22 @@ export class DeltaAutoTraderEngine {
     const is15mBreakdown = last15m.close < prev15m.low;
     const is15mBreakout = last15m.close > prev15m.high;
 
-    let bullPatternPoints = patternInfo.signal === "BULLISH" ? Math.max(25, patternInfo.score) : (is15mBreakout ? 25 : is15mGreen ? 18 : 0);
-    let bearPatternPoints = patternInfo.signal === "BEARISH" ? Math.max(25, patternInfo.score) : (is15mBreakdown ? 25 : is15mRed ? 18 : 0);
+    let bullPatternPoints = impulse.isImpulse && impulse.signal === "BUY"
+      ? 45
+      : patternInfo.signal === "BULLISH" ? Math.max(25, patternInfo.score) : (is15mBreakout ? 25 : is15mGreen ? 18 : 0);
+    let bearPatternPoints = impulse.isImpulse && impulse.signal === "SELL"
+      ? 45
+      : patternInfo.signal === "BEARISH" ? Math.max(25, patternInfo.score) : (is15mBreakdown ? 25 : is15mRed ? 18 : 0);
+
+    if (impulse.isImpulse) {
+      if (impulse.signal === "BUY") {
+        bullMomPoints += 30;
+        bullTrendPoints += 25;
+      } else if (impulse.signal === "SELL") {
+        bearMomPoints += 30;
+        bearTrendPoints += 25;
+      }
+    }
 
     // Add CVD Institutional Flow Bonuses:
     if (buyVolRatio >= 0.60) bullPatternPoints += 10;
@@ -2017,12 +2153,14 @@ export class DeltaAutoTraderEngine {
       learnedBearPenalty += 25;
     }
 
-    // Z-Score Outlier Overbought/Oversold Guards
-    if (zScore15m <= -2.2 || rsi15m < 32) {
-      learnedBearPenalty += 25;
-    }
-    if (zScore15m >= 2.2 || rsi15m > 68) {
-      learnedBullPenalty += 25;
+    // Z-Score Outlier Overbought/Oversold Guards (Bypassed during true Volatility Impulse Booms/Dumps)
+    if (!impulse.isImpulse) {
+      if (zScore15m <= -2.2 || rsi15m < 32) {
+        learnedBearPenalty += 25;
+      }
+      if (zScore15m >= 2.2 || rsi15m > 68) {
+        learnedBullPenalty += 25;
+      }
     }
 
     // CVD Volume Delta Traps
@@ -2274,8 +2412,17 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = masterMove.score;
     }
 
-    // 🛡️ STRICT ANTI-TOP-BUYING GUARD (Never buy overbought climax top):
-    if (direction === "BUY" && (rsi15m >= 72 || currentPrice > ema21_15m * 1.018)) {
+    // 💥💥💥 VOLATILITY IMPULSE BOOM & CASCADE DUMP OVERRIDE 💥💥💥
+    // When a true breakout boom or waterfall dump happens (as in user screenshots 1, 2, 3):
+    // Highest priority in the engine! Whales are active!
+    if (impulse.isImpulse && impulse.signal !== "NEUTRAL") {
+      direction = impulse.signal;
+      overallScore = Math.max(overallScore, impulse.score);
+      profitProbabilityPct = impulse.score;
+    }
+
+    // 🛡️ STRICT ANTI-TOP-BUYING GUARD (Only applies to slow pullbacks, NOT explosive impulse breakouts):
+    if (!impulse.isImpulse && direction === "BUY" && (rsi15m >= 72 || currentPrice > ema21_15m * 1.018)) {
       direction = "NEUTRAL";
       overallScore = 38;
       profitProbabilityPct = 38;
@@ -2288,10 +2435,11 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = 88;
     }
 
-    // 🎯 SNIPER PULLBACK ZONE CONFIRMATION (Filters out 90% of false breakout tops):
-    // Buy is ONLY valid when price is near EMA 9 (not stretched) and RSI is in the healthy launch pocket (<= 62)
-    const isStretchedBuy = currentPrice > (ema9_15m * 1.006) || rsi15m > 62;
-    const isStretchedSell = currentPrice < (ema9_15m * 0.994) || rsi15m < 38;
+    // 🎯 SNIPER PULLBACK ZONE CONFIRMATION:
+    // Normal pullbacks require being near EMA 9.
+    // 💥 EXEMPTION: Volatility Booms / Dumps are explosive momentum expansions, NOT pullbacks!
+    const isStretchedBuy = !impulse.isImpulse && (currentPrice > (ema9_15m * 1.006) || rsi15m > 62);
+    const isStretchedSell = !impulse.isImpulse && (currentPrice < (ema9_15m * 0.994) || rsi15m < 38);
 
     if (direction === "BUY" && isStretchedBuy) {
       direction = "NEUTRAL";
@@ -2303,17 +2451,16 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = 42;
     }
 
-    const isFreshOrPullback = direction === "BUY" ? (rsi15m <= 62 && rsi15m >= 38) : (rsi15m >= 38 && rsi15m <= 62);
+    const isFreshOrPullback = impulse.isImpulse ? true : (direction === "BUY" ? (rsi15m <= 62 && rsi15m >= 38) : (rsi15m >= 38 && rsi15m <= 62));
 
-    // 🛑 STRICT 4-HOUR MACRO TREND LAW (Zero Counter-Trend Trades):
-    // 15m/1h signals can NEVER trade against the 4-Hour Trend boss!
-    // If 4H is BULLISH: SELL is 100% FORBIDDEN (Eliminates suicidal shorts during pumps).
-    // If 4H is BEARISH: BUY is 100% FORBIDDEN (Eliminates catching falling knives).
+    // 🛑 4-HOUR MACRO TREND LAW:
+    // 15m pullbacks cannot fight the 4H trend.
+    // BUT an Institutional Impulse Boom/Dump (Whale surge) CAN initiate a trend reversal!
     let isTrendBlocked = false;
-    if (fourHourTrend === "BULLISH" && direction === "SELL") {
+    if (fourHourTrend === "BULLISH" && direction === "SELL" && !impulse.isImpulse) {
       direction = "NEUTRAL";
       isTrendBlocked = true;
-    } else if (fourHourTrend === "BEARISH" && direction === "BUY") {
+    } else if (fourHourTrend === "BEARISH" && direction === "BUY" && !impulse.isImpulse) {
       direction = "NEUTRAL";
       isTrendBlocked = true;
     }
@@ -2323,16 +2470,21 @@ export class DeltaAutoTraderEngine {
       !isTrendBlocked &&
       overallScore >= (this.settings.minConfidenceThreshold || 88)
     );
-    const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
+    const fifteenMinTrigger = impulse.isImpulse
+      ? (impulse.signal === "BUY" ? "VOLATILITY_BOOM_IMPULSE" : "VOLATILITY_DUMP_IMPULSE")
+      : (patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL");
 
     let trendContextStr = fourHourTrend;
-    if (is4hBottomReversal) trendContextStr = "4h Bottom Reversal (Accumulation)";
-    if (is4hTopReversal) trendContextStr = "4h Top Reversal (Distribution)";
+    if (impulse.isImpulse) trendContextStr = `Whale Impulse (${impulse.setupName})`;
+    else if (is4hBottomReversal) trendContextStr = "4h Bottom Reversal (Accumulation)";
+    else if (is4hTopReversal) trendContextStr = "4h Top Reversal (Distribution)";
 
     const tpPct = Number(((tpDist / currentPrice) * 100).toFixed(2));
     const slPct = Number(((slDist / currentPrice) * 100).toFixed(2));
 
-    const reasoning = isEntryValid
+    const reasoning = impulse.isImpulse
+      ? `💥 ${impulse.detail} · Score: ${overallScore}/100 [Target: +${tpPct}% · SL: -${slPct}%]`
+      : isEntryValid
       ? `🎯 QUANT ADAPTIVE [${direction}]: (${profitProbabilityPct}% Score). Structure: ${kamaComposite?.structureSignal || patternInfo.pattern} | ER: ${kamaComposite?.efficiencyRatio || 0} | ADX: ${kamaComposite?.adxValue || 0} | Target: +${tpPct}% · SL: -${slPct}%. 4h [${trendContextStr}].`
       : `⏳ 2-HOUR AI SCAN [FILTERED]: 2h Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Conviction < ${minEntryThreshold} or chop present (ADX ${adx4h.toFixed(1)}, Hurst ${hurst1h}). Auto-skipping.`;
 
@@ -2401,6 +2553,15 @@ export class DeltaAutoTraderEngine {
       return { success: false, message: `🔒 Asset ${symbol} already has an active open position. No duplicates allowed.` };
     }
 
+    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
+      return { success: false, message: `🔒 ALL ${this.settings.maxConcurrentPositions} SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
+    }
+
+    const analysis = this.analyzeMultiTimeframe(symbol, bars15m, bars1h, bars4h);
+    if (!analysis.isEntryValid || analysis.direction === "NEUTRAL") {
+      return { success: false, message: `⏳ WAIT MODE: ${analysis.reasoning}` };
+    }
+
     // 🛡️ 2. MUTUAL DIRECTIONAL EXCLUSIVITY (ZERO BUY/SELL OVERLAP ACROSS PORTFOLIO):
     // All active positions in the bot must point in the SAME direction!
     // If holding a SELL, new BUY trades are 100% BLOCKED.
@@ -2426,19 +2587,9 @@ export class DeltaAutoTraderEngine {
       };
     }
 
-    
-    if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
-      return { success: false, message: `🔒 ALL 7 SLOTS OCCUPIED: Currently running ${this.openPositions.length}/${this.settings.maxConcurrentPositions} active positions.` };
-    }
-
-    const analysis = this.analyzeMultiTimeframe(symbol, bars15m, bars1h, bars4h);
-    if (!analysis.isEntryValid || analysis.direction === "NEUTRAL") {
-      return { success: false, message: `⏳ WAIT MODE: ${analysis.reasoning}` };
-    }
-
-    // 🛡️ DIRECTIONAL CONCENTRATION CAP (Max 3 same-direction positions out of 7 slots)
+    // 🛡️ DIRECTIONAL CONCENTRATION CAP (Max 2 same-direction positions)
     // Prevents herd trading ("sab me BUY" ya "sab me SELL")
-    const maxSameDirection = 2; // Option 1: 2 Power Slots so 3rd slot is reserved for SELL!
+    const maxSameDirection = 2;
     const sameDirectionCount = this.openPositions.filter(p => p.type === analysis.direction).length;
     if (sameDirectionCount >= maxSameDirection) {
       return {
@@ -2452,10 +2603,14 @@ export class DeltaAutoTraderEngine {
     const price = (liveTick > 0 && liveTick > baseline * 0.1 && liveTick < baseline * 10)
       ? liveTick
       : (currentPriceUSD > 0 ? currentPriceUSD : (bars15m[bars15m.length - 1]?.close || bars1h[bars1h.length - 1]?.close || baseline));
+    
+    // Check if this trade is an explosive Volatility Impulse Boom or Dump
+    const impulse = this.detectVolatilityImpulseBoom(bars15m, price);
+
     // 🎯 SINGLE SOURCE OF TRUTH: Directly query getTradeSignal for unified SL, TP & ATR
     const tradeSig = getTradeSignal(bars15m, "NONE", {
       slMultiplier: 1.5,
-      tpMultiplier: 3.0,
+      tpMultiplier: impulse.isImpulse ? (impulse.tpMultiplier || 3.0) : 3.0,
       swingLookback: 3,
       entryThreshold: 80
     });
@@ -2463,18 +2618,21 @@ export class DeltaAutoTraderEngine {
     const entryPrice = this.roundPrice(price);
 
     // 🛡️ PROFESSIONAL QUANT STOP-LOSS FLOOR (Anchored strictly to Entry Price):
-    // BTC/ETH: Minimum 1.5% breathing room (avoids getting stopped out by $3-$5 tick noise on $2,500+ assets)
-    // Altcoins (SOL, XRP, DOGE, ADA): Minimum 2.2% breathing room to absorb normal wick spread
+    // BTC/ETH: Minimum 1.5% breathing room
+    // Altcoins (SOL, XRP, DOGE, ADA): Minimum 2.2% breathing room
     const isMajor = ["BTC", "ETH"].some(m => symbol.toUpperCase().includes(m));
     const minSlPercent = isMajor ? 0.015 : 0.022;
-    const rawSlDist = tradeSig.slDistance || (tradeSig.stopLoss ? Math.abs(entryPrice - tradeSig.stopLoss) : entryPrice * minSlPercent);
+    const rawSlDist = (impulse.isImpulse && impulse.slPrice > 0)
+      ? Math.abs(entryPrice - impulse.slPrice)
+      : (tradeSig.slDistance || (tradeSig.stopLoss ? Math.abs(entryPrice - tradeSig.stopLoss) : entryPrice * minSlPercent));
     const effectiveSlDist = Math.max(entryPrice * minSlPercent, rawSlDist);
+    const effectiveTpMultiplier = impulse.isImpulse ? (impulse.tpMultiplier || 3.0) : 2.5;
 
     const stopLossPrice = this.roundPrice(
       analysis.direction === "BUY" ? entryPrice - effectiveSlDist : entryPrice + effectiveSlDist
     );
     const targetPrice = this.roundPrice(
-      analysis.direction === "BUY" ? entryPrice + (effectiveSlDist * 2.5) : entryPrice - (effectiveSlDist * 2.5)
+      analysis.direction === "BUY" ? entryPrice + (effectiveSlDist * effectiveTpMultiplier) : entryPrice - (effectiveSlDist * effectiveTpMultiplier)
     );
     const slDistance = Math.abs(entryPrice - stopLossPrice);
     const safeAtr = tradeSig.atrValue || (price * 0.010);
