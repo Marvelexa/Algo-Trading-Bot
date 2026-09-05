@@ -572,8 +572,8 @@ export class DeltaAutoTraderEngine {
   public resetSystemCleanly(): { success: boolean; message: string } {
     this.openPositions = [];
     this.closedRecords = [];
-    this.settings.isEnabled = true;
-    this.settings.maxConcurrentPositions = 1;
+    this.settings.isEnabled = false; // Set to OFF so user has full control
+    this.settings.maxConcurrentPositions = 2;
     this.settings.inspectionWindowMinutes = 5;
     this.settings.minConfidenceThreshold = 88;
     this.settings.riskPerTradePct = 2.4;
@@ -588,6 +588,16 @@ export class DeltaAutoTraderEngine {
     this.inspectionStartTimeMs = 0;
     this.saveToStorage();
     return { success: true, message: "🧹 System reset: All P&L, trade records & open positions cleared. Bot is PAUSED (OFF). Ready for fresh start!" };
+  }
+
+  public resetCircuitBreaker(): { success: boolean; message: string } {
+    this.consecutiveLossCount = 0;
+    this.lastLossTimestamp = 0;
+    this.dailyStartCapitalUSD = this.settings.currentCapitalUSD;
+    this.tradesTakenTodayCount = this.openPositions.length;
+    this.settings.isEnabled = true;
+    this.saveToStorage();
+    return { success: true, message: "Circuit breaker cleared! Bot resumed active trading." };
   }
 
   public resetDailyCounters() {
@@ -3195,11 +3205,13 @@ export class DeltaAutoTraderEngine {
     const cooldownRemainingMins = isCooldown ? Math.ceil((cooldownMs - (now - this.lastLossTimestamp)) / 60000) : 0;
 
     let botState: AutoTraderStatus["botState"] = "PAUSED";
-    if (circuitBreakerActive) {
+    if (!this.settings.isEnabled) {
+      botState = "PAUSED";
+    } else if (circuitBreakerActive) {
       botState = "CIRCUIT_BREAKER_HALT";
     } else if (isCooldown) {
       botState = "COOLDOWN_ACTIVE";
-    } else if (this.settings.isEnabled) {
+    } else {
       botState = isBatchCooling ? "BATCH_COOLDOWN" : "RUNNING";
     }
 

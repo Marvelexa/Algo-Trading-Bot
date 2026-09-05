@@ -772,9 +772,18 @@ async function startServer() {
     }
   });
 
+  app.post("/api/autotrader/reset-circuit-breaker", (req, res) => {
+    try {
+      const result = deltaAutoTraderEngine.resetCircuitBreaker();
+      return res.json({ success: true, message: result.message, state: deltaAutoTraderEngine.getLiveFullState() });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.post("/api/autotrader/close-all", (req, res) => {
     try {
-      const result = deltaAutoTraderEngine.closeAllOpenPositions("MANUAL_PANIC_CLOSE");
+      const result = deltaAutoTraderEngine.closeAllOpenPositions("MANUAL_EXIT");
       return res.json({ success: true, count: result.count, message: result.message, state: deltaAutoTraderEngine.getLiveFullState() });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });

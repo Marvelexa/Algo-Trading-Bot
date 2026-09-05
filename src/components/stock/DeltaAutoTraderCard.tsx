@@ -12,7 +12,7 @@ import {
 } from "../../../lib/deltaAutoTraderEngine";
 import { LiveTradeCandleVisualizer } from "./LiveTradeCandleVisualizer";
 import { brokerTickEngine } from "../../../lib/brokerTickEngine";
-import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2, Zap, Radio, RefreshCw, X, AlertTriangle, ArrowUpRight, ArrowDownRight, Compass, Eye, Brain } from "lucide-react";
+import { Bot, Play, Pause, ShieldAlert, Sliders, ShieldCheck, Newspaper, Lock, Activity, Clock, Award, Coins, CheckCircle2, Zap, Radio, RefreshCw, X, AlertTriangle, ArrowUpRight, ArrowDownRight, Compass, Eye, Brain, RotateCcw } from "lucide-react";
 
 interface DeltaAutoTraderCardProps {
   ticker?: string;
@@ -312,8 +312,21 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
   };
 
   const handleToggleBot = async () => {
+    // If circuit breaker is halted and user clicks, reset circuit breaker
+    if (status.botState === "CIRCUIT_BREAKER_HALT") {
+      try {
+        const res = await fetch("/api/autotrader/reset-circuit-breaker", { method: "POST" });
+        if (res.ok) {
+          setNotification("🛡️ Circuit breaker reset successfully! You can now resume trading.");
+          fetchServerState();
+          setTimeout(() => setNotification(null), 4000);
+          return;
+        }
+      } catch (e) {}
+    }
+
     const nextState = !settings.isEnabled;
-    setNotification(nextState ? "🟢 Starting Auto-Trader (15-Sec Round-Robin Queue)..." : "⏸️ Pausing Delta Auto-Trader...");
+    setNotification(nextState ? "🟢 Starting Auto-Trader (15-Sec Round-Robin Queue)..." : "🛑 Stopping / Pausing Delta Auto-Trader...");
     try {
       const res = await fetch("/api/autotrader/toggle", {
         method: "POST",
@@ -331,15 +344,40 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         setStatus(local.status);
       }
       fetchServerState();
-      setNotification(nextState ? "🟢 24/7 Auto-Trader ACTIVE! 15-Sec inspection window started on Coin #1 (BTCUSD)." : "⏸️ Delta Auto-Trader PAUSED.");
+      setNotification(nextState ? "🟢 24/7 Auto-Trader ACTIVE! 15-Sec inspection window started on Coin #1 (BTCUSD)." : "🛑 Delta Auto-Trader STOPPED / PAUSED.");
     } catch (e) {
       deltaAutoTraderEngine.toggleBot(nextState);
       const local = deltaAutoTraderEngine.getLiveFullState();
       setSettings(local.settings);
       setStatus(local.status);
       fetchServerState();
-      setNotification(nextState ? "🟢 Auto-Trader ACTIVE! 15-Sec inspection window running on Coin #1 (BTCUSD)." : "⏸️ Delta Auto-Trader PAUSED.");
+      setNotification(nextState ? "🟢 Auto-Trader ACTIVE! 15-Sec inspection window running on Coin #1 (BTCUSD)." : "🛑 Delta Auto-Trader STOPPED / PAUSED.");
     }
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  const handleCloseAllPositions = async () => {
+    if (!confirm(`Are you sure you want to stop and close all ${positions.length} active positions right now?`)) return;
+    setNotification("🛑 Closing all active positions and stopping bot...");
+    try {
+      const res = await fetch("/api/autotrader/close-all", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setNotification(data?.message || "🛑 All open positions closed.");
+      }
+    } catch (e) {
+      console.error("Close all failed:", e);
+    }
+    // Also pause the bot if it is running
+    try {
+      await fetch("/api/autotrader/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isEnabled: false })
+      });
+    } catch (e) {}
+
+    fetchServerState();
     setTimeout(() => setNotification(null), 4000);
   };
 
@@ -487,21 +525,33 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
           <button
             onClick={handleToggleBot}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs transition shadow-lg flex items-center gap-2 ${
-              settings.isEnabled || status.botState === "RUNNING"
-                ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/30"
+              settings.isEnabled
+                ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30 ring-2 ring-rose-400/50 animate-pulse"
                 : status.botState === "CIRCUIT_BREAKER_HALT"
-                ? "bg-rose-950 text-rose-300 border border-rose-500/50 cursor-not-allowed"
-                : "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700"
+                ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30"
+                : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30"
             }`}
           >
-            {settings.isEnabled || status.botState === "RUNNING" ? (
-              <> <Pause className="w-4 h-4" /> 🟢 AUTONOMOUS BOT RUNNING (Pause) </>
+            {settings.isEnabled ? (
+              <> <Pause className="w-4 h-4" /> 🛑 STOP AUTO-TRADER (Pause) </>
             ) : status.botState === "CIRCUIT_BREAKER_HALT" ? (
-              <> <ShieldAlert className="w-4 h-4 text-rose-400" /> 🛑 CIRCUIT BREAKER HALTED </>
+              <> <ShieldAlert className="w-4 h-4 text-white" /> ⚠️ CIRCUIT HALTED (Click to Reset) </>
             ) : (
               <> <Play className="w-4 h-4" /> ▶️ START AUTO-TRADER </>
             )}
           </button>
+
+          {/* EMERGENCY CLOSE ALL IF OPEN POSITIONS EXIST */}
+          {positions.length > 0 && (
+            <button
+              onClick={handleCloseAllPositions}
+              className="px-3.5 py-2.5 rounded-xl font-bold text-xs bg-rose-700 hover:bg-rose-600 text-white border border-rose-400/60 transition shadow-lg flex items-center gap-1.5 shrink-0 animate-pulse shadow-rose-900/50"
+              title="Stop bot and immediately exit all market positions"
+            >
+              <X className="w-4 h-4 text-white" />
+              🛑 Stop & Close All ({positions.length})
+            </button>
+          )}
 
           {/* SCAN & TRADE BUTTON */}
           <button
