@@ -667,9 +667,10 @@ async function startServer() {
   app.post("/api/autotrader/state", (req, res) => {
     try {
       if (req.body) {
-        // 🛡️ CRITICAL GUARD: Client browser state POST must NEVER inject or overwrite openPositions!
-        // Open positions and executions are owned 100% by the server engine.
+        // 🛡️ CRITICAL GUARD: Client browser state POST must NEVER inject or overwrite openPositions or closedRecords!
+        // Server engine is the sole source of truth for executions and trade history.
         delete req.body.openPositions;
+        delete req.body.closedRecords;
         // Never allow a background sync to silently turn bot ON if server has it OFF
         if (req.body.settings && !deltaAutoTraderEngine.getSettings().isEnabled) {
           req.body.settings.isEnabled = false;
@@ -720,11 +721,12 @@ async function startServer() {
 
     app.get("/api/autotrader/candles", async (req, res) => {
     try {
-      const symbol = (req.query.symbol as string) || "BTCUSD";
-      const interval = (req.query.interval as string) || "15m";
-      const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 30));
-      const candles = await deltaAutoTraderEngine.fetchCryptoCandles(symbol, interval, limit);
-      return res.json({ success: true, symbol, interval, candles });
+      const { symbol, interval, limit } = req.query as { symbol?: string; interval?: string; limit?: string };
+      const sym = (symbol || "BTCUSD").toUpperCase().trim();
+      const resolution = interval || "15m";
+      const count = parseInt(limit || "60", 10);
+      const candles = await deltaAutoTraderEngine.fetchCryptoCandles(sym, resolution, count);
+      return res.json({ success: true, symbol: sym, interval: resolution, candles });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -734,7 +736,7 @@ async function startServer() {
   app.get("/api/autotrader/mistakes", (req, res) => {
     try {
       const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
-      let list = [];
+      let list: any[] = [];
       if (fs.existsSync(mistakesPath)) {
         list = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
       }
@@ -748,7 +750,7 @@ async function startServer() {
     try {
       const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
       fs.writeFileSync(mistakesPath, JSON.stringify([], null, 2), "utf-8");
-      return res.json({ success: true, message: "All AI mistakes cleared / taken out successfully.", count: 0, mistakes: [] });
+      return res.json({ success: true, message: "All mistakes cleared." });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -758,7 +760,7 @@ async function startServer() {
     try {
       const { id } = req.params;
       const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
-      let list = [];
+      let list: any[] = [];
       if (fs.existsSync(mistakesPath)) {
         list = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
       }
@@ -780,7 +782,32 @@ async function startServer() {
       deltaAutoTraderEngine.toggleBot(false);
       const fullState = deltaAutoTraderEngine.getLiveFullState();
       fullState.settings.isEnabled = false;
-      fullState.status.botState = "PAUSED";
+      fullState.settings.currentCapitalUSD = fullState.settings.initialCapitalUSD || 180.00;
+      if (fullState.status) {
+        fullState.status.botState = "PAUSED";
+        fullState.status.todayPnLUSD = 0;
+        fullState.status.todayPnLPct = 0;
+        fullState.status.totalFloatingPnLUSD = 0;
+        fullState.status.totalFloatingDrawdownPct = 0;
+        fullState.status.winningTradesToday = 0;
+        fullState.status.losingTradesToday = 0;
+        fullState.status.tradesTakenToday = 0;
+        fullState.status.winRatePct = 0;
+        fullState.status.consecutiveLossCount = 0;
+        fullState.status.circuitBreakerActive = false;
+        fullState.status.cooldownRemainingMins = 0;
+        fullState.status.mistakesCount = 0;
+      }
+      fullState.closedRecords = [];
+      fullState.openPositions = [];
+
+      // Wipe mistakes file
+      const mistakesFile = path.join(process.cwd(), ".delta_ai_mistakes.json");
+      try {
+        fs.writeFileSync(mistakesFile, JSON.stringify([], null, 2), "utf-8");
+      } catch (e) {}
+
+      // Wipe state file and closed history file cleanly
       try {
         fs.writeFileSync(DELTA_STATE_FILE, JSON.stringify(fullState, null, 2), "utf-8");
         const historyFile = path.join(process.cwd(), "public", "closed_trades_history.json");

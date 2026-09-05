@@ -443,8 +443,25 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     setNotification("🧹 Resetting trades, clearing storage, and setting bot OFF...");
 
     // 1. Immediately turn bot OFF in React state so UI updates instantly
-    setSettings(prev => ({ ...prev, isEnabled: false }));
-    setStatus(prev => ({ ...prev, botState: "PAUSED" }));
+    setSettings(prev => ({ 
+      ...prev, 
+      isEnabled: false, 
+      currentCapitalUSD: prev.initialCapitalUSD || 180.00 
+    }));
+    setStatus(prev => ({ 
+      ...prev, 
+      botState: "PAUSED",
+      todayPnLUSD: 0,
+      todayPnLPct: 0,
+      totalFloatingPnLUSD: 0,
+      totalFloatingDrawdownPct: 0,
+      winningTradesToday: 0,
+      losingTradesToday: 0,
+      tradesTakenToday: 0,
+      winRatePct: 0,
+      consecutiveLossCount: 0,
+      circuitBreakerActive: false
+    }));
     setPositions([]);
     setRecords([]);
 
