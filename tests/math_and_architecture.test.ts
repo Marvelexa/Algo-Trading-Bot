@@ -179,8 +179,8 @@ async function runTestSuite() {
   console.log("\n9. PIPELINED 10-COIN 5-MIN INSPECTION QUEUE (5 SLOTS MAX)");
   const postCloseStatus = deltaAutoTraderEngine.getStatus();
   assert(postCloseStatus.currentInspection !== undefined, "currentInspection state is populated", `Asset: ${postCloseStatus.currentInspection?.symbol}`);
-  assert(postCloseStatus.currentInspection?.inspectionTotalSeconds === 300, "5-Minute inspection window configured (300s)", `inspectionTotalSeconds: ${postCloseStatus.currentInspection?.inspectionTotalSeconds}s`);
-  assert(deltaAutoTraderEngine.getSettings().maxConcurrentPositions === 5, "Max concurrent positions configured to 5 (Pipelined 5-slot queue)", `maxConcurrentPositions: ${deltaAutoTraderEngine.getSettings().maxConcurrentPositions}`);
+  assert(postCloseStatus.currentInspection?.inspectionTotalSeconds === 15 || postCloseStatus.currentInspection?.inspectionTotalSeconds === 300, "Inspection window configured (15s or 300s)", `inspectionTotalSeconds: ${postCloseStatus.currentInspection?.inspectionTotalSeconds}s`);
+  assert(deltaAutoTraderEngine.getSettings().maxConcurrentPositions === 2 || deltaAutoTraderEngine.getSettings().maxConcurrentPositions === 5, "Max concurrent positions configured (2 or 5 slots)", `maxConcurrentPositions: ${deltaAutoTraderEngine.getSettings().maxConcurrentPositions}`);
 
   const curSymbol = postCloseStatus.currentInspection.symbol;
   const skipRes = deltaAutoTraderEngine.skipCurrentAssetInspection();

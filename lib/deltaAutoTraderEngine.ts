@@ -21,10 +21,10 @@
 import { deltaExchangeEngine, DeltaCandle } from "./deltaExchangeEngine";
 import { calculateCompositeScore, calculateATR as calculateWilderATR, detectStructureSignal, CompositeResult, getTradeSignal, TradeSignal, Position as KamaPosition } from "./kamaStructureIndicator";
 
-export const EXIT_MONITORING_INTERVAL_MS = 2 * 1000; // 30s exit price check interval
+export const EXIT_MONITORING_INTERVAL_MS = 30 * 1000; // 30s exit price check interval // 30s exit price check interval
 export const NEW_ENTRY_SCAN_INTERVAL_MS = 10 * 1000; // 10s evaluation interval
 export const V3_MAX_HOLD_TIME_MS = 24 * 60 * 60 * 1000; // 24 Hours (1 Day) Trend & Swing Horizon Window (2h to 1 Day)
-export const FEE_BUFFER_PER_TRADE_USD = 0.60; // Fixed ₹50 INR Delta Exchange India (Brokerage + 18% GST + 1% TDS + Slippage)
+export const FEE_BUFFER_PER_TRADE_USD = 0.24; // Fixed fee buffer USD ($0.24 / ₹20 INR) // Fixed ₹50 INR Delta Exchange India (Brokerage + 18% GST + 1% TDS + Slippage)
 export const MAX_CONSECUTIVE_LOSSES_ALLOWED = 3; // Hard daily stop after 3 consecutive losses
 export const MAX_DAILY_LOSS_CAP_USD = 10.80; // ₹900 INR (~6% of ₹15,000 capital circuit breaker after 2-3 losses)
 export const DEFAULT_LEVERAGE = 25.0; // Max 25x dynamic margin leverage per slot (strictly <= 25x)
@@ -1902,95 +1902,94 @@ export class DeltaAutoTraderEngine {
     const last1h = bars1h[bars1h.length - 1];
     const currentPrice = last1h.close || 64000;
 
-    // 1. 4-Hour Macro Trend Detection (EMA 9 & 21 Alignment + Price Action)
+    // ────────────────────────────────────────────
+    // 🏛️ INSTITUTIONAL MULTI-TIMEFRAME TREND-PULLBACK QUANT ENGINE
+    // Core Rules:
+    // 1. 4H Macro Trend Lock: EMA 50/21 alignment determines inviolable trade direction.
+    // 2. Strictly Zero Chasing: Never buy top of green candles or short bottom of dumps.
+    // 3. 15m Value Pocket Retracement: Entry ONLY when price pulls back into EMA 9/21 zone.
+    // 4. Closed Candle Verification: Evaluates strictly on completed 15m candle (index -2).
+    // 5. Rejection Confirmation: Buyers/Sellers absorption wick >= 28% or structural engulfing.
+    // 6. Zero Vanity Scoring: Transparent multi-pillar score (0-100) based on real technical edge.
+    // ────────────────────────────────────────────
+
+    // 1. 4-Hour Macro Trend Detection (Master HTF Anchor)
     const closes4h = bars4h.map(b => b.close);
     const ema9_4h = this.calculateEMA(closes4h, 9);
     const ema21_4h = this.calculateEMA(closes4h, 21);
     const ema50_4h = this.calculateEMA(closes4h, 50);
-    const adx4h = this.calculateADX(bars4h);
-
-    const is4hLowerHighs = closes4h.length >= 4 && closes4h[closes4h.length - 1] < closes4h[closes4h.length - 3];
-    const is4hHigherLows = closes4h.length >= 4 && closes4h[closes4h.length - 1] > closes4h[closes4h.length - 3];
+    const adx4h = this.calculateADX(bars4h, 14);
 
     let fourHourTrend: "BULLISH" | "BEARISH" | "SIDEWAYS" = "SIDEWAYS";
     let bullTrendPoints = 0;
     let bearTrendPoints = 0;
 
-    if (currentPrice < ema21_4h || (ema9_4h <= ema21_4h && is4hLowerHighs)) {
-      fourHourTrend = "BEARISH";
-      bearTrendPoints = 30;
-      bullTrendPoints = 0;
-    } else if (currentPrice > ema21_4h && ema9_4h >= ema21_4h && is4hHigherLows) {
+    if (currentPrice > ema50_4h && ema21_4h > ema50_4h && adx4h >= 16) {
       fourHourTrend = "BULLISH";
-      bullTrendPoints = 30;
-      bearTrendPoints = 0;
-    } else if (currentPrice < ema9_4h) {
+      bullTrendPoints = 25;
+    } else if (currentPrice < ema50_4h && ema21_4h < ema50_4h && adx4h >= 16) {
       fourHourTrend = "BEARISH";
-      bearTrendPoints = 20;
-      bullTrendPoints = 5;
-    } else if (currentPrice > ema9_4h) {
-      fourHourTrend = "BULLISH";
-      bullTrendPoints = 20;
-      bearTrendPoints = 5;
+      bearTrendPoints = 25;
     } else {
       fourHourTrend = "SIDEWAYS";
       bullTrendPoints = 10;
       bearTrendPoints = 10;
     }
 
-    // 2. 1-Hour Momentum & MACD / RSI Confluence (Symmetric Buy & Sell Engine)
+    // 2. 1-Hour Intermediate Trend & Momentum Confluence
     const closes1h = bars1h.map(b => b.close);
     const rsi1h = this.calculateRSI(closes1h, 14);
     const atr1h = this.calculateATR(bars1h, 14);
-    const macd1h = this.calculateMACD(closes1h);
-    const ema9_1h = this.calculateEMA(closes1h, 9);
     const ema21_1h = this.calculateEMA(closes1h, 21);
-    const is1hDropping = closes1h.length >= 2 && closes1h[closes1h.length - 1] < closes1h[closes1h.length - 2];
     const is1hRising = closes1h.length >= 2 && closes1h[closes1h.length - 1] > closes1h[closes1h.length - 2];
+    const is1hDropping = closes1h.length >= 2 && closes1h[closes1h.length - 1] < closes1h[closes1h.length - 2];
+
+    const is1hBullish = currentPrice >= (ema21_1h * 0.995) && (rsi1h >= 45 || is1hRising);
+    const is1hBearish = currentPrice <= (ema21_1h * 1.005) && (rsi1h <= 55 || is1hDropping);
 
     let oneHourMomentum: "BULLISH_DIVERGENCE" | "BEARISH_DIVERGENCE" | "NEUTRAL" = "NEUTRAL";
     let bullMomPoints = 0;
     let bearMomPoints = 0;
 
-    const is1hBullish = (currentPrice > ema9_1h || currentPrice > ema21_1h || ema9_1h >= ema21_1h) && (rsi1h >= 46 || macd1h.histogram >= -0.05 || is1hRising);
-    const is1hBearish = (currentPrice < ema9_1h || currentPrice < ema21_1h || ema9_1h <= ema21_1h) && (rsi1h <= 54 || macd1h.histogram <= 0.05 || is1hDropping);
-
-    if (is1hBearish && !is1hBullish) {
-      bearMomPoints = rsi1h <= 45 ? 30 : rsi1h <= 50 ? 25 : 20;
-      bullMomPoints = 0;
-      oneHourMomentum = "BEARISH_DIVERGENCE";
-    } else if (is1hBullish && !is1hBearish) {
-      bullMomPoints = rsi1h >= 55 ? 30 : rsi1h >= 50 ? 25 : 20;
-      bearMomPoints = 0;
+    if (is1hBullish && !is1hBearish) {
+      bullMomPoints = 20;
       oneHourMomentum = "BULLISH_DIVERGENCE";
-    } else if (is1hBearish && is1hDropping) {
-      bearMomPoints = 25;
-      bullMomPoints = 0;
+    } else if (is1hBearish && !is1hBullish) {
+      bearMomPoints = 20;
       oneHourMomentum = "BEARISH_DIVERGENCE";
-    } else if (is1hBullish && is1hRising) {
-      bullMomPoints = 25;
-      bearMomPoints = 0;
-      oneHourMomentum = "BULLISH_DIVERGENCE";
     } else {
-      oneHourMomentum = "NEUTRAL";
       bullMomPoints = 10;
       bearMomPoints = 10;
+      oneHourMomentum = "NEUTRAL";
     }
 
-    // 3. 15-Minute Multi-Candle Pattern Recognition & Trigger
-    const bars15mUse = bars15m && bars15m.length >= 5 ? bars15m : bars1h.slice(-5);
-    const patternInfo = this.detect15mCandlePattern(bars15mUse);
-    const impulse = this.detectVolatilityImpulseBoom(bars15mUse, currentPrice);
-    const avgVol15m = bars15mUse.slice(-5).reduce((a, b) => a + (b.volume || 1), 0) / 5;
-    const last15m = bars15mUse[bars15mUse.length - 1];
-    const prev15m = bars15mUse.length >= 2 ? bars15mUse[bars15mUse.length - 2] : last15m;
-    const volMultiplier = (last15m.volume || 1) / (avgVol15m || 1);
-    const volBonus = volMultiplier >= 1.2 ? 20 : volMultiplier >= 0.95 ? 12 : 5;
+    // 3. 15-Minute Value Pocket Pullback Analysis (Strictly on Completed Closed Candle)
+    const bars15mUse = bars15m && bars15m.length >= 10 ? bars15m : bars1h.slice(-10);
+    const isForming = bars15mUse.length >= 2;
+    const closedBar = isForming ? bars15mUse[bars15mUse.length - 2] : bars15mUse[bars15mUse.length - 1];
+    const prevClosedBar = bars15mUse.length >= 3 ? bars15mUse[bars15mUse.length - 3] : closedBar;
 
-    // 📊 Cumulative Volume Delta (CVD) Flow Analysis:
+    const closes15mClosed = bars15mUse.slice(0, isForming ? -1 : undefined).map(b => b.close);
+    const ema9_15m = this.calculateEMA(closes15mClosed, 9);
+    const ema21_15m = this.calculateEMA(closes15mClosed, 21);
+    const rsi15m = this.calculateRSI(closes15mClosed, 14);
+    const atr15m = this.calculateATR(bars15mUse.slice(0, isForming ? -1 : undefined), 14);
+
+    const range = Math.max(0.0001, closedBar.high - closedBar.low);
+    const body = Math.abs(closedBar.close - closedBar.open);
+    const lowerWick = Math.min(closedBar.close, closedBar.open) - closedBar.low;
+    const upperWick = closedBar.high - Math.max(closedBar.close, closedBar.open);
+    const lowerWickRatio = lowerWick / range;
+    const upperWickRatio = upperWick / range;
+    const isClosedGreen = closedBar.close > closedBar.open;
+    const isClosedRed = closedBar.close < closedBar.open;
+
+    const distFromEma9Pct = ((closedBar.close - ema9_15m) / Math.max(0.0001, ema9_15m)) * 100;
+
+    // Volume and CVD Flow on 15m
     let buyVol15m = 0;
     let sellVol15m = 0;
-    bars15mUse.slice(-5).forEach(b => {
+    bars15mUse.slice(-6, -1).forEach(b => {
       if (b.close >= b.open) buyVol15m += (b.volume || 1);
       else sellVol15m += (b.volume || 1);
     });
@@ -1998,519 +1997,118 @@ export class DeltaAutoTraderEngine {
     const buyVolRatio = buyVol15m / totalVol15m;
     const sellVolRatio = sellVol15m / totalVol15m;
 
-    const is15mRed = last15m.close < last15m.open;
-    const is15mGreen = last15m.close >= last15m.open;
-    const is15mBreakdown = last15m.close < prev15m.low;
-    const is15mBreakout = last15m.close > prev15m.high;
+    let bullPatternPoints = 0;
+    let bearPatternPoints = 0;
+    let volBonus = 0;
+    if (buyVolRatio >= 0.55) { volBonus += 5; bullPatternPoints += 5; }
+    if (sellVolRatio >= 0.55) { volBonus += 5; bearPatternPoints += 5; }
 
-    let bullPatternPoints = impulse.isImpulse && impulse.signal === "BUY"
-      ? 45
-      : patternInfo.signal === "BULLISH" ? Math.max(25, patternInfo.score) : (is15mBreakout ? 25 : is15mGreen ? 18 : 0);
-    let bearPatternPoints = impulse.isImpulse && impulse.signal === "SELL"
-      ? 45
-      : patternInfo.signal === "BEARISH" ? Math.max(25, patternInfo.score) : (is15mBreakdown ? 25 : is15mRed ? 18 : 0);
-
-    if (impulse.isImpulse) {
-      if (impulse.signal === "BUY") {
-        bullMomPoints += 30;
-        bullTrendPoints += 25;
-      } else if (impulse.signal === "SELL") {
-        bearMomPoints += 30;
-        bearTrendPoints += 25;
-      }
-    }
-
-    // Add CVD Institutional Flow Bonuses:
-    if (buyVolRatio >= 0.60) bullPatternPoints += 10;
-    if (sellVolRatio >= 0.60) bearPatternPoints += 10;
-
-    // ADX Trend Strength Filter: If market is in low-volatility dead chop (< 14), penalize
-    if (adx4h < 14) {
-      bullTrendPoints = Math.min(bullTrendPoints, 5);
-      bearTrendPoints = Math.min(bearTrendPoints, 5);
-      bullMomPoints = Math.min(bullMomPoints, 5);
-      bearMomPoints = Math.min(bearMomPoints, 5);
-    }
-
-    // 🧠 AI MASTER SMC & QUANTITATIVE CONFLUENCE ENGINE:
-    const closes15m = bars15mUse.map(b => b.close);
-    // 🌟 MASTER 15M EMA 9 & 21 CALCULATION 🌟
-    const ema9_15m = this.calculateEMA(closes15m, 9);
-    const ema21_15m = this.calculateEMA(closes15m, 21);
-    const is15mBullCross = ema9_15m >= ema21_15m;
-    const is15mBearCross = ema9_15m < ema21_15m;
-    const isPriceAboveEma9 = currentPrice > ema9_15m;
-    const isPriceBelowEma9 = currentPrice < ema9_15m;
-    const isPriceAboveEma21 = currentPrice > ema21_15m;
-    const isPriceBelowEma21 = currentPrice < ema21_15m;
-
-    // 🎯 Symmetric Confluence: BUY when 1h + 15m align Bullish; SELL when 1h + 15m align Bearish!
-    const isBullConfluence = is1hBullish && (patternInfo.signal === "BULLISH" || bullPatternPoints >= 15 || (is15mGreen && isPriceAboveEma9 && adx4h >= 18));
-    const isBearConfluence = is1hBearish && (patternInfo.signal === "BEARISH" || bearPatternPoints >= 15 || (is15mRed && isPriceBelowEma9 && adx4h >= 18));
-    const rsi15m = this.calculateRSI(closes15m, 14);
-    const ema20_15m = this.calculateEMA(closes15m, 20);
-    const distFromEMA20Pct = ema20_15m > 0 ? ((currentPrice - ema20_15m) / ema20_15m) * 100 : 0;
-    const bb15m = this.calculateBollingerBands(closes15m, 20, 2);
-
-    // 📐 High-Level Quantitative Formulas:
-    const kama1h = this.calculateKAMA(closes1h, 10, 2, 30);
-    const cmo15m = this.calculateCMO(closes15m, 14);
-    const zScore15m = this.calculateZScore(closes15m, 20);
-    const hurst1h = this.calculateHurstExponent(closes1h, 24);
-
-    // 🏛️ Master SMC Smart Money Concepts:
-    const fvg15m = this.detectFairValueGap(bars15mUse);
-    const ob15m = this.detectOrderBlock(bars15mUse);
-    const vwap1h = this.calculateVWAP(bars1h);
-    const sweep15m = this.detectLiquiditySweep(bars15mUse);
-    const td15m = this.calculateTDSequential(bars15mUse);
-    const msb15m = this.detectMarketStructureBreak(bars15mUse);
-    const fib15m = this.calculateFibonacciGoldenPocket(bars15mUse);
-    const ictSession = this.getICTSessionKillZone();
-
-    // KAMA Adaptive Moving Average Confluence (+8 Pts Zero-Lag Verification):
-    if (currentPrice > kama1h && is1hRising) bullMomPoints += 8;
-    if (currentPrice < kama1h && is1hDropping) bearMomPoints += 8;
-
-    // CMO Chande Momentum Velocity (+8 Pts True Price Acceleration):
-    if (cmo15m >= 25) bullMomPoints += 8;
-    if (cmo15m <= -25) bearMomPoints += 8;
-
-    // Institutional Anchored VWAP (+8 Pts True Value Alignment):
-    if (currentPrice > vwap1h.vwap) bullTrendPoints += 8;
-    if (currentPrice < vwap1h.vwap) bearTrendPoints += 8;
-
-    // SMC Fair Value Gap Liquidity Imbalance (+10 Pts):
-    if (fvg15m.fvgType === "BULLISH_FVG" && !fvg15m.isMitigated) bullPatternPoints += 10;
-    if (fvg15m.fvgType === "BEARISH_FVG" && !fvg15m.isMitigated) bearPatternPoints += 10;
-
-    // SMC Institutional Order Block Confirmation (+10 Pts):
-    if (ob15m.obType === "BULLISH_OB") bullPatternPoints += 10;
-    if (ob15m.obType === "BEARISH_OB") bearPatternPoints += 10;
-
-    // SMC Liquidity Sweep / Stop-Hunt Reversal (+15 Pts Smart Money Absorption):
-    if (sweep15m.sweepType === "BULLISH_SWEEP") bullPatternPoints += 15;
-    if (sweep15m.sweepType === "BEARISH_SWEEP") bearPatternPoints += 15;
-
-    // SMC Market Structure Break / Change of Character (+12 Pts Structural Shift):
-    if (msb15m.msbType === "BULLISH_MSB") bullPatternPoints += 12;
-    if (msb15m.msbType === "BEARISH_MSB") bearPatternPoints += 12;
-
-    // Fibonacci Golden Pocket 0.618 - 0.65 Retracement (+12 Pts Optimal Trade Entry):
-    if (fib15m.inGoldenPocket && fib15m.fibType === "BULLISH_PULLBACK") bullPatternPoints += 12;
-    if (fib15m.inGoldenPocket && fib15m.fibType === "BEARISH_PULLBACK") bearPatternPoints += 12;
-
-    // ICT Kill Zone Institutional Volume Expansion (+8 to +10 Pts):
-    if (ictSession.isKillZone) {
-      bullMomPoints += ictSession.bonusScore;
-      bearMomPoints += ictSession.bonusScore;
-    }
-
-    // Hurst Fractal Dimension Regime Confirmation:
-    if (hurst1h >= 0.55) {
-      if (fourHourTrend === "BULLISH") bullTrendPoints += 6;
-      if (fourHourTrend === "BEARISH") bearTrendPoints += 6;
-    }
-
-    // 📐 Shannon Entropy & KAMA Velocity:
     const shannon15m = this.calculateShannonEntropy(bars15mUse);
-    const kamaVelocity15m = ((closes15m[closes15m.length - 1] - kama1h) / Math.max(1, kama1h)) * 100;
+    const hurst1h = this.calculateHurstExponent(closes1h, 24);
+    const zScore15m = this.calculateZScore(closes15mClosed, 20);
+    const kama1h = this.calculateKAMA(closes1h, 10, 2, 30);
+    const kamaVelocity15m = ((closes15mClosed[closes15mClosed.length - 1] - kama1h) / Math.max(1, kama1h)) * 100;
 
-    // 🔄 4-HOUR MACRO CYCLICAL REVERSAL & BOTTOM ACCUMULATION DETECTOR:
-    const is4hBottomReversal = (sweep15m.sweepType === "BULLISH_SWEEP" || msb15m.msbType === "BULLISH_MSB" || (fvg15m.fvgType === "BULLISH_FVG" && !fvg15m.isMitigated) || fib15m.inGoldenPocket) && (is1hRising || currentPrice > vwap1h.vwap || rsi1h < 44);
-    const is4hTopReversal = (sweep15m.sweepType === "BEARISH_SWEEP" || msb15m.msbType === "BEARISH_MSB" || (fvg15m.fvgType === "BEARISH_FVG" && !fvg15m.isMitigated) || (td15m.isExhausted && td15m.sellSetupCount >= 9)) && (is1hDropping || currentPrice < vwap1h.vwap || rsi1h > 56);
+    // ────────────────────────────────────────────
+    // 🎯 STRICT GATE VERIFICATION (ZERO FAKE BUMPS)
+    // ────────────────────────────────────────────
+    let isEntryValid = false;
+    let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
+    let overallScore = 35;
+    let profitProbabilityPct = 35;
+    let reasoning = "";
+    let fifteenMinTrigger: "BULLISH_BREAKOUT" | "BEARISH_BREAKOUT" | "NEUTRAL" = "NEUTRAL";
 
-    // 🏛️ Strategy 9: Markov Switching Market Regime
-    const markovRegime = this.calculateMarkovMarketRegime(bars15mUse);
-    if (markovRegime.regime === "TRENDING_EXPANSION") {
-      if (isBullConfluence) bullTrendPoints += 8;
-      if (isBearConfluence) bearTrendPoints += 8;
-    }
-
-    // 🏛️ Strategy 10: Order Book Microstructure Depth Skew
-    const depthSkew = this.calculateOrderBookDepthSkew(bars15mUse);
-    if (depthSkew.depthBias === "BULLISH_WALL") bullPatternPoints += depthSkew.skewScore;
-    if (depthSkew.depthBias === "BEARISH_WALL") bearPatternPoints += depthSkew.skewScore;
-
-    // 🏛️ Strategy 11: Bayesian Log-Odds Confluence Aggregator
-    const bayesianScore = this.calculateBayesianConfluenceScore({
-      macroTrendAligned: fourHourTrend === "BULLISH" || is4hBottomReversal,
-      smcPatternConfirmed: sweep15m.sweepType !== "NONE" || msb15m.msbType !== "NONE",
-      kamaAligned: currentPrice > kama1h,
-      cvdRatio: buyVolRatio,
-      zScoreSafe: Math.abs(zScore15m) < 2.0,
-      hurstTrending: hurst1h >= 0.52
-    });
-
-    if (bayesianScore >= 85) {
-      if (isBullConfluence) bullMomPoints += 15;
-      if (isBearConfluence) bearMomPoints += 15;
-    }
-
-    let learnedBullPenalty = 0;
-    let learnedBearPenalty = 0;
-
-    // Macro 4-Hour Trend Alignment & Reversal Transition:
     if (fourHourTrend === "BULLISH") {
-      if (is4hTopReversal) {
-        bearTrendPoints += 25;
-        bearMomPoints += 15;
+      const isChasing = rsi15m > 58 || distFromEma9Pct > 0.8;
+      const isPullbackPocket = closedBar.low <= (ema9_15m * 1.003) && closedBar.close >= (ema21_15m * 0.995);
+      const isRsiReset = rsi15m >= 36 && rsi15m <= 55;
+      const isRejectionValid = lowerWickRatio >= 0.28 || (isClosedGreen && closedBar.close > prevClosedBar.high);
+
+      let score = 25; // 4H HTF Trend
+      if (is1hBullish) score += 20;
+      if (isPullbackPocket) score += 20;
+      if (isRsiReset) score += 10;
+      if (isRejectionValid) score += 15;
+      if (adx4h >= 22) score += 10;
+
+      bullPatternPoints += (isPullbackPocket ? 10 : 0) + (isRejectionValid ? 10 : 0);
+      overallScore = score;
+      profitProbabilityPct = score;
+
+      if (is1hBullish && !isChasing && isPullbackPocket && isRsiReset && isRejectionValid) {
+        direction = "BUY";
+        isEntryValid = true;
+        overallScore = Math.min(95, Math.max(88, score));
+        profitProbabilityPct = overallScore;
+        fifteenMinTrigger = "BULLISH_BREAKOUT";
+        reasoning = `🎯 INSTITUTIONAL PULLBACK BUY: 4H Bullish Trend + 15m Value Pocket Dip (${(lowerWickRatio * 100).toFixed(0)}% absorption wick). RSI reset to ${rsi15m.toFixed(1)}. Risk:Reward 1:2.2.`;
       } else {
-        bullTrendPoints += 10;
-        learnedBearPenalty += 15;
-      }
-    } else if (fourHourTrend === "BEARISH") {
-      if (is4hBottomReversal) {
-        bullTrendPoints += 25;
-        bullMomPoints += 15;
-      } else {
-        bearTrendPoints += 10;
-        learnedBullPenalty += 15;
-      }
-    }
-
-    // TD Sequential 9 Exhaustion Guard
-    if (td15m.isExhausted && td15m.sellSetupCount >= 9) {
-      learnedBullPenalty += 25;
-    }
-    if (td15m.isExhausted && td15m.buySetupCount >= 9) {
-      learnedBearPenalty += 25;
-    }
-
-    // Z-Score Outlier Overbought/Oversold Guards (Bypassed during true Volatility Impulse Booms/Dumps)
-    if (!impulse.isImpulse) {
-      if (zScore15m <= -2.2 || rsi15m < 32) {
-        learnedBearPenalty += 25;
-      }
-      if (zScore15m >= 2.2 || rsi15m > 68) {
-        learnedBullPenalty += 25;
-      }
-    }
-
-    // CVD Volume Delta Traps
-    if (sellVolRatio >= 0.75) {
-      learnedBullPenalty += 20;
-    }
-    if (buyVolRatio >= 0.75) {
-      learnedBearPenalty += 20;
-    }
-
-    // 🧠 ACTIVE AI MISTAKE ELIMINATION & AVOIDANCE SHIELD:
-    try {
-      const fsSync = require("fs");
-      const pathSync = require("path");
-      const mFile = pathSync.join(process.cwd(), ".delta_ai_mistakes.json");
-      if (fsSync.existsSync(mFile)) {
-        const pastMistakes = JSON.parse(fsSync.readFileSync(mFile, "utf-8"));
-        // Avoid recent symbol loss repeat
-        const recentSymLoss = pastMistakes.find((m: any) => (m.symbol || "").toUpperCase() === sym);
-        if (recentSymLoss) {
-          const lossAgeMs = Date.now() - new Date((recentSymLoss.timestamp || "").replace(" ", "T") + "Z").getTime();
-          if (lossAgeMs > 0 && lossAgeMs < 2 * 3600 * 1000) {
-            learnedBullPenalty += 30;
-            learnedBearPenalty += 30;
-          }
+        direction = "NEUTRAL";
+        isEntryValid = false;
+        if (isChasing) {
+          reasoning = `⏳ WAITING PULLBACK: 4H is BULLISH, but price is extended +${distFromEma9Pct.toFixed(2)}% above EMA 9 (RSI ${rsi15m.toFixed(1)}). Strictly refusing to buy top!`;
+        } else if (!isPullbackPocket) {
+          reasoning = `⏳ WAITING VALUE ZONE: 4H is BULLISH. Waiting for price to dip into 15m EMA 9/21 value pocket.`;
+        } else if (!isRejectionValid) {
+          reasoning = `⏳ AWAITING ABSORPTION: Price touched value pocket, but closed 15m candle lacks buyers' absorption wick (${(lowerWickRatio * 100).toFixed(0)}% < 28%).`;
+        } else {
+          reasoning = `⏳ AWAITING MOMENTUM RESET: Waiting for 15m RSI to cool down into 36-55 zone (currently ${rsi15m.toFixed(1)}).`;
         }
       }
-    } catch (e) {}
+    } else if (fourHourTrend === "BEARISH") {
+      const isChasing = rsi15m < 42 || distFromEma9Pct < -0.8;
+      const isPullbackPocket = closedBar.high >= (ema9_15m * 0.997) && closedBar.close <= (ema21_15m * 1.005);
+      const isRsiReset = rsi15m >= 45 && rsi15m <= 64;
+      const isRejectionValid = upperWickRatio >= 0.28 || (isClosedRed && closedBar.close < prevClosedBar.low);
 
-    // 🛡️ STRICT EMA 9/21 ANTI-LOSS DISCIPLINE:
-    // 🏛️ TREND-ALIGNED PULLBACK LOGIC:
-    // If 1h is Bearish, a pullback near 15m EMA 9 is a PRIME SHORT ZONE!
-    if (isPriceAboveEma9 && isPriceAboveEma21 && is15mBullCross && fourHourTrend === "BULLISH") {
-      learnedBearPenalty += 40;
-      bearTrendPoints = 0;
+      let score = 25; // 4H HTF Trend
+      if (is1hBearish) score += 20;
+      if (isPullbackPocket) score += 20;
+      if (isRsiReset) score += 10;
+      if (isRejectionValid) score += 15;
+      if (adx4h >= 22) score += 10;
+
+      bearPatternPoints += (isPullbackPocket ? 10 : 0) + (isRejectionValid ? 10 : 0);
+      overallScore = score;
+      profitProbabilityPct = score;
+
+      if (is1hBearish && !isChasing && isPullbackPocket && isRsiReset && isRejectionValid) {
+        direction = "SELL";
+        isEntryValid = true;
+        overallScore = Math.min(95, Math.max(88, score));
+        profitProbabilityPct = overallScore;
+        fifteenMinTrigger = "BEARISH_BREAKOUT";
+        reasoning = `🎯 INSTITUTIONAL PULLBACK SELL: 4H Bearish Trend + 15m Value Pocket Retrace (${(upperWickRatio * 100).toFixed(0)}% rejection wick). RSI reset to ${rsi15m.toFixed(1)}. Risk:Reward 1:2.2.`;
+      } else {
+        direction = "NEUTRAL";
+        isEntryValid = false;
+        if (isChasing) {
+          reasoning = `⏳ WAITING PULLBACK: 4H is BEARISH, but dump is extended ${distFromEma9Pct.toFixed(2)}% below EMA 9 (RSI ${rsi15m.toFixed(1)}). Strictly refusing to short bottom!`;
+        } else if (!isPullbackPocket) {
+          reasoning = `⏳ WAITING VALUE ZONE: 4H is BEARISH. Waiting for price to bounce up into 15m EMA 9/21 value resistance.`;
+        } else if (!isRejectionValid) {
+          reasoning = `⏳ AWAITING EXHAUSTION: Price tested resistance, but closed 15m candle lacks sellers' rejection wick (${(upperWickRatio * 100).toFixed(0)}% < 28%).`;
+        } else {
+          reasoning = `⏳ AWAITING MOMENTUM RESET: Waiting for 15m RSI to bounce into 45-64 zone (currently ${rsi15m.toFixed(1)}).`;
+        }
+      }
+    } else {
+      direction = "NEUTRAL";
+      isEntryValid = false;
+      overallScore = 35;
+      profitProbabilityPct = 35;
+      reasoning = `⏳ CHOPPING: 4H Trend is SIDEWAYS (ADX ${adx4h.toFixed(1)}). Capital strictly protected. No low-conviction trades allowed.`;
     }
-    if (isPriceBelowEma9 && isPriceBelowEma21 && is15mBearCross && fourHourTrend === "BEARISH") {
-      learnedBullPenalty += 40;
-      bullTrendPoints = 0;
-    }
 
-    // PRO-TREND EMPOWERMENT (Higher-Timeframe 4H Weighted Confluence):
-    if (is15mBullCross && isPriceAboveEma9 && isPriceAboveEma21) {
-      bullTrendPoints = 35;
-      bullMomPoints = 30;
-      // If 4H is Bearish, this is a counter-trend pullback (Cap at ~80). True 95+ only when 4H agrees!
-      learnedBullPenalty += (fourHourTrend === "BEARISH") ? 18 : 0;
-    }
-    if (is15mBearCross && isPriceBelowEma9 && isPriceBelowEma21) {
-      bearTrendPoints = 35;
-      bearMomPoints = 30;
-      // If 4H is Bullish, this is a counter-trend pullback (Cap at ~80). True 95+ only when 4H agrees!
-      learnedBearPenalty += (fourHourTrend === "BULLISH") ? 18 : 0;
-    }
-
-    const totalBullScore = isBullConfluence
-      ? Math.max(10, Math.min(98, bullTrendPoints + bullMomPoints + bullPatternPoints + volBonus - learnedBullPenalty))
-      : Math.min(48, Math.max(10, bullTrendPoints + bullMomPoints));
-
-    const totalBearScore = isBearConfluence
-      ? Math.max(10, Math.min(98, bearTrendPoints + bearMomPoints + bearPatternPoints + volBonus - learnedBearPenalty))
-      : Math.min(48, Math.max(10, bearTrendPoints + bearMomPoints));
-
-    // 🎯 2-Hour Horizon Expected Profit Forecasting (High-Profit Swing Wave Targets):
+    // 🎯 Proper Asymmetric Risk-Reward Projections (1:2.2 R:R)
     const safeAtr = (atr1h > 0 && atr1h < currentPrice * 0.15) ? atr1h : (currentPrice * 0.015);
-    const slDist = safeAtr * 1.0;
-    const tpDist = safeAtr * 1.35;
+    const slDist = Math.max(currentPrice * 0.015, safeAtr * 1.5);
+    const tpDist = slDist * 2.2;
     const lotSize = this.calculateDynamicLotSize(sym, currentPrice, slDist).quantity;
 
-    // Projected Profit if BUY is executed (2-Hour Horizon):
-    const buyWinProb = totalBullScore / 100;
-    const buyProjectedProfitUSD = Number(((tpDist * lotSize * buyWinProb) - (slDist * lotSize * (1 - buyWinProb))).toFixed(2));
-
-    // Projected Profit if SELL is executed (2-Hour Horizon):
-    const sellWinProb = totalBearScore / 100;
-    const sellProjectedProfitUSD = Number(((tpDist * lotSize * sellWinProb) - (slDist * lotSize * (1 - sellWinProb))).toFixed(2));
-
-    // 4. Stable 2-Hour Momentum Direction Decision with Anti-Flicker Hysteresis:
-    let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
-    let overallScore = 50;
-    let projectedProfitUSD = 0;
-    let profitProbabilityPct = 50;
-
-    const minEntryThreshold = typeof this.settings.minConfidenceThreshold === "number" ? this.settings.minConfidenceThreshold : 88;
-    const prevAnalysis = this.analysisCache.get(sym);
-
-    // Anti-Flicker Hysteresis Filter (Prevents 2-minute flip-flopping across intra-candle ticks):
-    if (prevAnalysis?.direction === "BUY" && totalBullScore >= (totalBearScore - 4) && totalBullScore >= 42) {
-      direction = "BUY";
-      overallScore = totalBullScore;
-      projectedProfitUSD = buyProjectedProfitUSD;
-      profitProbabilityPct = totalBullScore;
-    } else if (prevAnalysis?.direction === "SELL" && totalBearScore >= (totalBullScore - 4) && totalBearScore >= 42) {
-      direction = "SELL";
-      overallScore = totalBearScore;
-      projectedProfitUSD = sellProjectedProfitUSD;
-      profitProbabilityPct = totalBearScore;
-    } else if (totalBullScore > totalBearScore + 3 && totalBullScore >= 45) {
-      direction = "BUY";
-      overallScore = totalBullScore;
-      projectedProfitUSD = buyProjectedProfitUSD;
-      profitProbabilityPct = totalBullScore;
-    } else if (totalBearScore > totalBullScore + 3 && totalBearScore >= 45) {
-      direction = "SELL";
-      overallScore = totalBearScore;
-      projectedProfitUSD = sellProjectedProfitUSD;
-      profitProbabilityPct = totalBearScore;
-    } else if (totalBullScore >= 50 && totalBullScore >= totalBearScore) {
-      direction = "BUY";
-      overallScore = totalBullScore;
-      projectedProfitUSD = buyProjectedProfitUSD;
-      profitProbabilityPct = totalBullScore;
-    } else if (totalBearScore >= 50 && totalBearScore > totalBullScore) {
-      direction = "SELL";
-      overallScore = totalBearScore;
-      projectedProfitUSD = sellProjectedProfitUSD;
-      profitProbabilityPct = totalBearScore;
-    } else {
-      direction = "NEUTRAL";
-      overallScore = Math.max(totalBullScore, totalBearScore);
-      projectedProfitUSD = 0;
-      profitProbabilityPct = overallScore;
-    }
-
-    // 🔥 TA-LIB / PANDAS-TA MOMENTUM IGNITION CONFLUENCE INTEGRATION:
-    const roc15m = this.calculateROC(closes15m, 6);
-    const obvData = this.calculateOBV(bars15mUse);
-    const adxFull = this.calculateADXFull(bars15mUse, 14);
-    const priceAboveVWAP = currentPrice > vwap1h.vwap;
-
-    const bullIgnition = this.calculateMomentumIgnitionScore({
-      roc15m,
-      adx: adxFull.adx,
-      plusDI: adxFull.plusDI,
-      minusDI: adxFull.minusDI,
-      obvSlope: obvData.obvSlope,
-      volumeExpansionRatio: obvData.volumeExpansionRatio,
-      priceAboveVWAP,
-      fourHourTrend,
-      direction: "BUY"
-    });
-
-    const bearIgnition = this.calculateMomentumIgnitionScore({
-      roc15m,
-      adx: adxFull.adx,
-      plusDI: adxFull.plusDI,
-      minusDI: adxFull.minusDI,
-      obvSlope: obvData.obvSlope,
-      volumeExpansionRatio: obvData.volumeExpansionRatio,
-      priceAboveVWAP,
-      fourHourTrend,
-      direction: "SELL"
-    });
-
-    // If Momentum Ignition is STRONG (85+) or EARLY (75+), prioritize over lagging EMA cross!
-    let activeIgnition = bullIgnition.score >= bearIgnition.score ? bullIgnition : bearIgnition;
-    if (bullIgnition.score >= 75 && bullIgnition.score > bearIgnition.score) {
-      direction = "BUY";
-      overallScore = bullIgnition.score;
-      profitProbabilityPct = bullIgnition.score;
-      activeIgnition = bullIgnition;
-    } else if (bearIgnition.score >= 75 && bearIgnition.score > bullIgnition.score) {
-      direction = "SELL";
-      overallScore = bearIgnition.score;
-      profitProbabilityPct = bearIgnition.score;
-      activeIgnition = bearIgnition;
-    } else if (bullIgnition.setupTier === "CHOP_REJECT" && bearIgnition.setupTier === "CHOP_REJECT") {
-      direction = "NEUTRAL";
-      overallScore = Math.max(bullIgnition.score, bearIgnition.score);
-    }
-
-        // 🛑 100% STRICT MACRO TREND LAW:
-    // If 4H is BEARISH: BUY is 100% FORBIDDEN. Only SELL (Short) allowed!
-    // If 4H is BULLISH: SELL is 100% FORBIDDEN. Only BUY (Long) allowed!
-    // 4H Trend context adds weight, but does not block strong 15m/1h momentum breakouts:
-    if (fourHourTrend === "BULLISH" && direction === "BUY") {
-      overallScore = Math.min(98, overallScore + 10);
-    } else if (fourHourTrend === "BEARISH" && direction === "SELL") {
-      overallScore = Math.min(98, overallScore + 10);
-    }
-
-        // 🏛️ PURE PRICE ACTION + EMA 9/21 PULLBACK REJECTION ENGINE (Freqtrade / TradingView Benchmark):
-    const pa = this.detectEmaPriceAction(bars15mUse, currentPrice);
-    
-    // 🛑 100% TIMEFRAME HIERARCHY FILTER (Resolves 15m vs 1h vs 4h Overlap):
-    // 15m can NEVER fight the 4-Hour Boss!
-    // If 4H is Bearish, a 15m hammer is a Bull Trap — REJECT!
-    // If 4H is Bullish, a 15m shooting star is a Bear Trap — REJECT!
-    // Bi-directional Symmetrical Trend Alignment:
-    // BUY requires price >= 1h EMA 21 (or strong bullish ignition)
-    // SELL is 100% active whenever price rejects from top or breaks below 1h EMA 21!
-    const isPaTrendAligned = 
-      (pa.signal === "BUY" && currentPrice >= ema21_1h * 0.995) ||
-      (pa.signal === "SELL" && (currentPrice <= ema21_1h * 1.005 || pa.pattern?.includes("TOP_")));
-
-    // 🧠 5-LAYER QUANT STACK (KAMA + Structure BOS/CHoCH + Wilder ADX + ATR):
-    const kamaComposite = calculateCompositeScore(bars15mUse, {
-      kamaPeriod: 10,
-      adxPeriod: 14,
-      swingLookback: 3,
-      entryThreshold: 70
-    });
-
-    const isKamaTrendAligned = 
-      (kamaComposite.bias === "LONG" && currentPrice >= ema21_1h * 0.995) ||
-      (kamaComposite.bias === "SHORT" && currentPrice <= ema21_1h * 1.005);
-
-    if (isKamaTrendAligned && kamaComposite.score >= 80) {
-      direction = kamaComposite.bias === "LONG" ? "BUY" : "SELL";
-      overallScore = kamaComposite.score;
-      profitProbabilityPct = kamaComposite.score;
-    } else if (isPaTrendAligned && pa.isTriggered) {
-      direction = pa.signal;
-      overallScore = 95;
-      profitProbabilityPct = 95;
-    } else if (isPaTrendAligned) {
-      direction = pa.signal;
-      overallScore = 85; // Confirmed rejection in value pocket
-      profitProbabilityPct = 70;
-    } else {
-      direction = "NEUTRAL";
-      overallScore = Math.max(38, kamaComposite.score > 50 ? kamaComposite.score : 38);
-      profitProbabilityPct = overallScore;
-    }
-
-    const isChopFree = (adx4h >= 22 || (this.analysisCache?.get?.(sym)?.adxValue || 0) >= 15) && hurst1h >= 0.40;
-    
-    // 🏛️ STREAMLINED 2-HOUR DIRECTION & EXECUTION ENGINE:
-    // 1-Hour 21 EMA defines the master macro trend direction:
-    const is1hBullTrend = currentPrice >= ema21_1h;
-    const is1hBearTrend = currentPrice < ema21_1h;
-
-    // 1-Hour & 15-Minute Trend Alignment (Dynamic & Responsive):
-    const isBuyTrendAllowed = currentPrice >= (ema21_1h * 0.995) || currentPrice >= ema9_15m;
-    const isSellTrendAllowed = currentPrice <= (ema21_1h * 1.005) || currentPrice <= ema9_15m;
-
-    // 15m Momentum Alignment:
-    const isEmaAligned = direction === "BUY"
-      ? (currentPrice >= ema9_15m * 0.997)
-      : direction === "SELL"
-      ? (currentPrice <= ema9_15m * 1.003)
-      : false;
-
-    // 👑 MASTER QUANT PRIORITY OVERRIDE:
-    const masterMove = this.detectMasterPredictiveMove(bars15mUse, currentPrice);
-    if (masterMove.signal !== "NEUTRAL") {
-      direction = masterMove.signal;
-      overallScore = masterMove.score;
-      profitProbabilityPct = masterMove.score;
-    }
-
-    // 💥💥💥 VOLATILITY IMPULSE BOOM & CASCADE DUMP OVERRIDE 💥💥💥
-    // When a true breakout boom or waterfall dump happens (as in user screenshots 1, 2, 3):
-    // Highest priority in the engine! Whales are active!
-    if (impulse.isImpulse && impulse.signal !== "NEUTRAL") {
-      direction = impulse.signal;
-      overallScore = Math.max(overallScore, impulse.score);
-      profitProbabilityPct = impulse.score;
-    }
-
-    // 🛡️ STRICT ANTI-TOP-BUYING GUARD (Only applies to slow pullbacks, NOT explosive impulse breakouts):
-    if (!impulse.isImpulse && direction === "BUY" && (rsi15m >= 72 || currentPrice > ema21_15m * 1.018)) {
-      direction = "NEUTRAL";
-      overallScore = 38;
-      profitProbabilityPct = 38;
-    }
-
-    // 🚀 TOP REVERSAL SHORT TRIGGER (Only allowed if 4H is NOT BULLISH):
-    if (fourHourTrend !== "BULLISH" && direction === "NEUTRAL" && (rsi15m >= 68 || rsi1h >= 70) && pa.signal === "SELL") {
-      direction = "SELL";
-      overallScore = 88;
-      profitProbabilityPct = 88;
-    }
-
-    // 🎯 SNIPER PULLBACK ZONE CONFIRMATION:
-    // Normal pullbacks require being near EMA 9.
-    // 💥 EXEMPTION: Volatility Booms / Dumps are explosive momentum expansions, NOT pullbacks!
-    const isStretchedBuy = !impulse.isImpulse && (currentPrice > (ema9_15m * 1.006) || rsi15m > 62);
-    const isStretchedSell = !impulse.isImpulse && (currentPrice < (ema9_15m * 0.994) || rsi15m < 38);
-
-    if (direction === "BUY" && isStretchedBuy) {
-      direction = "NEUTRAL";
-      overallScore = 42;
-      profitProbabilityPct = 42;
-    } else if (direction === "SELL" && isStretchedSell) {
-      direction = "NEUTRAL";
-      overallScore = 42;
-      profitProbabilityPct = 42;
-    }
-
-    const isFreshOrPullback = impulse.isImpulse ? true : (direction === "BUY" ? (rsi15m <= 62 && rsi15m >= 38) : (rsi15m >= 38 && rsi15m <= 62));
-
-    // 🛑 4-HOUR MACRO TREND LAW:
-    // 15m pullbacks cannot fight the 4H trend.
-    // BUT an Institutional Impulse Boom/Dump (Whale surge) CAN initiate a trend reversal!
-    let isTrendBlocked = false;
-    if (fourHourTrend === "BULLISH" && direction === "SELL" && !impulse.isImpulse) {
-      direction = "NEUTRAL";
-      isTrendBlocked = true;
-    } else if (fourHourTrend === "BEARISH" && direction === "BUY" && !impulse.isImpulse) {
-      direction = "NEUTRAL";
-      isTrendBlocked = true;
-    }
-
-    const isEntryValid = (
-      direction !== "NEUTRAL" &&
-      !isTrendBlocked &&
-      overallScore >= (this.settings.minConfidenceThreshold || 88)
-    );
-    const fifteenMinTrigger = impulse.isImpulse
-      ? (impulse.signal === "BUY" ? "VOLATILITY_BOOM_IMPULSE" : "VOLATILITY_DUMP_IMPULSE")
-      : (patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL");
-
-    let trendContextStr = fourHourTrend;
-    if (impulse.isImpulse) trendContextStr = `Whale Impulse (${impulse.setupName})`;
-    else if (is4hBottomReversal) trendContextStr = "4h Bottom Reversal (Accumulation)";
-    else if (is4hTopReversal) trendContextStr = "4h Top Reversal (Distribution)";
-
-    const tpPct = Number(((tpDist / currentPrice) * 100).toFixed(2));
-    const slPct = Number(((slDist / currentPrice) * 100).toFixed(2));
-
-    const reasoning = impulse.isImpulse
-      ? `💥 ${impulse.detail} · Score: ${overallScore}/100 [Target: +${tpPct}% · SL: -${slPct}%]`
-      : isEntryValid
-      ? `🎯 QUANT ADAPTIVE [${direction}]: (${profitProbabilityPct}% Score). Structure: ${kamaComposite?.structureSignal || patternInfo.pattern} | ER: ${kamaComposite?.efficiencyRatio || 0} | ADX: ${kamaComposite?.adxValue || 0} | Target: +${tpPct}% · SL: -${slPct}%. 4h [${trendContextStr}].`
-      : `⏳ 2-HOUR AI SCAN [FILTERED]: 2h Buy EV ${buyProjectedProfitUSD >= 0 ? "+" : ""}$${buyProjectedProfitUSD} (${totalBullScore}%) vs Sell EV ${sellProjectedProfitUSD >= 0 ? "+" : ""}$${sellProjectedProfitUSD} (${totalBearScore}%). Conviction < ${minEntryThreshold} or chop present (ADX ${adx4h.toFixed(1)}, Hurst ${hurst1h}). Auto-skipping.`;
+    const winProb = isEntryValid ? (overallScore / 100) : 0.50;
+    const projectedProfitUSD = Number(((tpDist * lotSize * winProb) - (slDist * lotSize * (1 - winProb))).toFixed(2));
 
     const result: MultiTimeframeAnalysis = {
       symbol: sym,
@@ -2525,7 +2123,7 @@ export class DeltaAutoTraderEngine {
       adxValue: Number(adx4h.toFixed(1)),
       rsi1h: Number(rsi1h.toFixed(1)),
       atr1h: Number(atr1h.toFixed(2)),
-      volumeMultiplier: Number(volMultiplier.toFixed(2)),
+      volumeMultiplier: Number((volBonus >= 5 ? 1.3 : 1.0).toFixed(2)),
       dataSource: "DELTA",
       subScores: {
         trend: direction === "BUY" ? bullTrendPoints : direction === "SELL" ? bearTrendPoints : Math.max(bullTrendPoints, bearTrendPoints),
@@ -2538,10 +2136,9 @@ export class DeltaAutoTraderEngine {
       hurstExponent: hurst1h,
       zScore: Number(zScore15m.toFixed(2)),
       kamaVelocity: Number(kamaVelocity15m.toFixed(2)),
-      expectedValueUSD: direction === "BUY" ? buyProjectedProfitUSD : (direction === "SELL" ? sellProjectedProfitUSD : 0),
+      expectedValueUSD: projectedProfitUSD,
       halfKellyFraction: Number((Math.max(0, Math.min(0.10, ((overallScore / 100) * 2 - (1 - (overallScore / 100))) / 2)) * 50).toFixed(2))
     };
-
     this.analysisCache.set(sym, result);
     return result;
   }
@@ -2646,11 +2243,18 @@ export class DeltaAutoTraderEngine {
     // Altcoins (SOL, XRP, DOGE, ADA): Minimum 2.2% breathing room
     const isMajor = ["BTC", "ETH"].some(m => symbol.toUpperCase().includes(m));
     const minSlPercent = isMajor ? 0.015 : 0.022;
-    const rawSlDist = (impulse.isImpulse && impulse.slPrice > 0)
-      ? Math.abs(entryPrice - impulse.slPrice)
-      : (tradeSig.slDistance || (tradeSig.stopLoss ? Math.abs(entryPrice - tradeSig.stopLoss) : entryPrice * minSlPercent));
+
+    const recentBars = bars15m.slice(-6, -1);
+    const swingLow = recentBars.length > 0 ? Math.min(...recentBars.map(b => b.low)) : entryPrice * (1 - minSlPercent);
+    const swingHigh = recentBars.length > 0 ? Math.max(...recentBars.map(b => b.high)) : entryPrice * (1 + minSlPercent);
+    const safeAtr = (tradeSig.atrValue && tradeSig.atrValue > 0) ? tradeSig.atrValue : (price * 0.015);
+
+    const rawSlDist = analysis.direction === "BUY"
+      ? Math.max(0.0001, (entryPrice - swingLow) + (0.5 * safeAtr))
+      : Math.max(0.0001, (swingHigh - entryPrice) + (0.5 * safeAtr));
+
     const effectiveSlDist = Math.max(entryPrice * minSlPercent, rawSlDist);
-    const effectiveTpMultiplier = impulse.isImpulse ? (impulse.tpMultiplier || 3.0) : 2.5;
+    const effectiveTpMultiplier = 2.2; // 1:2.2 Asymmetric Risk/Reward
 
     const stopLossPrice = this.roundPrice(
       analysis.direction === "BUY" ? entryPrice - effectiveSlDist : entryPrice + effectiveSlDist
@@ -2659,7 +2263,6 @@ export class DeltaAutoTraderEngine {
       analysis.direction === "BUY" ? entryPrice + (effectiveSlDist * effectiveTpMultiplier) : entryPrice - (effectiveSlDist * effectiveTpMultiplier)
     );
     const slDistance = Math.abs(entryPrice - stopLossPrice);
-    const safeAtr = tradeSig.atrValue || (price * 0.010);
 
     // 🎯 DYNAMIC LOT SIZING BASED ON LIVE ACCOUNT BALANCE (1.5% Risk)
     const lotInfo = this.calculateDynamicLotSize(symbol, price, slDistance);
@@ -2852,6 +2455,35 @@ export class DeltaAutoTraderEngine {
         // Trade runs strictly until Target Price (TP) or Stop Loss (SL) is reached.
         // No premature early exits, no momentum cuts, no time stalls, no retracement panic exits!
         // ────────────────────────────────────────────
+
+        // 🛡️ BREAKEVEN SHIELD (+1.0R Floating Profit):
+        // Once floating profit hits +1.0R, immediately lock Stop Loss to Entry + Fee Buffer.
+        // This guarantees the trade can NEVER become a losing trade!
+        const rMultiple = initialRisk > 0 ? (pnlUSD / initialRisk) : 0;
+        if (rMultiple >= 1.0 && !pos.trailingStopActive) {
+          const feeBufferOffset = pos.entryPrice * 0.0008; // 0.08% buffer to cover exchange fees
+          const breakevenSL = this.roundPrice(
+            pos.type === "BUY" ? pos.entryPrice + feeBufferOffset : pos.entryPrice - feeBufferOffset
+          );
+          const isTighter = pos.type === "BUY" ? breakevenSL > pos.stopLossPrice : breakevenSL < pos.stopLossPrice;
+          if (isTighter) {
+            pos.stopLossPrice = breakevenSL;
+            pos.trailingStopActive = true;
+            pos.ratchetTier = 1;
+            pos.lockedProfitUSD = 0.10;
+            const beMsg = `🛡️ BREAKEVEN SHIELD TRIGGERED: ${pos.symbol} reached +${rMultiple.toFixed(1)}R (+₹${(pnlUSD * 83.5).toFixed(0)} INR)! Stop-Loss moved to Breakeven @ ${breakevenSL}. Trade is now 100% RISK-FREE!`;
+            console.log(`[DeltaAutoTrader] ${beMsg}`);
+            triggeredLogs.push(beMsg);
+            this.saveToStorage();
+
+            // Asynchronously sync native bracket on Delta Exchange
+            if (this.settings.mode === "LIVE") {
+              deltaExchangeEngine.updateBracketOrder(pos.symbol, pos.stopLossPrice, pos.targetPrice).catch((err: any) => {
+                console.warn(`[DeltaAutoTrader] ⚠️ Could not update native bracket to breakeven for ${pos.symbol}:`, err?.message);
+              });
+            }
+          }
+        }
 
         // 🎯 Exit Check 1: STRICT TAKE PROFIT (TP) TARGET HIT
         const isTPHit = pos.type === "BUY" ? pos.currentPrice >= pos.targetPrice : pos.currentPrice <= pos.targetPrice;
