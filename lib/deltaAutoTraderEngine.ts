@@ -2019,15 +2019,20 @@ export class DeltaAutoTraderEngine {
     let reasoning = "";
     let fifteenMinTrigger: "BULLISH_BREAKOUT" | "BEARISH_BREAKOUT" | "NEUTRAL" = "NEUTRAL";
 
+    // 🎯 15m Trend Confluence Laws (Strict Golden/Death Cross Alignment)
+    const is15mBullTrend = ema9_15m > ema21_15m;
+    const is15mBearTrend = ema9_15m < ema21_15m;
+
     if (fourHourTrend === "BULLISH") {
       const isChasing = rsi15m > 58 || distFromEma9Pct > 0.8;
-      const isPullbackPocket = closedBar.low <= (ema9_15m * 1.003) && closedBar.close >= (ema21_15m * 0.995);
+      const isPullbackPocket = is15mBullTrend && closedBar.low <= (ema9_15m * 1.002) && closedBar.close >= (ema21_15m * 0.998) && closedBar.close <= (ema9_15m * 1.004);
       const isRsiReset = rsi15m >= 36 && rsi15m <= 55;
-      const isRejectionValid = lowerWickRatio >= 0.28 || (isClosedGreen && closedBar.close > prevClosedBar.high);
+      const isRejectionValid = lowerWickRatio >= 0.25 || (isClosedGreen && closedBar.close > prevClosedBar.high);
 
       let score = 25; // 4H HTF Trend
       if (is1hBullish) score += 20;
-      if (isPullbackPocket) score += 20;
+      if (is15mBullTrend) score += 15;
+      if (isPullbackPocket) score += 15;
       if (isRsiReset) score += 10;
       if (isRejectionValid) score += 15;
       if (adx4h >= 22) score += 10;
@@ -2036,35 +2041,38 @@ export class DeltaAutoTraderEngine {
       overallScore = score;
       profitProbabilityPct = score;
 
-      if (is1hBullish && !isChasing && isPullbackPocket && isRsiReset && isRejectionValid) {
+      if (is1hBullish && is15mBullTrend && !isChasing && isPullbackPocket && isRsiReset && isRejectionValid) {
         direction = "BUY";
         isEntryValid = true;
         overallScore = Math.min(95, Math.max(88, score));
         profitProbabilityPct = overallScore;
         fifteenMinTrigger = "BULLISH_BREAKOUT";
-        reasoning = `🎯 INSTITUTIONAL PULLBACK BUY: 4H Bullish Trend + 15m Value Pocket Dip (${(lowerWickRatio * 100).toFixed(0)}% absorption wick). RSI reset to ${rsi15m.toFixed(1)}. Risk:Reward 1:2.2.`;
+        reasoning = `🎯 INSTITUTIONAL PULLBACK BUY: 4H + 1H + 15m Triple Bull Confluence (EMA 9 > 21) + Value Pocket Dip (${(lowerWickRatio * 100).toFixed(0)}% absorption wick). RSI reset to ${rsi15m.toFixed(1)}. Risk:Reward 1:2.2.`;
       } else {
         direction = "NEUTRAL";
         isEntryValid = false;
-        if (isChasing) {
+        if (!is15mBullTrend) {
+          reasoning = `⏳ 15M DOWNTREND CONFLICT: 4H is BULLISH, but 15m EMA 9 ($${ema9_15m.toFixed(2)}) is below EMA 21 ($${ema21_15m.toFixed(2)}) (Death Cross). Strictly refusing to counter-trend buy!`;
+        } else if (isChasing) {
           reasoning = `⏳ WAITING PULLBACK: 4H is BULLISH, but price is extended +${distFromEma9Pct.toFixed(2)}% above EMA 9 (RSI ${rsi15m.toFixed(1)}). Strictly refusing to buy top!`;
         } else if (!isPullbackPocket) {
           reasoning = `⏳ WAITING VALUE ZONE: 4H is BULLISH. Waiting for price to dip into 15m EMA 9/21 value pocket.`;
         } else if (!isRejectionValid) {
-          reasoning = `⏳ AWAITING ABSORPTION: Price touched value pocket, but closed 15m candle lacks buyers' absorption wick (${(lowerWickRatio * 100).toFixed(0)}% < 28%).`;
+          reasoning = `⏳ AWAITING ABSORPTION: Price touched value pocket, but closed 15m candle lacks buyers' absorption wick (${(lowerWickRatio * 100).toFixed(0)}% < 25%).`;
         } else {
           reasoning = `⏳ AWAITING MOMENTUM RESET: Waiting for 15m RSI to cool down into 36-55 zone (currently ${rsi15m.toFixed(1)}).`;
         }
       }
     } else if (fourHourTrend === "BEARISH") {
       const isChasing = rsi15m < 42 || distFromEma9Pct < -0.8;
-      const isPullbackPocket = closedBar.high >= (ema9_15m * 0.997) && closedBar.close <= (ema21_15m * 1.005);
+      const isPullbackPocket = is15mBearTrend && closedBar.high >= (ema9_15m * 0.998) && closedBar.close <= (ema21_15m * 1.002) && closedBar.close >= (ema9_15m * 0.996);
       const isRsiReset = rsi15m >= 45 && rsi15m <= 64;
-      const isRejectionValid = upperWickRatio >= 0.28 || (isClosedRed && closedBar.close < prevClosedBar.low);
+      const isRejectionValid = upperWickRatio >= 0.25 || (isClosedRed && closedBar.close < prevClosedBar.low);
 
       let score = 25; // 4H HTF Trend
       if (is1hBearish) score += 20;
-      if (isPullbackPocket) score += 20;
+      if (is15mBearTrend) score += 15;
+      if (isPullbackPocket) score += 15;
       if (isRsiReset) score += 10;
       if (isRejectionValid) score += 15;
       if (adx4h >= 22) score += 10;
@@ -2073,22 +2081,24 @@ export class DeltaAutoTraderEngine {
       overallScore = score;
       profitProbabilityPct = score;
 
-      if (is1hBearish && !isChasing && isPullbackPocket && isRsiReset && isRejectionValid) {
+      if (is1hBearish && is15mBearTrend && !isChasing && isPullbackPocket && isRsiReset && isRejectionValid) {
         direction = "SELL";
         isEntryValid = true;
         overallScore = Math.min(95, Math.max(88, score));
         profitProbabilityPct = overallScore;
         fifteenMinTrigger = "BEARISH_BREAKOUT";
-        reasoning = `🎯 INSTITUTIONAL PULLBACK SELL: 4H Bearish Trend + 15m Value Pocket Retrace (${(upperWickRatio * 100).toFixed(0)}% rejection wick). RSI reset to ${rsi15m.toFixed(1)}. Risk:Reward 1:2.2.`;
+        reasoning = `🎯 INSTITUTIONAL PULLBACK SELL: 4H + 1H + 15m Triple Bear Confluence (EMA 9 < 21) + Value Resistance Retrace (${(upperWickRatio * 100).toFixed(0)}% rejection wick). RSI reset to ${rsi15m.toFixed(1)}. Risk:Reward 1:2.2.`;
       } else {
         direction = "NEUTRAL";
         isEntryValid = false;
-        if (isChasing) {
+        if (!is15mBearTrend) {
+          reasoning = `⏳ 15M UPTREND CONFLICT: 4H is BEARISH, but 15m EMA 9 ($${ema9_15m.toFixed(2)}) is above EMA 21 ($${ema21_15m.toFixed(2)}) (Golden Cross). Strictly refusing to short into active 15m rally!`;
+        } else if (isChasing) {
           reasoning = `⏳ WAITING PULLBACK: 4H is BEARISH, but dump is extended ${distFromEma9Pct.toFixed(2)}% below EMA 9 (RSI ${rsi15m.toFixed(1)}). Strictly refusing to short bottom!`;
         } else if (!isPullbackPocket) {
           reasoning = `⏳ WAITING VALUE ZONE: 4H is BEARISH. Waiting for price to bounce up into 15m EMA 9/21 value resistance.`;
         } else if (!isRejectionValid) {
-          reasoning = `⏳ AWAITING EXHAUSTION: Price tested resistance, but closed 15m candle lacks sellers' rejection wick (${(upperWickRatio * 100).toFixed(0)}% < 28%).`;
+          reasoning = `⏳ AWAITING EXHAUSTION: Price tested resistance, but closed 15m candle lacks sellers' rejection wick (${(upperWickRatio * 100).toFixed(0)}% < 25%).`;
         } else {
           reasoning = `⏳ AWAITING MOMENTUM RESET: Waiting for 15m RSI to bounce into 45-64 zone (currently ${rsi15m.toFixed(1)}).`;
         }
@@ -2288,8 +2298,8 @@ export class DeltaAutoTraderEngine {
       unrealizedPnLPct: 0,
       trailingStopActive: false,
       highestProfitUSD: 0,
-      triggerIndicator: `EMA 9/21 ${analysis.direction === "BUY" ? "Golden Cross" : "Death Cross"} · ADX ${(analysis.adxValue || 20).toFixed(1)}`,
-      timeframeAlignment: "15m + 1h + 4h Aligned",
+      triggerIndicator: `EMA 9/21 ${analysis.direction === "BUY" ? "Golden Cross" : "Death Cross"} Pullback · ADX ${(analysis.adxValue || 20).toFixed(1)}`,
+      timeframeAlignment: "15m + 1h + 4h Triple Aligned",
       entryTimestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
       entryTimeMs: now,
       maxHoldTimeExpiry: now + V3_MAX_HOLD_TIME_MS, // 24 Hours (1 Day) Trend Horizon Window (2h to 1 Day)
