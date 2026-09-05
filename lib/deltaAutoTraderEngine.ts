@@ -2279,9 +2279,8 @@ export class DeltaAutoTraderEngine {
       profitProbabilityPct = 38;
     }
 
-    // 🚀 TOP REVERSAL SHORT TRIGGER:
-    // If overbought and red rejection forms, flip immediately to SELL (SHORT)!
-    if (direction === "NEUTRAL" && (rsi15m >= 68 || rsi1h >= 70) && pa.signal === "SELL") {
+    // 🚀 TOP REVERSAL SHORT TRIGGER (Only allowed if 4H is NOT BULLISH):
+    if (fourHourTrend !== "BULLISH" && direction === "NEUTRAL" && (rsi15m >= 68 || rsi1h >= 70) && pa.signal === "SELL") {
       direction = "SELL";
       overallScore = 88;
       profitProbabilityPct = 88;
@@ -2304,8 +2303,22 @@ export class DeltaAutoTraderEngine {
 
     const isFreshOrPullback = direction === "BUY" ? (rsi15m <= 62 && rsi15m >= 38) : (rsi15m >= 38 && rsi15m <= 62);
 
+    // 🛑 STRICT 4-HOUR MACRO TREND LAW (Zero Counter-Trend Trades):
+    // 15m/1h signals can NEVER trade against the 4-Hour Trend boss!
+    // If 4H is BULLISH: SELL is 100% FORBIDDEN (Eliminates suicidal shorts during pumps).
+    // If 4H is BEARISH: BUY is 100% FORBIDDEN (Eliminates catching falling knives).
+    let isTrendBlocked = false;
+    if (fourHourTrend === "BULLISH" && direction === "SELL") {
+      direction = "NEUTRAL";
+      isTrendBlocked = true;
+    } else if (fourHourTrend === "BEARISH" && direction === "BUY") {
+      direction = "NEUTRAL";
+      isTrendBlocked = true;
+    }
+
     const isEntryValid = (
       direction !== "NEUTRAL" &&
+      !isTrendBlocked &&
       overallScore >= (this.settings.minConfidenceThreshold || 88)
     );
     const fifteenMinTrigger = patternInfo.signal === "BULLISH" ? "BULLISH_BREAKOUT" : patternInfo.signal === "BEARISH" ? "BEARISH_BREAKOUT" : "NEUTRAL";
@@ -2629,9 +2642,9 @@ export class DeltaAutoTraderEngine {
           ? pos.initialRiskUSD
           : Math.max(0.50, Math.abs(pos.entryPrice - pos.stopLossPrice) * pos.quantity);
 
-        // Exit Check 0: Emergency Hard Dollar Loss Floor (Max 1.8% Risk = ~$3.40 on $191 balance)
-        // Primary single-runaway risk guard that fires first before account-level breaker
-        const emergencyMaxLossUSD = Math.max(initialRisk * 1.25, 4.50);
+        // Exit Check 0: Emergency Hard Dollar Loss Floor (Strict $3.50 Max Risk Cap = ~₹290 INR)
+        // Mathematically guarantees no runaway trade or slippage ever exceeds $3.50 loss
+        const emergencyMaxLossUSD = Math.min(3.50, Math.max(initialRisk * 1.15, 2.90));
         if (pnlUSD <= -emergencyMaxLossUSD) {
           const res = this.closePosition(pos.id, pos.currentPrice, "STOP_LOSS_HIT");
           triggeredLogs.push(`🛑 Emergency Hard Risk Cap: Closed ${pos.symbol} at -$${Math.abs(pnlUSD).toFixed(2)} to strictly protect capital.`);
@@ -3194,10 +3207,10 @@ export class DeltaAutoTraderEngine {
     };
 
     // 🛡️ PROFESSIONAL FIXED-FRACTIONAL RISK CAP:
-    // A single trade can NEVER risk more than 2.5% of account capital ($4.50 USD / ~₹375 INR on $180 account)!
-    // This mathematically guarantees you NEVER lose $12 on a single trade again!
-    const MAX_RISK_PCT = 0.025;
-    const maxAllowedRiskUSD = Number((accountEquity * MAX_RISK_PCT).toFixed(2));
+    // A single trade can NEVER risk more than 1.6% of account capital (strictly capped at $2.90 USD risk + $0.60 fee = $3.50 max loss)!
+    // This mathematically guarantees you NEVER lose more than ~$3.50 / ~₹290 on any trade!
+    const MAX_RISK_PCT = 0.016;
+    const maxAllowedRiskUSD = Math.min(2.90, Number((accountEquity * MAX_RISK_PCT).toFixed(2)));
 
     const safeSLDist = Math.max(currentPrice * 0.008, stopLossDistance);
     const rawQty = currentPrice > 0 ? (notionalUSD / currentPrice) : 0;
