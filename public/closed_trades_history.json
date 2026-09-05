@@ -1,32 +1,5 @@
 [
   {
-    "id": "DAT-1788588315205-7214",
-    "symbol": "BNBUSD",
-    "type": "BUY",
-    "quantity": 0.27,
-    "entryPrice": 722.07,
-    "exitPrice": 688.7,
-    "realizedPnLUSD": -9.61,
-    "realizedPnLPct": -4.93,
-    "confidenceScore": 93,
-    "outcome": "LOSS",
-    "exitReason": "STOP_LOSS_HIT",
-    "entryTimestamp": "2026-09-05 06:05:15",
-    "exitTimestamp": "2026-09-05 06:12:42",
-    "subScores": {
-      "trend": 35,
-      "momentum": 30,
-      "pattern": 40,
-      "volume": 20
-    },
-    "adxValue": 31.2,
-    "rsiValue": 55.8,
-    "atrValue": 7.221,
-    "entryEVUSD": 2.21,
-    "realizedRMultiple": -2.24,
-    "feeUSD": 0.6
-  },
-  {
     "id": "DAT-1788544897639-9012",
     "symbol": "XRPUSD",
     "type": "SELL",

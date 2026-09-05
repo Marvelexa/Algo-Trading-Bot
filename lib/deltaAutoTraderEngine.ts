@@ -678,7 +678,9 @@ export class DeltaAutoTraderEngine {
       return local;
     }
 
-    return this.getAssetBaselinePrice(symbol);
+    // NEVER return static baseline price for live market price monitoring!
+    // Return 0 if real-time tick is not yet available to prevent fake stop-loss triggers
+    return 0;
   }
 
 
@@ -2620,6 +2622,11 @@ export class DeltaAutoTraderEngine {
     this.openPositions.forEach(pos => {
       const posClean = pos.symbol.toUpperCase().replace("USDT", "").replace("USD", "").trim();
       if (pos.symbol === symbol || symbol.includes(pos.symbol) || pos.symbol.includes(symbol) || cleanSym === posClean) {
+        // 🛡️ TICK SANITY CHECK: Protect against stale/erroneous outlier ticks (> 15% flash gap from entry)
+        if (pos.entryPrice > 0 && Math.abs(currentPriceUSD - pos.entryPrice) / pos.entryPrice > 0.15) {
+          console.warn(`[DeltaAutoTrader] ⚠️ Outlier tick ignored for ${pos.symbol}: $${currentPriceUSD} vs Entry $${pos.entryPrice}`);
+          return;
+        }
         pos.currentPrice = this.roundPrice(currentPriceUSD);
 
         // P&L Calculation
