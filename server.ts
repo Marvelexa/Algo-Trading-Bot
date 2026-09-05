@@ -971,7 +971,7 @@ async function startServer() {
     try {
       const fullState = deltaAutoTraderEngine.getLiveFullState();
       if (fullState.settings.isEnabled && fullState.openPositions.length < fullState.settings.maxConcurrentPositions) {
-        const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade(true);
+        const res = await deltaAutoTraderEngine.scanAndExecuteNextTrade(false);
         if (res && res.executed) {
           console.log(`[DeltaDaemon] 🚀 AUTONOMOUS TRADE PLACED: ${res.message}`);
         }

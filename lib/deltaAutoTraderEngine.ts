@@ -3340,8 +3340,10 @@ export class DeltaAutoTraderEngine {
     this.settings.isEnabled = enabled !== undefined ? enabled : !this.settings.isEnabled;
     if (this.settings.isEnabled && !prevEnabled) {
       this.lastLossTimestamp = 0;
-      this.slotReentryCooldownExpiry = 0; // Immediate active progressive scanning & execution
-      this.scanAndExecuteNextTrade().catch(() => {});
+      this.slotReentryCooldownExpiry = 0;
+      // 🛡️ NO PANIC INSTANT FIRE: Start calm sequential inspection window rather than immediately dumping orders
+      this.inspectionStartTimeMs = Date.now();
+      this.currentAssetIndex = 0;
     }
     this.saveToStorage();
     return this.settings.isEnabled;
@@ -3584,7 +3586,7 @@ export class DeltaAutoTraderEngine {
     return [];
   }
 
-  public async scanAndExecuteNextTrade(forceImmediate: boolean = true): Promise<{ executed: boolean; message: string; position?: AutoTraderPosition }> {
+  public async scanAndExecuteNextTrade(forceImmediate: boolean = false): Promise<{ executed: boolean; message: string; position?: AutoTraderPosition }> {
     // 🛡️ ABSOLUTE MASTER KILL SWITCH:
     if (!this.settings.isEnabled) {
       return { executed: false, message: "Delta Auto-Trader is strictly PAUSED / OFF. Trade execution is 100% blocked." };
