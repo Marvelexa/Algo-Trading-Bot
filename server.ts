@@ -557,7 +557,7 @@ async function startServer() {
   // 🚀 Hydrate 24/7 Standing Autonomous State from disk immediately on server start
   try {
     if (fs.existsSync(DELTA_STATE_FILE)) {
-      const raw = fs.readFileSync(DELTA_STATE_FILE, "utf-8");
+      const raw = fs.readFileSync(DELTA_STATE_FILE, "utf-8").replace(/^\uFEFF/, "");
       if (raw) {
         (deltaAutoTraderEngine as any).applyParsedState(JSON.parse(raw));
         console.log("[Server] 🚀 24/7 Delta Auto-Trader state hydrated from disk (.delta_auto_trader_state.json)");
@@ -565,12 +565,13 @@ async function startServer() {
     }
     const historyFile = path.join(process.cwd(), "public", "closed_trades_history.json");
     if (fs.existsSync(historyFile)) {
-      const rawHistory = fs.readFileSync(historyFile, "utf-8");
+      const rawHistory = fs.readFileSync(historyFile, "utf-8").replace(/^\uFEFF/, "");
       if (rawHistory) {
         const historyList = JSON.parse(rawHistory);
         if (Array.isArray(historyList) && historyList.length > 0) {
-          (deltaAutoTraderEngine as any).applyParsedState({ closedRecords: historyList });
-          console.log(`[Server] 📜 Restored ${historyList.length} trades from public/closed_trades_history.json`);
+          const cleanHistory = historyList.filter((r: any) => !r.id?.includes("-LIVE-") && !r.symbol?.includes("P-ETH"));
+          (deltaAutoTraderEngine as any).applyParsedState({ closedRecords: cleanHistory });
+          console.log(`[Server] 📜 Restored ${cleanHistory.length} trades from public/closed_trades_history.json`);
         }
       }
     }
@@ -639,7 +640,11 @@ async function startServer() {
   // Real-Time Server State (Runs 24/7 in Cloud even when Chrome is closed / Mobile is sleeping)
   app.get("/api/autotrader/state", async (req, res) => {
     try {
-      if (deltaAutoTraderEngine.getLiveFullState().settings.mode === "LIVE" && process.env.DELTA_EXCHANGE_API_KEY) {
+      if (
+        deltaAutoTraderEngine.getLiveFullState().settings.mode === "LIVE" &&
+        process.env.DELTA_EXCHANGE_API_KEY &&
+        deltaAutoTraderEngine.getOpenPositions().length > 0
+      ) {
         await deltaAutoTraderEngine.syncWithExchangePositions();
       }
       const fullState = deltaAutoTraderEngine.getLiveFullState();

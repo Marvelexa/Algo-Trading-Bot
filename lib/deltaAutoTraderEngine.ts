@@ -398,17 +398,18 @@ export class DeltaAutoTraderEngine {
         const filePath = path.join(process.cwd(), ".delta_auto_trader_state.json");
         const historyPath = path.join(process.cwd(), "public", "closed_trades_history.json");
         if (fs.existsSync(filePath)) {
-          const raw = fs.readFileSync(filePath, "utf-8");
+          const raw = fs.readFileSync(filePath, "utf-8").replace(/^\uFEFF/, "");
           if (raw) {
             this.applyParsedState(JSON.parse(raw));
           }
         }
         if (fs.existsSync(historyPath)) {
-          const rawHistory = fs.readFileSync(historyPath, "utf-8");
+          const rawHistory = fs.readFileSync(historyPath, "utf-8").replace(/^\uFEFF/, "");
           if (rawHistory) {
             const historyList = JSON.parse(rawHistory);
             if (Array.isArray(historyList) && historyList.length > 0) {
-              this.applyParsedState({ closedRecords: historyList });
+              const cleanHistory = historyList.filter((r: any) => !r.id?.includes("-LIVE-") && !r.symbol?.includes("P-ETH"));
+              this.applyParsedState({ closedRecords: cleanHistory });
             }
           }
         }
@@ -432,6 +433,10 @@ export class DeltaAutoTraderEngine {
       const now = Date.now();
       const validOpen: AutoTraderPosition[] = [];
       for (const pos of parsed.openPositions) {
+        if (!pos || !pos.symbol || pos.id.includes("-LIVE-") || !CURATED_AUTO_TRADER_ASSETS.some(a => a.symbol === pos.symbol)) {
+          console.warn(`[DeltaAutoTrader] 🛡️ Filtered out non-bot / external position during load: ${pos?.symbol} (${pos?.id})`);
+          continue;
+        }
         const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : now) || now;
         const holdMs = now - entryMs;
         // Auto-exit/prune positions older than 24 hours (v3 Swing Horizon max hold)
@@ -478,18 +483,20 @@ export class DeltaAutoTraderEngine {
 
     }
     if (Array.isArray(parsed.closedRecords)) {
-      // 🛡️ High-Fidelity Record Merging: Preserve all executed trades across server reboots & client syncs
+      // 🛡️ High-Fidelity Record Merging: Preserve all genuine bot trades across server reboots & client syncs
       const recordMap = new Map<string, AutoTraderClosedRecord>();
-      this.closedRecords.forEach(r => {
-        const key = r.id || `${r.symbol}_${r.exitTimestamp}`;
-        recordMap.set(key, r);
-      });
-      parsed.closedRecords.forEach((r: any) => {
-        if (r && r.symbol && r.entryPrice && r.exitPrice) {
+      this.closedRecords
+        .filter(r => !r.id?.includes("-LIVE-") && !r.symbol?.includes("P-ETH"))
+        .forEach(r => {
           const key = r.id || `${r.symbol}_${r.exitTimestamp}`;
           recordMap.set(key, r);
-        }
-      });
+        });
+      parsed.closedRecords
+        .filter((r: any) => r && r.symbol && r.entryPrice && r.exitPrice && !r.id?.includes("-LIVE-") && !r.symbol?.includes("P-ETH"))
+        .forEach((r: any) => {
+          const key = r.id || `${r.symbol}_${r.exitTimestamp}`;
+          recordMap.set(key, r);
+        });
       this.closedRecords = Array.from(recordMap.values()).sort((a, b) => {
         const tA = new Date(a.exitTimestamp).getTime() || 0;
         const tB = new Date(b.exitTimestamp).getTime() || 0;
@@ -2677,7 +2684,7 @@ export class DeltaAutoTraderEngine {
     this.saveToStorage();
     // If LIVE mode, trigger execution on Delta Exchange API and attach native Stop-Loss & Take-Profit bracket
     if (this.settings.mode === "LIVE") {
-      deltaExchangeEngine.setLeverage(pos.symbol, pos.leverage || 25).catch(() => {});
+      deltaExchangeEngine.setLeverage(position.symbol, position.leverage || 25).catch(() => {});
       deltaExchangeEngine.placeOrder(
         symbol,
         position.type === "BUY" ? "buy" : "sell",
@@ -2921,7 +2928,12 @@ export class DeltaAutoTraderEngine {
     }
   }
 
-  public closePosition(positionId: string, exitPriceUSD: number, reason: AutoTraderClosedRecord["exitReason"] = "MANUAL_EXIT"): { success: boolean; message: string; record?: AutoTraderClosedRecord } {
+  public closePosition(
+    positionId: string,
+    exitPriceUSD: number,
+    reason: AutoTraderClosedRecord["exitReason"] = "MANUAL_EXIT",
+    skipExchangeOrder: boolean = false
+  ): { success: boolean; message: string; record?: AutoTraderClosedRecord } {
     const pos = this.openPositions.find(p => p.id === positionId);
     if (!pos) {
       return { success: false, message: "Position not found." };
@@ -2985,13 +2997,24 @@ export class DeltaAutoTraderEngine {
     }
 
     // If LIVE mode, cancel pending bracket order first and trigger exit order on Delta Exchange API to close real market position
-    if (this.settings.mode === "LIVE") {
-      deltaExchangeEngine.cancelBracketOrder(pos.symbol).catch(() => {});
-      deltaExchangeEngine.placeOrder(
-        pos.symbol,
-        pos.type === "BUY" ? "sell" : "buy",
-        pos.quantity
-      ).catch(err => console.warn("[DeltaAutoTrader] Live exit execution warning:", err));
+    // 🛡️ STRICT ISOLATION & SHIELD:
+    // Only send live exchange orders if:
+    // 1. skipExchangeOrder is false (e.g. not already closed by native bracket fill on exchange)
+    // 2. The asset is in CURATED_AUTO_TRADER_ASSETS (never touch options, uncurated tokens)
+    // 3. The trade was opened by this bot algorithm (id starts with DAT- and has no -LIVE-)
+    if (this.settings.mode === "LIVE" && !skipExchangeOrder) {
+      const isCurated = CURATED_AUTO_TRADER_ASSETS.some(a => a.symbol === pos.symbol);
+      const isBotTrade = pos.id.startsWith("DAT-") && !pos.id.includes("-LIVE-");
+      if (isCurated && isBotTrade) {
+        deltaExchangeEngine.cancelBracketOrder(pos.symbol).catch(() => {});
+        deltaExchangeEngine.placeOrder(
+          pos.symbol,
+          pos.type === "BUY" ? "sell" : "buy",
+          pos.quantity
+        ).catch(err => console.warn("[DeltaAutoTrader] Live exit execution warning:", err));
+      } else {
+        console.log(`[DeltaAutoTrader] 🛡️ Shielded external/manual trade ${pos.symbol} (${pos.id}) - skipped live exchange exit order.`);
+      }
     }
 
     const now = Date.now();
@@ -3021,64 +3044,51 @@ export class DeltaAutoTraderEngine {
   // ────────────────────────────────────────────
   public async syncWithExchangePositions(): Promise<void> {
     if (this.settings.mode !== "LIVE" || !process.env.DELTA_EXCHANGE_API_KEY) return;
+    // 🛡️ STRICT ISOLATION: If bot has 0 open positions, NEVER inspect or touch exchange positions!
+    if (this.openPositions.length === 0) return;
+
     try {
       const livePositions = await deltaExchangeEngine.fetchLivePositions();
       if (!Array.isArray(livePositions)) return;
 
-      const activeSymbols = new Set(livePositions.map((p: any) => (p.product_symbol || "").toUpperCase()));
+      // Filter out non-curated assets (e.g. options like P-ETH-2350-110926) and zero-size positions
+      const activeExchangeMap = new Map<string, any>();
+      for (const p of livePositions) {
+        const sym = (p.product_symbol || "").toUpperCase();
+        const size = parseFloat(p.size) || 0;
+        if (size !== 0) {
+          activeExchangeMap.set(sym, p);
+        }
+      }
 
-      // 1. Remove positions from this.openPositions if they are closed on Delta Exchange
-      this.openPositions = this.openPositions.filter(pos => activeSymbols.has(pos.symbol.toUpperCase()));
+      // ONLY examine positions that the bot itself opened (strictly in this.openPositions)
+      // NEVER import external manual positions, options, or foreign symbols into this.openPositions!
+      for (const botPos of [...this.openPositions]) {
+        const isCurated = CURATED_AUTO_TRADER_ASSETS.some(a => a.symbol === botPos.symbol);
+        if (!isCurated || botPos.id.includes("-LIVE-")) {
+          console.warn(`[DeltaAutoTrader] 🛡️ Purging non-bot/external position ${botPos.symbol} (${botPos.id}) from bot state.`);
+          this.openPositions = this.openPositions.filter(p => p.id !== botPos.id);
+          continue;
+        }
 
-      // 2. Add or update each live exchange position
-      for (const livePos of livePositions) {
-        const sym = (livePos.product_symbol || "").toUpperCase();
-        const size = parseFloat(livePos.size) || 0;
-        if (size === 0) continue;
-
-        const type: "BUY" | "SELL" = size > 0 ? "BUY" : "SELL";
-        const entryPrice = parseFloat(livePos.entry_price) || 0;
-        const markPrice = parseFloat(livePos.mark_price) || entryPrice;
-        const unrealizedPnL = parseFloat(livePos.unrealized_pnl) || 0;
-        const absQty = Math.abs(size);
-
-        let existing = this.openPositions.find(p => p.symbol.toUpperCase() === sym);
-        if (existing) {
-          existing.entryPrice = entryPrice;
-          existing.currentPrice = markPrice;
-          existing.unrealizedPnLUSD = Number(unrealizedPnL.toFixed(4));
-          existing.quantity = absQty;
+        const livePos = activeExchangeMap.get(botPos.symbol.toUpperCase());
+        if (livePos) {
+          // Position is still active on Delta Exchange - update mark price and live unrealized PnL
+          const markPrice = parseFloat(livePos.mark_price);
+          if (!isNaN(markPrice) && markPrice > 0) {
+            botPos.currentPrice = markPrice;
+          }
+          const unrealizedPnL = parseFloat(livePos.unrealized_pnl);
+          if (!isNaN(unrealizedPnL)) {
+            botPos.unrealizedPnLUSD = Number(unrealizedPnL.toFixed(4));
+            botPos.highestProfitUSD = Math.max(botPos.highestProfitUSD || 0, unrealizedPnL);
+          }
         } else {
-          const now = Date.now();
-          const slDistance = entryPrice * 0.015;
-          const stopLossPrice = type === "BUY" ? entryPrice - slDistance : entryPrice + slDistance;
-          const targetPrice = type === "BUY" ? entryPrice + (slDistance * 2.05) : entryPrice - (slDistance * 2.05);
-
-          const newPos: AutoTraderPosition = {
-            id: `DAT-${sym}-LIVE-${livePos.user_id || Date.now()}`,
-            symbol: sym,
-            type,
-            entryPrice,
-            currentPrice: markPrice,
-            stopLossPrice: Number(stopLossPrice.toFixed(4)),
-            initialStopLoss: Number(stopLossPrice.toFixed(4)),
-            targetPrice: Number(targetPrice.toFixed(4)),
-            quantity: absQty,
-            confidenceScore: 80,
-            unrealizedPnLUSD: Number(unrealizedPnL.toFixed(4)),
-            unrealizedPnLPct: entryPrice > 0 ? Number(((unrealizedPnL / (entryPrice * absQty)) * 100).toFixed(2)) : 0,
-            trailingStopActive: false,
-            highestProfitUSD: Math.max(0, unrealizedPnL),
-            timeframeAlignment: "Delta Exchange Live Position Sync",
-            entryTimestamp: livePos.created_at ? livePos.created_at.replace("T", " ").substring(0, 19) : new Date().toISOString().replace("T", " ").substring(0, 19),
-            entryTimeMs: now,
-            maxHoldTimeExpiry: now + V3_MAX_HOLD_TIME_MS,
-            subScores: { trend: 25, momentum: 25, pattern: 15, volume: 15 },
-            adxValue: 30,
-            rsiValue: 50,
-            entryEVUSD: 5
-          };
-          this.openPositions.push(newPos);
+          // The position was closed on Delta Exchange (e.g. bracket SL/TP hit on exchange)
+          console.log(`[DeltaAutoTrader] ℹ️ Live position for ${botPos.symbol} closed on Delta Exchange (native SL/TP fill).`);
+          const isWin = botPos.currentPrice >= botPos.entryPrice ? (botPos.type === "BUY") : (botPos.type === "SELL");
+          const exitReason = isWin ? "TARGET_HIT" : "STOP_LOSS_HIT";
+          this.closePosition(botPos.id, botPos.currentPrice, exitReason, true);
         }
       }
 
