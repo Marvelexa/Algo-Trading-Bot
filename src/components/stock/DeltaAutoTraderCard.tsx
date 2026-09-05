@@ -324,7 +324,13 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
     }
 
     const nextState = !settings.isEnabled;
-    setNotification(nextState ? "🟢 Starting Auto-Trader (15-Sec Round-Robin Queue)..." : "🛑 Stopping / Pausing Delta Auto-Trader...");
+    setNotification(nextState ? "🟢 Starting Auto-Trader..." : "🛑 Stopping / Pausing Delta Auto-Trader...");
+
+    // 1. Immediately toggle client engine and local React state
+    deltaAutoTraderEngine.toggleBot(nextState);
+    setSettings(prev => ({ ...prev, isEnabled: nextState }));
+    setStatus(prev => ({ ...prev, botState: nextState ? "RUNNING" : "PAUSED" }));
+
     try {
       const res = await fetch("/api/autotrader/toggle", {
         method: "POST",
@@ -335,22 +341,12 @@ export const DeltaAutoTraderCard: React.FC<DeltaAutoTraderCardProps> = ({
         const data = await res.json();
         if (data?.state?.settings) setSettings(data.state.settings);
         if (data?.state?.status) setStatus(data.state.status);
-      } else {
-        deltaAutoTraderEngine.toggleBot(nextState);
-        const local = deltaAutoTraderEngine.getLiveFullState();
-        setSettings(local.settings);
-        setStatus(local.status);
       }
-      fetchServerState();
-      setNotification(nextState ? "🟢 24/7 Auto-Trader ACTIVE! 15-Sec inspection window started on Coin #1 (BTCUSD)." : "🛑 Delta Auto-Trader STOPPED / PAUSED.");
     } catch (e) {
-      deltaAutoTraderEngine.toggleBot(nextState);
-      const local = deltaAutoTraderEngine.getLiveFullState();
-      setSettings(local.settings);
-      setStatus(local.status);
-      fetchServerState();
-      setNotification(nextState ? "🟢 Auto-Trader ACTIVE! 15-Sec inspection window running on Coin #1 (BTCUSD)." : "🛑 Delta Auto-Trader STOPPED / PAUSED.");
+      console.warn("Toggle failed on server:", e);
     }
+    fetchServerState();
+    setNotification(nextState ? "🟢 24/7 Auto-Trader ACTIVE!" : "🛑 Delta Auto-Trader STOPPED / PAUSED.");
     setTimeout(() => setNotification(null), 4000);
   };
 

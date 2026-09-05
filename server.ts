@@ -667,6 +667,13 @@ async function startServer() {
   app.post("/api/autotrader/state", (req, res) => {
     try {
       if (req.body) {
+        // 🛡️ CRITICAL GUARD: Client browser state POST must NEVER inject or overwrite openPositions!
+        // Open positions and executions are owned 100% by the server engine.
+        delete req.body.openPositions;
+        // Never allow a background sync to silently turn bot ON if server has it OFF
+        if (req.body.settings && !deltaAutoTraderEngine.getSettings().isEnabled) {
+          req.body.settings.isEnabled = false;
+        }
         (deltaAutoTraderEngine as any).applyParsedState(req.body);
         deltaAutoTraderEngine.saveToStorage();
       }

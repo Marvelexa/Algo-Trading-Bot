@@ -341,7 +341,10 @@ export class DeltaAutoTraderEngine {
   constructor() {
     this.todayDateStr = new Date().toISOString().split("T")[0];
     this.loadFromStorage();
-    this.startAutonomousBackgroundDaemon();
+    // 🛡️ CRITICAL BROWSER SHIELD: The client browser must NEVER run background trading daemon!
+    if (typeof window === "undefined") {
+      this.startAutonomousBackgroundDaemon();
+    }
   }
 
   public async syncLiveWalletBalance(): Promise<number | null> {
@@ -2547,17 +2550,17 @@ export class DeltaAutoTraderEngine {
   // ────────────────────────────────────────────
 
   public evaluateAndExecuteAutoTrade(symbol: string, bars15m: OHLCVBar[], bars1h: OHLCVBar[], bars4h: OHLCVBar[], currentPriceUSD: number): { success: boolean; message: string; position?: AutoTraderPosition } {
-    console.log("[DEBUG EVAL TRADE]", {
-      isEnabled: this.settings.isEnabled,
-      botState: this.getStatus().botState,
-      positionsCount: this.openPositions.length,
-      maxPositions: this.settings.maxConcurrentPositions
-    });
-    this.checkDailyReset();
-
+    // 🛡️ ABSOLUTE MASTER KILL SWITCH: If bot is disabled, immediately block 100% of execution!
     if (!this.settings.isEnabled) {
-      return { success: false, message: "Delta Auto-Trader is PAUSED." };
+      return { success: false, message: "Delta Auto-Trader is strictly PAUSED / OFF. Trade execution is 100% blocked." };
     }
+
+    // 🛡️ BROWSER SHIELD: Client browser must NEVER execute trades; only the backend server executes trades!
+    if (typeof window !== "undefined") {
+      return { success: false, message: "Browser client cannot execute trades. All executions belong to backend server." };
+    }
+
+    this.checkDailyReset();
 
     const status = this.getStatus();
     if (status.botState === "CIRCUIT_BREAKER_HALT") {
@@ -3450,6 +3453,10 @@ export class DeltaAutoTraderEngine {
   }
 
   public startAutonomousBackgroundDaemon() {
+    // 🛡️ BROWSER SHIELD: The client browser must NEVER run trading daemon loops!
+    if (typeof window !== "undefined") {
+      return;
+    }
     if (this.isScanningLoopActive) return;
     this.isScanningLoopActive = true;
 
@@ -3468,7 +3475,7 @@ export class DeltaAutoTraderEngine {
         }
 
         // 2. Fully Autonomous Multi-Timeframe Scan & Rolling Slot Replenishment
-        if (this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle()) {
+        if (this.settings.isEnabled && this.openPositions.length < this.settings.maxConcurrentPositions && !this.checkBatchCycle()) {
           const res = await this.scanAndExecuteNextTrade(true);
           if (res.executed && res.position) {
             console.log(`[DeltaAutoTraderDaemon] 🚀 AUTONOMOUS TRADE PLACED: ${res.position.type} ${res.position.symbol} @ $${res.position.entryPrice}`);
@@ -3578,11 +3585,17 @@ export class DeltaAutoTraderEngine {
   }
 
   public async scanAndExecuteNextTrade(forceImmediate: boolean = true): Promise<{ executed: boolean; message: string; position?: AutoTraderPosition }> {
-    this.checkDailyReset();
-
+    // 🛡️ ABSOLUTE MASTER KILL SWITCH:
     if (!this.settings.isEnabled) {
-      return { executed: false, message: "Auto-trader bot is currently disabled." };
+      return { executed: false, message: "Delta Auto-Trader is strictly PAUSED / OFF. Trade execution is 100% blocked." };
     }
+
+    // 🛡️ BROWSER SHIELD: Client browser must NEVER execute trades; only backend server executes trades!
+    if (typeof window !== "undefined") {
+      return { executed: false, message: "Browser client cannot execute trades. All executions belong to backend server." };
+    }
+
+    this.checkDailyReset();
 
     if (this.isExecutionLocked) {
       return { executed: false, message: "⚠️ Trade execution mutex locked. Another trade or scan operation in progress." };
@@ -3836,6 +3849,11 @@ export class DeltaAutoTraderEngine {
   }
 
   public async forceExecuteTrade(symbol: string): Promise<{ success: boolean; message: string; position?: AutoTraderPosition }> {
+    // 🛡️ BROWSER SHIELD:
+    if (typeof window !== "undefined") {
+      return { success: false, message: "Browser client cannot execute trades. All executions belong to backend server." };
+    }
+
     this.checkDailyReset();
     if (this.openPositions.length >= this.settings.maxConcurrentPositions) {
       return { success: false, message: `Max open slots reached (${this.openPositions.length}/${this.settings.maxConcurrentPositions}).` };
