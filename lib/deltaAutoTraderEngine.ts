@@ -90,6 +90,7 @@ export interface AutoTraderClosedRecord {
   entryEVUSD?: number;
   realizedRMultiple?: number;
   feeUSD?: number;
+  holdDurationMinutes?: number;
 }
 
 export interface CuratedAsset {
@@ -2708,12 +2709,19 @@ export class DeltaAutoTraderEngine {
         undefined, // Market Order for instant fill
         position.stopLossPrice,
         position.targetPrice
-      ).then(orderRes => {
+      ).then(async orderRes => {
         const fillPrice = parseFloat(orderRes?.result?.average_fill_price || orderRes?.result?.limit_price);
         if (fillPrice && !isNaN(fillPrice) && fillPrice > 0) {
           position.entryPrice = fillPrice;
           this.saveToStorage();
-          console.log(`[DeltaAutoTrader] 🎯 Synced exact exchange fill price for ${symbol}: $${fillPrice}`);
+          console.log(`[DeltaAutoTrader] 🎯 Synced exact exchange fill price for ${symbol}: ${fillPrice}`);
+        }
+        // Fallback: Ensure Stop-Loss and Take-Profit brackets are attached to open position on Delta Exchange
+        if (!orderRes?.result?.bracket_order && (position.stopLossPrice || position.targetPrice)) {
+          console.log(`[DeltaAutoTrader] 🛡️ Verifying/attaching bracket to position for ${symbol} (SL: ${position.stopLossPrice}, TP: ${position.targetPrice})...`);
+          await deltaExchangeEngine.setBracketOrder(symbol, position.stopLossPrice, position.targetPrice).catch((e: any) => {
+            console.warn(`[DeltaAutoTrader] ⚠️ setBracketOrder fallback warning for ${symbol}:`, e?.message || e);
+          });
         }
       }).catch(err => console.warn("[DeltaAutoTrader] Live execution warning:", err));
     }
@@ -2894,27 +2902,91 @@ export class DeltaAutoTraderEngine {
         import("path").then(path => {
           const mistakesPath = path.join(process.cwd(), ".delta_ai_mistakes.json");
           
-          let mistakes = [];
+          let mistakes: any[] = [];
           if (fs.existsSync(mistakesPath)) {
             try {
               mistakes = JSON.parse(fs.readFileSync(mistakesPath, "utf-8"));
             } catch (e) {}
           }
 
-          let rootCause = "TREND_REVERSAL_STOP_LOSS";
-          let analysis = `Trade entered at ${record.entryPrice} but price moved against entry, resulting in a ${record.realizedPnLUSD} loss.`;
-          let correction = ["Tighten Stop-Loss distance.", "Require ADX > 15 for stronger momentum before entering."];
+          // Calculate hold duration
+          const entryTime = record.entryTimestamp ? new Date(record.entryTimestamp.includes("T") ? record.entryTimestamp : record.entryTimestamp.replace(" ", "T") + "Z").getTime() : Date.now();
+          const exitTime = record.exitTimestamp ? new Date(record.exitTimestamp.includes("T") ? record.exitTimestamp : record.exitTimestamp.replace(" ", "T") + "Z").getTime() : Date.now();
+          const holdMins = record.holdDurationMinutes ?? Math.max(0, Math.round((exitTime - entryTime) / 60000));
+          const holdSeconds = Math.max(1, Math.round((exitTime - entryTime) / 1000));
 
-          if (record.exitReason === "MANUAL_UI_CLOSE") {
-            rootCause = "MANUAL_ABORT_PREVENTATIVE_LOSS";
-            analysis = `User manually aborted the ${record.type} position at ${record.exitPrice} to prevent further drawdown. Bot failed to hit Take-Profit.`;
-            correction = ["Activate early breakeven shield at +0.35R.", "Enable faster dynamic trailing stops to lock profit early."];
-          } else if (record.exitReason === "TIME_STALL_EXIT") {
+          // 🛡️ DEDUPLICATION GUARD:
+          // Avoid spamming identical duplicate mistake entries for the same asset within 10 minutes
+          const isRecentDup = mistakes.some(m => 
+            m.symbol === record.symbol && 
+            Math.abs(new Date(m.timestamp).getTime() - exitTime) < 10 * 60 * 1000 &&
+            Math.abs((m.lossUSD || 0) - record.realizedPnLUSD) < 0.20
+          );
+          if (isRecentDup) {
+            console.log(`[DeltaAutoTrader] 🛡️ Deduplicated repeat mistake entry for ${record.symbol}`);
+            return;
+          }
+
+          let rootCause = "TREND_REVERSAL_STOP_LOSS";
+          let analysis = "";
+          let correction: string[] = [];
+
+          const absLoss = Math.abs(record.realizedPnLUSD).toFixed(2);
+
+          // 1. Premature Manual Abort / System Reset (< 3 minutes)
+          if ((record.exitReason === "MANUAL_EXIT" || record.exitReason === "MANUAL_UI_CLOSE") && holdMins < 3) {
+            rootCause = "PREMATURE_MANUAL_PANIC_EXIT";
+            analysis = `Trade on ${record.symbol} was manually stopped within ${holdSeconds < 60 ? holdSeconds + "s" : holdMins + "m"} of entry. The market did not have time to develop directionally; the loss of -$${absLoss} was primarily exchange bid-ask spread and immediate volatility.`;
+            correction = [
+              "Allow algorithmic setups at least 5-10 minutes to develop before manual intervention.",
+              "Rely on native Delta Exchange Stop-Loss & Take-Profit bracket orders for automated protection.",
+              "Avoid stopping and restarting bot rapidly to prevent repeated spread slippage."
+            ];
+          } 
+          // 2. Discretionary Manual Exit (> 3 minutes)
+          else if (record.exitReason === "MANUAL_EXIT" || record.exitReason === "MANUAL_UI_CLOSE") {
+            rootCause = "DISCRETIONARY_MANUAL_EXIT";
+            analysis = `User manually closed ${record.type} on ${record.symbol} after ${holdMins}m @ $${record.exitPrice} (Entry: $${record.entryPrice}, Loss: -$${absLoss}). Bot did not reach automated TP or SL.`;
+            correction = [
+              "Confirm 15m structural invalidation before cutting trades manually.",
+              "Let dynamic trailing stop lock breakeven at +0.35R rather than early discretionary closing."
+            ];
+          }
+          // 3. Stagnant Consolidation Chop
+          else if (record.exitReason === "TIME_STALL_EXIT" || record.exitReason === "MAX_TIME_60M" || record.exitReason === "MAX_TIME_24H") {
             rootCause = "PROLONGED_CHOP_MOMENTUM_DECAY";
-            analysis = `Trade stalled for too long without hitting target. Exited due to momentum decay.`;
-          } else if (record.exitReason === "STOP_LOSS_HIT") {
+            analysis = `Position on ${record.symbol} stalled for ${holdMins}m without reaching target. Momentum decayed (ADX: ${record.adxValue ? record.adxValue.toFixed(1) : "20"}), resulting in small carry/fee erosion.`;
+            correction = [
+              "Require ADX >= 22.0 to ensure strong trend persistence before entering.",
+              "Auto-liquidate stagnant positions after 45m if price remains bound within 0.25% range."
+            ];
+          }
+          // 4. Hard Stop-Loss Hit
+          else if (record.exitReason === "STOP_LOSS_HIT") {
             rootCause = "HARD_STOP_LOSS_HIT";
-            analysis = `Market reversed sharply against the ${record.type} position, hitting safety stop-loss at ${record.exitPrice}.`;
+            analysis = `Market reversed sharply against ${record.type} position on ${record.symbol}, executing safety stop-loss at $${record.exitPrice} (Loss: -$${absLoss}). ATR was ${record.atrValue ? record.atrValue.toFixed(4) : "standard"}.`;
+            correction = [
+              "Widen ATR stop-loss buffer for high-beta coins during elevated volatility.",
+              "Require 15m candle structure close confirmation before executing continuation entries."
+            ];
+          }
+          // 5. Early Momentum / Danger Reversal
+          else if (record.exitReason === "EARLY_MOMENTUM_REVERSAL") {
+            rootCause = "STRUCTURAL_REVERSAL_INTERCEPTION";
+            analysis = `Real-time sentinel detected bearish structure shift on ${record.symbol} 15m chart. Intercepted trade early, saving capital from a full stop-loss hit.`;
+            correction = [
+              "Sentinel successfully prevented larger drawdown on adverse reversal.",
+              "Trail stop to entry breakeven as soon as unrealized profit touches +0.35R."
+            ];
+          }
+          // 6. Volatility / General Stop Loss
+          else {
+            rootCause = "VOLATILITY_BREAKDOWN_STOP_LOSS";
+            analysis = `${record.symbol} ${record.type} faced momentum exhaustion at $${record.exitPrice} after ${holdMins}m (RSI: ${record.rsiValue ? record.rsiValue.toFixed(1) : "neutral"}).`;
+            correction = [
+              "Verify higher-timeframe (1H/4H) confluence before entering continuation trades.",
+              "Tighten trailing stop-loss once price achieves +0.35R profit."
+            ];
           }
 
           const mistakeData = {
@@ -2926,8 +2998,9 @@ export class DeltaAutoTraderEngine {
             exitPrice: record.exitPrice,
             lossUSD: record.realizedPnLUSD,
             lossPct: record.realizedPnLPct,
+            holdDurationMinutes: Math.max(0, holdMins),
             confidenceScore: record.confidenceScore || 85,
-            primaryTrigger: `EMA 9/21 · ADX ${record.adxValue || 20}`,
+            primaryTrigger: `EMA 9/21 · ADX ${record.adxValue ? record.adxValue.toFixed(1) : 20}`,
             rootCauseCategory: rootCause,
             detailedMistakeAnalysis: analysis,
             aiLearnedCorrections: correction
@@ -2937,6 +3010,7 @@ export class DeltaAutoTraderEngine {
           if (mistakes.length > 50) mistakes = mistakes.slice(0, 50);
           
           fs.writeFileSync(mistakesPath, JSON.stringify(mistakes, null, 2), "utf-8");
+          console.log(`[DeltaAutoTrader] 📝 Logged intelligent AI mistake for ${record.symbol} (${rootCause})`);
         }).catch(() => {});
       }).catch(() => {});
     } catch(e) {
@@ -2944,7 +3018,7 @@ export class DeltaAutoTraderEngine {
     }
   }
 
-  public closePosition(
+    public closePosition(
     positionId: string,
     exitPriceUSD: number,
     reason: AutoTraderClosedRecord["exitReason"] = "MANUAL_EXIT",
@@ -2968,6 +3042,8 @@ export class DeltaAutoTraderEngine {
 
     const initialRisk = pos.initialRiskUSD || Math.max(0.1, Math.abs(pos.entryPrice - pos.stopLossPrice) * pos.quantity);
     const realizedRMultiple = Number((pnlUSD / initialRisk).toFixed(2));
+    const entryMs = pos.entryTimeMs || (pos.entryTimestamp ? new Date(pos.entryTimestamp.includes("T") ? pos.entryTimestamp : pos.entryTimestamp.replace(" ", "T") + "Z").getTime() : Date.now());
+    const holdDurationMinutes = Math.max(0, Math.round((Date.now() - entryMs) / 60000));
 
     const record: AutoTraderClosedRecord = {
       id: pos.id,
@@ -2989,7 +3065,8 @@ export class DeltaAutoTraderEngine {
       atrValue: pos.atrValue,
       entryEVUSD: pos.entryEVUSD,
       realizedRMultiple,
-      feeUSD: FEE_BUFFER_PER_TRADE_USD
+      feeUSD: FEE_BUFFER_PER_TRADE_USD,
+      holdDurationMinutes
     };
 
     // Update Capital Balance

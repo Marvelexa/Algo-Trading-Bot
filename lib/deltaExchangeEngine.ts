@@ -651,8 +651,15 @@ class DeltaExchangeEngine {
       if (price) {
         bodyData.limit_price = this.roundToTickSize(price, tickSize);
       }
-      // stripped SL
-      // stripped TP
+      if (stopLossPrice && !isNaN(stopLossPrice) && stopLossPrice > 0) {
+        bodyData.bracket_stop_loss_price = this.roundToTickSize(stopLossPrice, tickSize);
+      }
+      if (takeProfitPrice && !isNaN(takeProfitPrice) && takeProfitPrice > 0) {
+        bodyData.bracket_take_profit_price = this.roundToTickSize(takeProfitPrice, tickSize);
+      }
+      if (bodyData.bracket_stop_loss_price || bodyData.bracket_take_profit_price) {
+        bodyData.bracket_stop_trigger_method = "last_traded_price";
+      }
       const bodyStr = JSON.stringify(bodyData);
       const headers = this.getAuthHeaders("POST", path, "", bodyStr);
 
@@ -754,7 +761,21 @@ class DeltaExchangeEngine {
       if(cloneData.error && cloneData.error.context && cloneData.error.context.schema_errors) {
         console.log('[Delta API Error]', JSON.stringify(cloneData.error.context.schema_errors, null, 2));
       }
-      const data = await response.json();
+      let data = await response.json();
+      if (data?.error?.code === "bracket_order_exists" || data?.error?.code === "bracket_order_position_exists") {
+        console.log(`[DeltaExchange] ℹ️ Bracket already exists on ${symbol}, resetting previous bracket orders and re-attaching...`);
+        await this.cancelBracketOrder(symbol);
+        const retryHeaders = this.getAuthHeaders("POST", path, "", bodyStr);
+        const retryRes = await fetch(`https://api.india.delta.exchange${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...retryHeaders
+          },
+          body: bodyStr
+        });
+        data = await retryRes.json();
+      }
       console.log(`[DeltaExchange] 🎯 Native Bracket Order set on ${symbol}: SL=$${stopLossPrice}, TP=$${takeProfitPrice}`, data);
       return data;
     } catch (err) {
@@ -769,7 +790,8 @@ class DeltaExchangeEngine {
     takeProfitPrice?: number
   ): Promise<any> {
     try {
-      console.log(`[DeltaExchange] 🔄 Updating Bracket via setBracketOrder for ${symbol}`);
+      console.log(`[DeltaExchange] 🔄 Updating Bracket via cancel and re-place for ${symbol}`);
+      await this.cancelBracketOrder(symbol);
       return await this.setBracketOrder(symbol, stopLossPrice, takeProfitPrice);
     } catch (err) {
       console.error("[DeltaExchange] Bracket order update error:", err);
@@ -798,9 +820,11 @@ class DeltaExchangeEngine {
         throw new Error(`Product not loaded for ${symbol}. Call fetchProducts() first.`);
       }
       const productId = product.id;
-      const path = "/v2/orders/bracket";
+      const path = "/v2/orders/all";
       const bodyData: any = {
-        product_id: productId
+        product_id: productId,
+        cancel_stop_orders: true,
+        cancel_reduce_only_orders: true
       };
       const bodyStr = JSON.stringify(bodyData);
       const headers = this.getAuthHeaders("DELETE", path, "", bodyStr);
@@ -815,12 +839,13 @@ class DeltaExchangeEngine {
       });
       const clone = response.clone();
       const cloneData = await clone.json();
-      if(cloneData.error && cloneData.error.context && cloneData.error.context.schema_errors) {
+      if (cloneData.error && cloneData.error.context && cloneData.error.context.schema_errors) {
         console.log('[Delta API Error]', JSON.stringify(cloneData.error.context.schema_errors, null, 2));
       }
-      return await response.json();
-    } catch (e) {
-      return { success: false, error: e };
+      console.log(`[DeltaExchange] 🛑 Cancelled existing bracket/stop orders for ${symbol}:`, cloneData);
+      return cloneData;
+    } catch (e: any) {
+      return { success: false, error: e?.message || e };
     }
   }
 
